@@ -1,0 +1,355 @@
+<svg width="1200" height="430" viewBox="0 0 1200 430" xmlns="http://www.w3.org/2000/svg">
+  <!-- Companion to cozy.svg: this time we are INSIDE the poodle game. The hero sprite runs
+       toward a giant hollow star; a cursor clicks it, the star fills gold, the poodle leaps.
+       Pure graphics, no words. Transparent canvas, glows padded so nothing clips. -->
+  <defs>
+    <filter id="gsoft" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="14" />
+    </filter>
+    <filter id="gshadow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="6" />
+    </filter>
+    <pattern id="gscan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="2" y="2" fill="#000000" opacity="0.20" />
+    </pattern>
+    <clipPath id="gpanel">
+      <polygon
+        points="120,40 1080,40 1080,48 1096,48 1096,56 1112,56 1112,376 1096,376 1096,384 1080,384 1080,392 120,392 120,384 104,384 104,376 88,376 88,56 104,56 104,48 120,48" />
+    </clipPath>
+    <!-- 3x5 pixel font glyphs (cell = 3px) -->
+    <g id="pxI">
+      <rect x="0" y="0" width="9" height="3" />
+      <rect x="3" y="3" width="3" height="9" />
+      <rect x="0" y="12" width="9" height="3" />
+    </g>
+    <g id="pxV">
+      <rect x="0" y="0" width="3" height="12" />
+      <rect x="6" y="0" width="3" height="12" />
+      <rect x="3" y="12" width="3" height="3" />
+    </g>
+    <g id="pxA">
+      <rect x="3" y="0" width="3" height="3" />
+      <rect x="0" y="3" width="3" height="12" />
+      <rect x="6" y="3" width="3" height="12" />
+      <rect x="3" y="6" width="3" height="3" />
+    </g>
+    <g id="pxS">
+      <rect x="3" y="0" width="6" height="3" />
+      <rect x="0" y="3" width="3" height="3" />
+      <rect x="3" y="6" width="3" height="3" />
+      <rect x="6" y="9" width="3" height="3" />
+      <rect x="0" y="12" width="6" height="3" />
+    </g>
+    <g id="pxK">
+      <rect x="0" y="0" width="3" height="15" />
+      <rect x="6" y="0" width="3" height="6" />
+      <rect x="3" y="6" width="3" height="3" />
+      <rect x="6" y="9" width="3" height="6" />
+    </g>
+    <g id="pxDash">
+      <rect x="0" y="6" width="9" height="3" />
+    </g>
+    <g id="px7">
+      <rect x="0" y="0" width="9" height="3" />
+      <rect x="6" y="3" width="3" height="3" />
+      <rect x="3" y="6" width="3" height="9" />
+    </g>
+  </defs>
+
+  <!-- ambient glow behind the game panel (padded) -->
+  <circle cx="855" cy="180" r="80" fill="#fcee0a" opacity="0.06" filter="url(#gsoft)">
+    <animate attributeName="opacity" values="0.06;0.10;0.06" dur="4s" repeatCount="indefinite" />
+  </circle>
+  <circle cx="300" cy="220" r="80" fill="#00f0ff" opacity="0.05" filter="url(#gsoft)" />
+  <ellipse cx="600" cy="400" rx="420" ry="8" fill="#000000" opacity="0.4" filter="url(#gshadow)" />
+
+  <!-- ====== THE GAME WORLD ====== -->
+  <g shape-rendering="crispEdges">
+    <!-- night sky panel, same stepped silhouette as the cozy room -->
+    <polygon
+      points="120,40 1080,40 1080,48 1096,48 1096,56 1112,56 1112,376 1096,376 1096,384 1080,384 1080,392 120,392 120,384 104,384 104,376 88,376 88,56 104,56 104,48 120,48"
+      fill="#05070d" />
+
+    <g clip-path="url(#gpanel)">
+      <!-- below-ground earth -->
+      <rect x="88" y="340" width="1024" height="52" fill="#0a0e18" />
+      <g fill="#274b5e">
+        <rect x="200" y="356" width="10" height="5" />
+        <rect x="430" y="366" width="10" height="5" />
+        <rect x="660" y="356" width="10" height="5" />
+        <rect x="890" y="368" width="10" height="5" />
+        <rect x="320" y="374" width="7" height="4" />
+        <rect x="550" y="360" width="7" height="4" />
+        <rect x="780" y="376" width="7" height="4" />
+      </g>
+
+      <!-- twinkling stars -->
+      <g fill="#eef2f7">
+        <rect x="160" y="80" width="4" height="4">
+          <animate attributeName="opacity" values="1;0.2;1" dur="2.2s" repeatCount="indefinite" />
+        </rect>
+        <rect x="420" y="66" width="4" height="4">
+          <animate attributeName="opacity" values="0.3;1;0.3" dur="3s" repeatCount="indefinite" />
+        </rect>
+        <rect x="580" y="100" width="4" height="4">
+          <animate attributeName="opacity" values="1;0.3;1" dur="2.6s" repeatCount="indefinite" />
+        </rect>
+        <rect x="700" y="70" width="4" height="4">
+          <animate attributeName="opacity" values="0.4;1;0.4" dur="2s" repeatCount="indefinite" />
+        </rect>
+        <rect x="980" y="90" width="4" height="4">
+          <animate attributeName="opacity" values="1;0.2;1" dur="3.4s" repeatCount="indefinite" />
+        </rect>
+        <rect x="1050" y="150" width="4" height="4">
+          <animate attributeName="opacity" values="0.5;1;0.5" dur="2.8s" repeatCount="indefinite" />
+        </rect>
+        <rect x="120" y="170" width="4" height="4">
+          <animate attributeName="opacity" values="1;0.4;1" dur="2.4s" repeatCount="indefinite" />
+        </rect>
+        <rect x="520" y="140" width="4" height="4">
+          <animate attributeName="opacity" values="0.4;1;0.4" dur="3.2s" repeatCount="indefinite" />
+        </rect>
+        <rect x="640" y="180" width="4" height="4">
+          <animate attributeName="opacity" values="1;0.3;1" dur="2.1s" repeatCount="indefinite" />
+        </rect>
+      </g>
+
+      <!-- shooting star -->
+      <line x1="0" y1="0" x2="30" y2="11" stroke="#eef2f7" stroke-width="3" opacity="0">
+        <animateTransform attributeName="transform" type="translate" values="380 80;700 200" dur="9s"
+          repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0;0.9;0;0;0" keyTimes="0;0.04;0.09;0.5;1" dur="9s"
+          repeatCount="indefinite" />
+      </line>
+
+      <!-- pixel moon -->
+      <g opacity="0.95">
+        <rect x="244" y="84" width="44" height="44" fill="#fcee0a" />
+        <rect x="234" y="94" width="10" height="24" fill="#fcee0a" />
+        <rect x="254" y="74" width="24" height="10" fill="#fcee0a" />
+        <rect x="254" y="128" width="24" height="10" fill="#fcee0a" />
+        <rect x="256" y="96" width="9" height="9" fill="#c9bd08" />
+        <rect x="272" y="112" width="8" height="8" fill="#c9bd08" />
+      </g>
+
+      <!-- drifting clouds -->
+      <g fill="#274b5e">
+        <g transform="translate(0,120)">
+          <g>
+            <animateTransform attributeName="transform" type="translate" values="1140 0;20 0" dur="26s"
+              repeatCount="indefinite" />
+            <rect x="0" y="8" width="76" height="13" />
+            <rect x="12" y="-3" width="44" height="11" />
+          </g>
+        </g>
+        <g transform="translate(0,190)">
+          <g>
+            <animateTransform attributeName="transform" type="translate" values="1140 0;20 0" begin="-14s" dur="32s"
+              repeatCount="indefinite" />
+            <rect x="0" y="8" width="56" height="12" />
+            <rect x="10" y="0" width="30" height="8" />
+          </g>
+        </g>
+      </g>
+
+      <!-- HUD hearts -->
+      <g fill="#ff5964" transform="translate(124,66)">
+        <g>
+          <rect x="0" y="0" width="6" height="6" />
+          <rect x="12" y="0" width="6" height="6" />
+          <rect x="-3" y="6" width="24" height="6" />
+          <rect x="3" y="12" width="12" height="6" />
+          <rect x="6" y="18" width="6" height="3" />
+        </g>
+        <g transform="translate(33,0)">
+          <rect x="0" y="0" width="6" height="6" />
+          <rect x="12" y="0" width="6" height="6" />
+          <rect x="-3" y="6" width="24" height="6" />
+          <rect x="3" y="12" width="12" height="6" />
+          <rect x="6" y="18" width="6" height="3" />
+        </g>
+        <g transform="translate(66,0)">
+          <animate attributeName="opacity" values="1;0.2;1" dur="1.2s" repeatCount="indefinite" />
+          <rect x="0" y="0" width="6" height="6" />
+          <rect x="12" y="0" width="6" height="6" />
+          <rect x="-3" y="6" width="24" height="6" />
+          <rect x="3" y="12" width="12" height="6" />
+          <rect x="6" y="18" width="6" height="3" />
+        </g>
+      </g>
+
+      <!-- city skyline -->
+      <g fill="#10202e">
+        <rect x="88" y="270" width="70" height="70" />
+        <rect x="180" y="242" width="56" height="98" />
+        <rect x="262" y="282" width="84" height="58" />
+        <rect x="370" y="252" width="50" height="88" />
+        <rect x="444" y="276" width="92" height="64" />
+        <rect x="560" y="236" width="62" height="104" />
+        <rect x="646" y="286" width="76" height="54" />
+        <rect x="746" y="256" width="56" height="84" />
+        <rect x="826" y="288" width="100" height="52" />
+        <rect x="950" y="248" width="64" height="92" />
+        <rect x="1038" y="280" width="74" height="60" />
+        <g fill="#fcee0a" opacity="0.5">
+          <rect x="196" y="260" width="6" height="6">
+            <animate attributeName="opacity" values="0.5;0.1;0.5" dur="3s" repeatCount="indefinite" />
+          </rect>
+          <rect x="578" y="254" width="6" height="6">
+            <animate attributeName="opacity" values="0.2;0.6;0.2" dur="4s" repeatCount="indefinite" />
+          </rect>
+          <rect x="966" y="266" width="6" height="6">
+            <animate attributeName="opacity" values="0.5;0.2;0.5" dur="3.6s" repeatCount="indefinite" />
+          </rect>
+        </g>
+        <g fill="#1e3a4a">
+          <rect x="288" y="296" width="6" height="6" />
+          <rect x="386" y="270" width="6" height="6" />
+          <rect x="470" y="292" width="6" height="6" />
+          <rect x="664" y="300" width="6" height="6" />
+          <rect x="762" y="274" width="6" height="6" />
+          <rect x="852" y="304" width="6" height="6" />
+        </g>
+      </g>
+
+      <!-- ====== THE GIANT STAR ====== -->
+      <g>
+        <animateTransform attributeName="transform" type="translate" values="0 0;0 -8;0 0" dur="3s"
+          repeatCount="indefinite" />
+        <!-- hollow outline (unstarred gray) -->
+        <g fill="#3d4c6e">
+          <rect x="846" y="108" width="18" height="14" />
+          <rect x="828" y="122" width="54" height="14" />
+          <rect x="792" y="136" width="126" height="16" />
+          <rect x="810" y="152" width="90" height="16" />
+          <rect x="819" y="168" width="30" height="14" />
+          <rect x="861" y="168" width="30" height="14" />
+          <rect x="804" y="182" width="27" height="14" />
+          <rect x="879" y="182" width="27" height="14" />
+        </g>
+        <!-- fills gold on click -->
+        <g fill="#fcee0a" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.40;0.44;0.82;0.88;1" dur="5s"
+            repeatCount="indefinite" />
+          <rect x="846" y="108" width="18" height="14" />
+          <rect x="828" y="122" width="54" height="14" />
+          <rect x="792" y="136" width="126" height="16" />
+          <rect x="810" y="152" width="90" height="16" />
+          <rect x="819" y="168" width="30" height="14" />
+          <rect x="861" y="168" width="30" height="14" />
+          <rect x="804" y="182" width="27" height="14" />
+          <rect x="879" y="182" width="27" height="14" />
+        </g>
+        <!-- sparkles beside the star -->
+        <g fill="#fcee0a">
+          <rect x="770" y="120" width="5" height="5">
+            <animate attributeName="opacity" values="0.9;0.2;0.9" dur="1.8s" repeatCount="indefinite" />
+          </rect>
+          <rect x="930" y="160" width="5" height="5">
+            <animate attributeName="opacity" values="0.2;0.9;0.2" dur="2.2s" repeatCount="indefinite" />
+          </rect>
+        </g>
+      </g>
+
+      <!-- click burst -->
+      <g fill="#fcee0a">
+        <rect x="850" y="88" width="8" height="8" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.40;0.43;0.54;1" dur="5s"
+            repeatCount="indefinite" />
+          <animate attributeName="y" values="92;92;68;68" keyTimes="0;0.40;0.54;1" dur="5s" repeatCount="indefinite" />
+        </rect>
+        <rect x="768" y="112" width="8" height="8" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.40;0.43;0.54;1" dur="5s"
+            repeatCount="indefinite" />
+          <animate attributeName="x" values="772;772;748;748" keyTimes="0;0.40;0.54;1" dur="5s" repeatCount="indefinite" />
+        </rect>
+        <rect x="936" y="112" width="8" height="8" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.40;0.43;0.54;1" dur="5s"
+            repeatCount="indefinite" />
+          <animate attributeName="x" values="932;932;956;956" keyTimes="0;0.40;0.54;1" dur="5s" repeatCount="indefinite" />
+        </rect>
+        <rect x="782" y="202" width="8" height="8" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.40;0.43;0.54;1" dur="5s"
+            repeatCount="indefinite" />
+          <animate attributeName="y" values="198;198;220;220" keyTimes="0;0.40;0.54;1" dur="5s" repeatCount="indefinite" />
+        </rect>
+        <rect x="922" y="202" width="8" height="8" opacity="0">
+          <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.40;0.43;0.54;1" dur="5s"
+            repeatCount="indefinite" />
+          <animate attributeName="y" values="198;198;220;220" keyTimes="0;0.40;0.54;1" dur="5s" repeatCount="indefinite" />
+        </rect>
+      </g>
+
+      <!-- a mini star drifts down to the poodle after the click -->
+      <g fill="#fcee0a" opacity="0">
+        <animate attributeName="opacity" values="0;0;0.95;0.95;0;0" keyTimes="0;0.44;0.48;0.68;0.76;1" dur="5s"
+          repeatCount="indefinite" />
+        <animateTransform attributeName="transform" type="translate" values="0 0;0 0;-330 60;-330 60" keyTimes="0;0.44;0.76;1"
+          dur="5s" repeatCount="indefinite" />
+        <rect x="848" y="196" width="6" height="6" />
+        <rect x="842" y="202" width="18" height="6" />
+        <rect x="845" y="208" width="5" height="6" />
+        <rect x="852" y="208" width="5" height="6" />
+      </g>
+
+      <!-- ====== PIXEL CURSOR clicks the star ====== -->
+      <g>
+        <animateTransform attributeName="transform" type="translate"
+          values="230 170;0 0;0 0;6 6;0 0;0 0;230 170;230 170" keyTimes="0;0.28;0.37;0.41;0.45;0.60;0.92;1" dur="5s"
+          repeatCount="indefinite" />
+        <g transform="translate(884,190) scale(2)">
+          <g fill="#05070d" transform="translate(2,2)">
+            <rect x="0" y="0" width="4" height="4" />
+            <rect x="0" y="4" width="8" height="4" />
+            <rect x="0" y="8" width="12" height="4" />
+            <rect x="0" y="12" width="16" height="4" />
+            <rect x="0" y="16" width="20" height="4" />
+            <rect x="0" y="20" width="10" height="4" />
+            <rect x="8" y="20" width="6" height="10" />
+          </g>
+          <g fill="#eef2f7">
+            <rect x="0" y="0" width="4" height="4" />
+            <rect x="0" y="4" width="8" height="4" />
+            <rect x="0" y="8" width="12" height="4" />
+            <rect x="0" y="12" width="16" height="4" />
+            <rect x="0" y="16" width="20" height="4" />
+            <rect x="0" y="20" width="10" height="4" />
+            <rect x="8" y="20" width="6" height="10" />
+          </g>
+        </g>
+      </g>
+
+      <!-- CRT feel: flicker + scanlines + pixel vignette -->
+      <rect x="88" y="40" width="1024" height="352" fill="#eef2f7" opacity="0">
+        <animate attributeName="opacity" values="0;0;0.03;0;0" keyTimes="0;0.65;0.66;0.68;1" dur="7s"
+          repeatCount="indefinite" />
+      </rect>
+      <rect x="88" y="40" width="1024" height="352" fill="url(#gscan)" />
+      <g fill="#000000" opacity="0.25">
+        <rect x="88" y="40" width="1024" height="8" />
+        <rect x="88" y="384" width="1024" height="8" />
+        <rect x="88" y="48" width="8" height="336" />
+        <rect x="1104" y="48" width="8" height="336" />
+      </g>
+    </g>
+  </g>
+
+  <!-- soft glow of the filled star, breathing with the click -->
+  <circle cx="855" cy="152" r="60" fill="#fcee0a" opacity="0" filter="url(#gsoft)">
+    <animate attributeName="opacity" values="0;0;0.14;0.14;0;0" keyTimes="0;0.40;0.44;0.82;0.88;1" dur="5s"
+      repeatCount="indefinite" />
+  </circle>
+
+  <!-- author's mark: IVASIK-K7 in the 3x5 pixel font -->
+  <g fill="#5f7085" opacity="0.85" transform="translate(548,408)" shape-rendering="crispEdges">
+    <use href="#pxI" />
+    <use href="#pxV" transform="translate(12,0)" />
+    <use href="#pxA" transform="translate(24,0)" />
+    <use href="#pxS" transform="translate(36,0)" />
+    <use href="#pxI" transform="translate(48,0)" />
+    <use href="#pxK" transform="translate(60,0)" />
+    <use href="#pxDash" transform="translate(72,0)" />
+    <use href="#pxK" transform="translate(84,0)" />
+    <use href="#px7" transform="translate(96,0)" />
+  </g>
+</svg>

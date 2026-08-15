@@ -1,0 +1,1058 @@
+<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+  <!-- Retro pixel-art cozy scene: someone playing the poodle game on the family TV at night.
+       8px pixel grid, warm nostalgic lighting. Transparent canvas, glows padded so nothing clips. -->
+  <defs>
+    <filter id="zglow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="4" result="b" />
+      <feMerge>
+        <feMergeNode in="b" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <filter id="zsoft" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="14" />
+    </filter>
+    <filter id="zshadow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" />
+    </filter>
+    <linearGradient id="zwall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111420" />
+      <stop offset="100%" stop-color="#151723" />
+    </linearGradient>
+    <linearGradient id="zcone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.07" />
+      <stop offset="100%" stop-color="#00f0ff" stop-opacity="0" />
+    </linearGradient>
+    <pattern id="zscan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="2" y="2" fill="#000000" opacity="0.20" />
+    </pattern>
+    <pattern id="zdither" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="4" height="4" fill="#ffb454" opacity="0.05" />
+      <rect x="4" y="4" width="4" height="4" fill="#ffb454" opacity="0.05" />
+    </pattern>
+    <clipPath id="zscreen">
+      <rect x="424" y="272" width="352" height="252" />
+    </clipPath>
+    <clipPath id="zwindow">
+      <rect x="172" y="196" width="184" height="200" />
+    </clipPath>
+    <!-- 3x5 pixel font glyphs for the author mark (cell = 3px) -->
+    <g id="pxI">
+      <rect x="0" y="0" width="9" height="3" />
+      <rect x="3" y="3" width="3" height="9" />
+      <rect x="0" y="12" width="9" height="3" />
+    </g>
+    <g id="pxV">
+      <rect x="0" y="0" width="3" height="12" />
+      <rect x="6" y="0" width="3" height="12" />
+      <rect x="3" y="12" width="3" height="3" />
+    </g>
+    <g id="pxA">
+      <rect x="3" y="0" width="3" height="3" />
+      <rect x="0" y="3" width="3" height="12" />
+      <rect x="6" y="3" width="3" height="12" />
+      <rect x="3" y="6" width="3" height="3" />
+    </g>
+    <g id="pxS">
+      <rect x="3" y="0" width="6" height="3" />
+      <rect x="0" y="3" width="3" height="3" />
+      <rect x="3" y="6" width="3" height="3" />
+      <rect x="6" y="9" width="3" height="3" />
+      <rect x="0" y="12" width="6" height="3" />
+    </g>
+    <g id="pxK">
+      <rect x="0" y="0" width="3" height="15" />
+      <rect x="6" y="0" width="3" height="6" />
+      <rect x="3" y="6" width="3" height="3" />
+      <rect x="6" y="9" width="3" height="6" />
+    </g>
+    <g id="pxDash">
+      <rect x="0" y="6" width="9" height="3" />
+    </g>
+    <g id="px7">
+      <rect x="0" y="0" width="9" height="3" />
+      <rect x="6" y="3" width="3" height="3" />
+      <rect x="3" y="6" width="3" height="9" />
+    </g>
+  </defs>
+
+  <!-- ====== AMBIENT GLOW (outside the room, padded) ====== -->
+  <circle cx="980" cy="400" r="120" fill="#ffb454" opacity="0.06" filter="url(#zsoft)">
+    <animate attributeName="opacity" values="0.06;0.09;0.06" dur="5s" repeatCount="indefinite" />
+  </circle>
+  <circle cx="600" cy="400" r="130" fill="#00f0ff" opacity="0.05" filter="url(#zsoft)">
+    <animate attributeName="opacity" values="0.05;0.08;0.05" dur="4s" repeatCount="indefinite" />
+  </circle>
+  <ellipse cx="600" cy="764" rx="420" ry="10" fill="#000000" opacity="0.4" filter="url(#zshadow)" />
+
+  <!-- ====== THE ROOM (pixel diorama) ====== -->
+  <g shape-rendering="crispEdges">
+
+    <!-- wall with stepped corners -->
+    <polygon
+      points="120,120 1080,120 1080,128 1096,128 1096,136 1112,136 1112,736 1096,736 1096,744 1080,744 1080,752 120,752 120,744 104,744 104,736 88,736 88,136 104,136 104,128 120,128"
+      fill="url(#zwall)" />
+    <!-- baseboard -->
+    <rect x="88" y="588" width="1024" height="12" fill="#1c2130" />
+
+    <!-- warm dither wash near the lamp -->
+    <rect x="820" y="200" width="292" height="392" fill="url(#zdither)" />
+
+    <!-- floor planks -->
+    <rect x="88" y="600" width="1024" height="152" fill="#2b2019" />
+    <rect x="88" y="624" width="1024" height="4" fill="#1c1410" />
+    <rect x="88" y="664" width="1024" height="4" fill="#1c1410" />
+    <rect x="88" y="704" width="1024" height="4" fill="#1c1410" />
+    <rect x="88" y="744" width="1024" height="4" fill="#1c1410" />
+    <g fill="#241a14">
+      <rect x="88" y="628" width="1024" height="36" />
+      <rect x="88" y="708" width="1024" height="36" />
+    </g>
+    <g fill="#1c1410">
+      <rect x="240" y="600" width="4" height="24" />
+      <rect x="620" y="600" width="4" height="24" />
+      <rect x="980" y="600" width="4" height="24" />
+      <rect x="420" y="628" width="4" height="36" />
+      <rect x="800" y="628" width="4" height="36" />
+      <rect x="180" y="668" width="4" height="36" />
+      <rect x="560" y="668" width="4" height="36" />
+      <rect x="940" y="668" width="4" height="36" />
+      <rect x="340" y="708" width="4" height="36" />
+      <rect x="720" y="708" width="4" height="36" />
+      <rect x="1060" y="708" width="4" height="36" />
+    </g>
+
+    <!-- ====== STRING LIGHTS across the wall ====== -->
+    <rect x="104" y="142" width="992" height="3" fill="#241f2e" />
+    <g>
+      <rect x="152" y="145" width="3" height="8" fill="#241f2e" />
+      <rect x="148" y="153" width="10" height="10" fill="#ffb454">
+        <animate attributeName="opacity" values="1;0.35;1" dur="3.2s" repeatCount="indefinite" />
+      </rect>
+      <rect x="248" y="145" width="3" height="14" fill="#241f2e" />
+      <rect x="244" y="159" width="10" height="10" fill="#ff5964">
+        <animate attributeName="opacity" values="0.4;1;0.4" dur="2.8s" repeatCount="indefinite" />
+      </rect>
+      <rect x="344" y="145" width="3" height="8" fill="#241f2e" />
+      <rect x="340" y="153" width="10" height="10" fill="#7fd4e4">
+        <animate attributeName="opacity" values="1;0.4;1" dur="3.6s" repeatCount="indefinite" />
+      </rect>
+      <rect x="440" y="145" width="3" height="14" fill="#241f2e" />
+      <rect x="436" y="159" width="10" height="10" fill="#ffb454">
+        <animate attributeName="opacity" values="0.5;1;0.5" dur="3s" repeatCount="indefinite" />
+      </rect>
+      <rect x="536" y="145" width="3" height="8" fill="#241f2e" />
+      <rect x="532" y="153" width="10" height="10" fill="#ff5964">
+        <animate attributeName="opacity" values="1;0.35;1" dur="2.6s" repeatCount="indefinite" />
+      </rect>
+      <rect x="632" y="145" width="3" height="14" fill="#241f2e" />
+      <rect x="628" y="159" width="10" height="10" fill="#7fd4e4">
+        <animate attributeName="opacity" values="0.4;1;0.4" dur="3.4s" repeatCount="indefinite" />
+      </rect>
+      <rect x="728" y="145" width="3" height="8" fill="#241f2e" />
+      <rect x="724" y="153" width="10" height="10" fill="#ffb454">
+        <animate attributeName="opacity" values="1;0.45;1" dur="2.9s" repeatCount="indefinite" />
+      </rect>
+      <rect x="824" y="145" width="3" height="14" fill="#241f2e" />
+      <rect x="820" y="159" width="10" height="10" fill="#ff5964">
+        <animate attributeName="opacity" values="0.5;1;0.5" dur="3.3s" repeatCount="indefinite" />
+      </rect>
+      <rect x="920" y="145" width="3" height="8" fill="#241f2e" />
+      <rect x="916" y="153" width="10" height="10" fill="#7fd4e4">
+        <animate attributeName="opacity" values="1;0.4;1" dur="3.1s" repeatCount="indefinite" />
+      </rect>
+      <rect x="1016" y="145" width="3" height="14" fill="#241f2e" />
+      <rect x="1012" y="159" width="10" height="10" fill="#ffb454">
+        <animate attributeName="opacity" values="0.45;1;0.45" dur="2.7s" repeatCount="indefinite" />
+      </rect>
+    </g>
+
+    <!-- ====== WINDOW: snowy night outside ====== -->
+    <rect x="132" y="164" width="264" height="8" fill="#3a2b20" />
+    <rect x="128" y="160" width="10" height="14" fill="#4a3626" />
+    <rect x="390" y="160" width="10" height="14" fill="#4a3626" />
+    <!-- curtains -->
+    <g>
+      <rect x="140" y="172" width="30" height="256" fill="#7a3b2e" />
+      <rect x="148" y="172" width="8" height="256" fill="#6e2f24" />
+      <rect x="358" y="172" width="30" height="256" fill="#7a3b2e" />
+      <rect x="372" y="172" width="8" height="256" fill="#6e2f24" />
+    </g>
+    <!-- frame -->
+    <rect x="160" y="184" width="208" height="224" fill="#4a3626" />
+    <rect x="172" y="196" width="184" height="200" fill="#060913" />
+    <!-- night sky inside the window -->
+    <g clip-path="url(#zwindow)">
+      <g fill="#fcee0a">
+        <rect x="300" y="224" width="24" height="24" />
+        <rect x="294" y="230" width="6" height="12" />
+        <rect x="306" y="218" width="12" height="6" />
+        <rect x="306" y="248" width="12" height="6" />
+      </g>
+      <rect x="204" y="228" width="4" height="4" fill="#eef2f7">
+        <animate attributeName="opacity" values="1;0.2;1" dur="2.4s" repeatCount="indefinite" />
+      </rect>
+      <rect x="244" y="210" width="4" height="4" fill="#eef2f7">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="3.1s" repeatCount="indefinite" />
+      </rect>
+      <!-- frost in the pane corners -->
+      <g fill="#cfe8ef" opacity="0.45">
+        <rect x="172" y="272" width="14" height="6" />
+        <rect x="172" y="278" width="8" height="6" />
+        <rect x="172" y="284" width="4" height="6" />
+        <rect x="342" y="196" width="14" height="6" />
+        <rect x="348" y="202" width="8" height="6" />
+        <rect x="352" y="208" width="4" height="6" />
+        <rect x="172" y="380" width="10" height="6" />
+        <rect x="172" y="386" width="5" height="6" />
+      </g>
+      <!-- distant snowy rooftops -->
+      <g fill="#1a2336">
+        <rect x="172" y="340" width="60" height="56" />
+        <rect x="240" y="356" width="52" height="40" />
+        <rect x="300" y="332" width="56" height="64" />
+      </g>
+      <g fill="#aab6c4">
+        <rect x="172" y="336" width="60" height="6" />
+        <rect x="240" y="352" width="52" height="6" />
+        <rect x="300" y="328" width="56" height="6" />
+      </g>
+      <rect x="316" y="348" width="8" height="8" fill="#ffb454">
+        <animate attributeName="opacity" values="1;0.4;1" dur="4s" repeatCount="indefinite" />
+      </rect>
+      <rect x="196" y="352" width="8" height="8" fill="#ffb454">
+        <animate attributeName="opacity" values="0.4;1;0.4" dur="5s" repeatCount="indefinite" />
+      </rect>
+      <!-- falling snow -->
+      <g fill="#eef2f7">
+        <rect x="190" y="0" width="5" height="5">
+          <animateTransform attributeName="transform" type="translate" values="0 190;8 300;0 410" dur="7s"
+            repeatCount="indefinite" />
+        </rect>
+        <rect x="230" y="0" width="4" height="4">
+          <animateTransform attributeName="transform" type="translate" values="0 200;-8 320;0 420" begin="-3s" dur="9s"
+            repeatCount="indefinite" />
+        </rect>
+        <rect x="270" y="0" width="5" height="5">
+          <animateTransform attributeName="transform" type="translate" values="0 186;8 290;0 400" begin="-1.5s"
+            dur="6.4s" repeatCount="indefinite" />
+        </rect>
+        <rect x="310" y="0" width="4" height="4">
+          <animateTransform attributeName="transform" type="translate" values="0 196;-6 310;0 416" begin="-5s"
+            dur="8.2s" repeatCount="indefinite" />
+        </rect>
+        <rect x="340" y="0" width="5" height="5">
+          <animateTransform attributeName="transform" type="translate" values="0 190;6 300;0 408" begin="-2.2s"
+            dur="7.6s" repeatCount="indefinite" />
+        </rect>
+        <rect x="206" y="0" width="4" height="4">
+          <animateTransform attributeName="transform" type="translate" values="0 200;10 316;0 424" begin="-6.5s"
+            dur="8.8s" repeatCount="indefinite" />
+        </rect>
+      </g>
+    </g>
+    <!-- window cross bars -->
+    <rect x="258" y="196" width="10" height="200" fill="#4a3626" />
+    <rect x="172" y="290" width="184" height="10" fill="#4a3626" />
+    <!-- sill -->
+    <rect x="152" y="408" width="224" height="14" fill="#5a422e" />
+    <!-- snow piled on the sill corners -->
+    <rect x="176" y="402" width="36" height="6" fill="#eef2f7" opacity="0.85" />
+    <rect x="308" y="402" width="28" height="6" fill="#eef2f7" opacity="0.85" />
+
+    <!-- ====== RADIATOR under the window ====== -->
+    <rect x="164" y="436" width="184" height="8" fill="#b8b2a6" />
+    <g fill="#b8b2a6">
+      <rect x="168" y="444" width="14" height="96" />
+      <rect x="186" y="444" width="14" height="96" />
+      <rect x="204" y="444" width="14" height="96" />
+      <rect x="222" y="444" width="14" height="96" />
+      <rect x="240" y="444" width="14" height="96" />
+      <rect x="258" y="444" width="14" height="96" />
+      <rect x="276" y="444" width="14" height="96" />
+      <rect x="294" y="444" width="14" height="96" />
+      <rect x="312" y="444" width="14" height="96" />
+      <rect x="330" y="444" width="14" height="96" />
+    </g>
+    <g fill="#8f8a80">
+      <rect x="168" y="444" width="4" height="96" />
+      <rect x="186" y="444" width="4" height="96" />
+      <rect x="204" y="444" width="4" height="96" />
+      <rect x="222" y="444" width="4" height="96" />
+      <rect x="240" y="444" width="4" height="96" />
+      <rect x="258" y="444" width="4" height="96" />
+      <rect x="276" y="444" width="4" height="96" />
+      <rect x="294" y="444" width="4" height="96" />
+      <rect x="312" y="444" width="4" height="96" />
+      <rect x="330" y="444" width="4" height="96" />
+    </g>
+    <rect x="164" y="540" width="184" height="6" fill="#8f8a80" />
+    <rect x="332" y="546" width="6" height="54" fill="#8f8a80" />
+    <!-- heat shimmer -->
+    <g fill="#d8b998">
+      <rect x="220" y="424" width="4" height="4" opacity="0">
+        <animate attributeName="opacity" values="0;0.5;0" dur="4s" repeatCount="indefinite" />
+        <animate attributeName="y" values="430;404" dur="4s" repeatCount="indefinite" />
+      </rect>
+      <rect x="300" y="424" width="4" height="4" opacity="0">
+        <animate attributeName="opacity" values="0;0.4;0" begin="2s" dur="4s" repeatCount="indefinite" />
+        <animate attributeName="y" values="432;406" begin="2s" dur="4s" repeatCount="indefinite" />
+      </rect>
+    </g>
+
+    <!-- socks drying on the radiator -->
+    <g>
+      <rect x="206" y="428" width="12" height="20" fill="#d61a3c" />
+      <rect x="200" y="442" width="8" height="8" fill="#d61a3c" />
+      <rect x="206" y="428" width="12" height="4" fill="#eef2f7" opacity="0.8" />
+      <rect x="298" y="428" width="12" height="20" fill="#4a7a8a" />
+      <rect x="292" y="442" width="8" height="8" fill="#4a7a8a" />
+      <rect x="298" y="428" width="12" height="4" fill="#eef2f7" opacity="0.8" />
+    </g>
+
+    <!-- potted plant on the sill -->
+    <g>
+      <g fill="#3a5a3a">
+        <rect x="238" y="366" width="8" height="26" />
+        <rect x="228" y="372" width="10" height="8" />
+        <rect x="248" y="376" width="12" height="8">
+          <animate attributeName="x" values="248;250;248" calcMode="discrete" dur="5s" repeatCount="indefinite" />
+        </rect>
+        <rect x="230" y="358" width="8" height="10" />
+        <rect x="246" y="362" width="8" height="8" />
+      </g>
+      <g fill="#4d7a4d">
+        <rect x="238" y="366" width="4" height="10" />
+        <rect x="230" y="358" width="4" height="4" />
+      </g>
+      <rect x="232" y="392" width="28" height="6" fill="#8a4534" />
+      <rect x="236" y="398" width="20" height="12" fill="#7a3b2e" />
+    </g>
+
+    <!-- ====== WALL CLOCK ====== -->
+    <rect x="728" y="172" width="56" height="64" fill="#4a3626" />
+    <rect x="736" y="180" width="40" height="40" fill="#d8b998" />
+    <g fill="#4a3626">
+      <rect x="754" y="182" width="4" height="4" />
+      <rect x="754" y="214" width="4" height="4" />
+      <rect x="738" y="198" width="4" height="4" />
+      <rect x="770" y="198" width="4" height="4" />
+    </g>
+    <g shape-rendering="auto">
+      <rect x="754.5" y="188" width="3" height="14" fill="#2b1a10">
+        <animateTransform attributeName="transform" type="rotate" from="0 756 200" to="360 756 200" dur="60s"
+          repeatCount="indefinite" />
+      </rect>
+      <rect x="754.5" y="192" width="3" height="10" fill="#2b1a10" transform="rotate(120 756 200)" />
+      <rect x="752" y="196" width="8" height="8" fill="#7a3b2e" />
+      <!-- pendulum -->
+    </g>
+
+    <!-- ====== FRAMED PORTRAIT (canonical style) ====== -->
+    <rect x="840" y="276" width="88" height="120" fill="#4a3626" />
+    <rect x="844" y="280" width="80" height="112" fill="#c9a12e" />
+    <rect x="848" y="284" width="72" height="104" fill="#2c2433" />
+    <!-- thin gold halo ring behind the head -->
+    <g fill="#fcee0a" opacity="0.9">
+      <rect x="872" y="288" width="24" height="3" />
+      <rect x="866" y="291" width="6" height="3" />
+      <rect x="896" y="291" width="6" height="3" />
+      <rect x="862" y="294" width="4" height="10" />
+      <rect x="902" y="294" width="4" height="10" />
+    </g>
+    <!-- long center-parted hair -->
+    <rect x="868" y="294" width="32" height="8" fill="#4a2f1a" />
+    <rect x="883" y="294" width="2" height="6" fill="#33200f" />
+    <rect x="864" y="302" width="8" height="52" fill="#4a2f1a" />
+    <rect x="896" y="302" width="8" height="52" fill="#4a2f1a" />
+    <rect x="864" y="346" width="8" height="8" fill="#33200f" />
+    <rect x="896" y="346" width="8" height="8" fill="#33200f" />
+    <!-- face -->
+    <rect x="872" y="302" width="24" height="28" fill="#d8b998" />
+    <rect x="892" y="302" width="4" height="28" fill="#c9a179" />
+    <rect x="877" y="310" width="4" height="2" fill="#4a2f1a" />
+    <rect x="887" y="310" width="4" height="2" fill="#4a2f1a" />
+    <rect x="877" y="313" width="4" height="3" fill="#2b1a10" />
+    <rect x="887" y="313" width="4" height="3" fill="#2b1a10" />
+    <rect x="883" y="316" width="3" height="7" fill="#c9a179" />
+    <!-- mustache and beard -->
+    <rect x="876" y="324" width="16" height="3" fill="#4a2f1a" />
+    <rect x="874" y="327" width="20" height="9" fill="#4a2f1a" />
+    <rect x="878" y="336" width="12" height="5" fill="#4a2f1a" />
+    <rect x="882" y="327" width="4" height="3" fill="#d8b998" />
+    <!-- neck -->
+    <rect x="878" y="341" width="12" height="6" fill="#d8b998" />
+    <!-- cream robe with red mantle over the shoulder -->
+    <rect x="854" y="348" width="60" height="40" fill="#d8cfc0" />
+    <rect x="848" y="356" width="6" height="32" fill="#2c2433" />
+    <rect x="914" y="356" width="6" height="32" fill="#2c2433" />
+    <rect x="854" y="348" width="18" height="40" fill="#8a2525" />
+    <rect x="872" y="360" width="8" height="28" fill="#8a2525" />
+    <rect x="880" y="374" width="6" height="14" fill="#7a1f1f" />
+    <rect x="884" y="352" width="10" height="8" fill="#c4b8a4" />
+
+    <!-- ====== TV (pixel family set) ====== -->
+    <!-- antenna -->
+    <g>
+      <line x1="600" y1="234" x2="530" y2="192" stroke="#5f7085" stroke-width="4" />
+      <line x1="600" y1="234" x2="670" y2="192" stroke="#5f7085" stroke-width="4" />
+      <rect x="524" y="186" width="8" height="8" fill="#8fa3bf" />
+      <rect x="668" y="186" width="8" height="8" fill="#8fa3bf" />
+    </g>
+    <rect x="576" y="228" width="48" height="12" fill="#1c2438" />
+    <rect x="596" y="220" width="8" height="8" fill="#ff5964">
+      <animate attributeName="opacity" values="1;0.3;1" dur="2.6s" repeatCount="indefinite" />
+    </rect>
+
+    <!-- casing -->
+    <polygon
+      points="408,240 792,240 792,248 800,248 800,256 808,256 808,568 800,568 800,576 792,576 792,584 408,584 408,576 400,576 400,568 392,568 392,256 400,256 400,248 408,248"
+      fill="#141b2b" />
+    <rect x="416" y="248" width="368" height="8" fill="#232d47" />
+    <rect x="416" y="568" width="368" height="8" fill="#0d1220" />
+
+    <!-- screen bezel + glass -->
+    <rect x="416" y="264" width="368" height="268" fill="#080c16" />
+    <rect x="424" y="272" width="352" height="252" fill="#05070d" />
+
+    <!-- ====== ON-SCREEN GAME ====== -->
+    <g clip-path="url(#zscreen)">
+      <!-- HUD hearts -->
+      <g fill="#ff5964" transform="translate(440,286)">
+        <g>
+          <rect x="0" y="0" width="4" height="4" />
+          <rect x="8" y="0" width="4" height="4" />
+          <rect x="-2" y="4" width="16" height="4" />
+          <rect x="2" y="8" width="8" height="4" />
+          <rect x="4" y="12" width="4" height="2" />
+        </g>
+        <g transform="translate(22,0)">
+          <rect x="0" y="0" width="4" height="4" />
+          <rect x="8" y="0" width="4" height="4" />
+          <rect x="-2" y="4" width="16" height="4" />
+          <rect x="2" y="8" width="8" height="4" />
+          <rect x="4" y="12" width="4" height="2" />
+        </g>
+        <g transform="translate(44,0)">
+          <animate attributeName="opacity" values="1;0.2;1" dur="1.2s" repeatCount="indefinite" />
+          <rect x="0" y="0" width="4" height="4" />
+          <rect x="8" y="0" width="4" height="4" />
+          <rect x="-2" y="4" width="16" height="4" />
+          <rect x="2" y="8" width="8" height="4" />
+          <rect x="4" y="12" width="4" height="2" />
+        </g>
+      </g>
+      <!-- stars & moon -->
+      <g fill="#eef2f7">
+        <rect x="520" y="296" width="3" height="3">
+          <animate attributeName="opacity" values="1;0.2;1" dur="2.2s" repeatCount="indefinite" />
+        </rect>
+        <rect x="590" y="310" width="3" height="3">
+          <animate attributeName="opacity" values="0.3;1;0.3" dur="3s" repeatCount="indefinite" />
+        </rect>
+        <rect x="660" y="292" width="3" height="3">
+          <animate attributeName="opacity" values="1;0.3;1" dur="2.6s" repeatCount="indefinite" />
+        </rect>
+      </g>
+      <g fill="#fcee0a" opacity="0.95">
+        <rect x="708" y="294" width="22" height="22" />
+        <rect x="702" y="300" width="6" height="12" />
+        <rect x="714" y="288" width="12" height="6" />
+        <rect x="714" y="316" width="12" height="6" />
+      </g>
+      <!-- cloud -->
+      <g fill="#274b5e">
+        <g transform="translate(0,356)">
+          <g>
+            <animateTransform attributeName="transform" type="translate" values="760 0;420 0" dur="19s"
+              repeatCount="indefinite" />
+            <rect x="0" y="4" width="40" height="8" />
+            <rect x="8" y="-2" width="22" height="6" />
+          </g>
+        </g>
+      </g>
+      <!-- skyline -->
+      <g fill="#10202e">
+        <rect x="424" y="428" width="36" height="60" />
+        <rect x="474" y="408" width="30" height="80" />
+        <rect x="518" y="436" width="42" height="52" />
+        <rect x="574" y="416" width="28" height="72" />
+        <rect x="614" y="432" width="46" height="56" />
+        <rect x="674" y="404" width="32" height="84" />
+        <rect x="718" y="434" width="36" height="54" />
+        <g fill="#fcee0a" opacity="0.5">
+          <rect x="482" y="420" width="4" height="4">
+            <animate attributeName="opacity" values="0.5;0.1;0.5" dur="3s" repeatCount="indefinite" />
+          </rect>
+          <rect x="684" y="416" width="4" height="4">
+            <animate attributeName="opacity" values="0.2;0.6;0.2" dur="4s" repeatCount="indefinite" />
+          </rect>
+        </g>
+      </g>
+      <!-- ground -->
+      <line x1="424" y1="488" x2="776" y2="488" stroke="#00f0ff" stroke-width="2.5" stroke-dasharray="12 12">
+        <animate attributeName="stroke-dashoffset" values="0;-432" dur="2s" repeatCount="indefinite" />
+      </line>
+      <!-- crate -->
+      <g transform="translate(792,456)">
+        <g>
+          <animateTransform attributeName="transform" type="translate" values="0 0;-440 0" dur="2s"
+            repeatCount="indefinite" />
+          <rect x="0" y="0" width="32" height="32" fill="#fcee0a" />
+          <rect x="4" y="4" width="24" height="24" fill="#0c111d" />
+          <rect x="8" y="8" width="16" height="16" fill="#fcee0a" />
+        </g>
+      </g>
+      <!-- bone collectible -->
+      <g transform="translate(792,424)">
+        <g>
+          <animateTransform attributeName="transform" type="translate" values="0 0;-440 0" begin="1.8s" dur="2s"
+            repeatCount="indefinite" />
+          <g fill="#fcee0a">
+            <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.66;0.68;1" begin="1.8s" dur="2s"
+              repeatCount="indefinite" />
+            <rect x="0" y="3" width="5" height="5" />
+            <rect x="0" y="-2" width="5" height="5" opacity="0.9" />
+            <rect x="3" y="1" width="16" height="5" />
+            <rect x="18" y="3" width="5" height="5" />
+            <rect x="18" y="-2" width="5" height="5" opacity="0.9" />
+          </g>
+        </g>
+      </g>
+      <circle cx="502" cy="428" r="5" fill="none" stroke="#fcee0a" stroke-width="2.5" opacity="0">
+        <animate attributeName="r" values="4;4;14;14" keyTimes="0;0.66;0.74;1" begin="1.8s" dur="2s"
+          repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0;0;0.9;0;0" keyTimes="0;0.66;0.68;0.74;1" begin="1.8s" dur="2s"
+          repeatCount="indefinite" />
+      </circle>
+      <!-- mini pixel poodle -->
+      <g transform="translate(470,428)">
+        <g>
+          <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 -48;0 -48;0 0;0 0"
+            keyTimes="0;0.48;0.55;0.79;0.86;1" dur="2s" repeatCount="indefinite" />
+          <g fill="#eef2f7">
+            <rect x="0" y="6" width="12" height="12" />
+            <rect x="12" y="18" width="6" height="6" />
+            <rect x="18" y="24" width="18" height="6" />
+            <rect x="12" y="30" width="30" height="12" />
+            <rect x="36" y="30" width="12" height="9" />
+            <rect x="48" y="24" width="18" height="6" />
+            <rect x="48" y="30" width="24" height="12" />
+            <rect x="66" y="24" width="12" height="6" />
+            <rect x="72" y="0" width="12" height="6" />
+            <rect x="66" y="6" width="24" height="12" />
+            <rect x="72" y="18" width="12" height="6" />
+            <rect x="60" y="12" width="6" height="12" />
+            <rect x="90" y="12" width="9" height="9" />
+          </g>
+          <rect x="99" y="12" width="5" height="5" fill="#ff003c" />
+          <rect x="81" y="9" width="5" height="5" fill="#05070d" />
+          <rect x="66" y="22" width="12" height="4" fill="#00f0ff" />
+          <g fill="#eef2f7">
+            <animate attributeName="opacity" values="1;0" keyTimes="0;0.5" calcMode="discrete" dur="0.3s"
+              repeatCount="indefinite" />
+            <rect x="24" y="42" width="6" height="6" />
+            <rect x="21" y="48" width="12" height="6" />
+            <rect x="24" y="54" width="6" height="6" />
+            <rect x="57" y="42" width="6" height="6" />
+            <rect x="54" y="48" width="12" height="6" />
+            <rect x="57" y="54" width="6" height="6" />
+          </g>
+          <g fill="#eef2f7">
+            <animate attributeName="opacity" values="0;1" keyTimes="0;0.5" calcMode="discrete" dur="0.3s"
+              repeatCount="indefinite" />
+            <rect x="30" y="42" width="6" height="6" />
+            <rect x="33" y="48" width="12" height="6" />
+            <rect x="39" y="54" width="6" height="6" />
+            <rect x="48" y="42" width="6" height="6" />
+            <rect x="45" y="48" width="12" height="6" />
+            <rect x="45" y="54" width="6" height="6" />
+          </g>
+        </g>
+      </g>
+      <!-- CRT effects -->
+      <rect x="424" y="272" width="352" height="252" fill="#eef2f7" opacity="0">
+        <animate attributeName="opacity" values="0;0;0.04;0;0" keyTimes="0;0.65;0.66;0.68;1" dur="7s"
+          repeatCount="indefinite" />
+      </rect>
+      <rect x="424" y="272" width="352" height="252" fill="url(#zscan)" />
+      <rect x="424" y="272" width="352" height="6" fill="#eef2f7" opacity="0.06" />
+      <!-- pixel vignette -->
+      <g fill="#000000" opacity="0.25">
+        <rect x="424" y="272" width="352" height="8" />
+        <rect x="424" y="516" width="352" height="8" />
+        <rect x="424" y="280" width="8" height="236" />
+        <rect x="768" y="280" width="8" height="236" />
+      </g>
+    </g>
+
+    <!-- controls strip -->
+    <g fill="#060a12">
+      <rect x="432" y="544" width="112" height="6" />
+      <rect x="432" y="554" width="112" height="6" />
+    </g>
+    <rect x="640" y="546" width="10" height="10" fill="#fcee0a" />
+    <rect x="658" y="546" width="10" height="10" fill="#7fd4e4" />
+    <rect x="676" y="546" width="10" height="10" fill="#ff5964">
+      <animate attributeName="opacity" values="1;0.3;1" dur="2.4s" repeatCount="indefinite" />
+    </rect>
+    <rect x="700" y="540" width="26" height="26" fill="#1c2438" stroke="#2e3a56" stroke-width="2" />
+    <rect x="710" y="543" width="6" height="6" fill="#8fa3bf">
+      <animate attributeName="x" values="710;717;710;703;710" calcMode="discrete" dur="8s" repeatCount="indefinite" />
+      <animate attributeName="y" values="543;550;557;550;543" calcMode="discrete" dur="8s" repeatCount="indefinite" />
+    </rect>
+    <rect x="754" y="550" width="8" height="8" fill="#0aff9d">
+      <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
+    </rect>
+
+    <!-- legs -->
+    <rect x="440" y="584" width="24" height="16" fill="#141b2b" />
+    <rect x="432" y="598" width="40" height="8" fill="#0d1220" />
+    <rect x="736" y="584" width="24" height="16" fill="#141b2b" />
+    <rect x="728" y="598" width="40" height="8" fill="#0d1220" />
+
+    <!-- ====== CONSOLE + CARTRIDGES ====== -->
+    <rect x="620" y="602" width="104" height="24" fill="#3a465e" />
+    <rect x="620" y="598" width="104" height="6" fill="#4a5872" />
+    <rect x="636" y="608" width="40" height="8" fill="#1c2438" />
+    <rect x="704" y="610" width="6" height="6" fill="#ff5964">
+      <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
+    </rect>
+    <!-- cables -->
+    <path d="M 672 598 V 588 H 700 V 580" fill="none" stroke="#241f2e" stroke-width="4" />
+    <path d="M 628 626 H 600 V 668 H 644 V 690 H 656" fill="none" stroke="#241f2e" stroke-width="4" />
+    <!-- cartridge pile -->
+    <rect x="852" y="626" width="48" height="12" fill="#5f7085" />
+    <rect x="864" y="629" width="14" height="6" fill="#fcee0a" />
+    <rect x="860" y="612" width="48" height="12" fill="#4a5872" />
+    <rect x="872" y="615" width="14" height="6" fill="#7fd4e4" />
+
+    <!-- ====== THE post-soviet CARPET ====== -->
+    <!-- outer border -->
+    <rect x="300" y="664" width="560" height="88" fill="#5a1515" />
+    <!-- beige guard stripes -->
+    <rect x="308" y="672" width="544" height="4" fill="#d8b998" />
+    <rect x="308" y="740" width="544" height="4" fill="#d8b998" />
+    <rect x="308" y="676" width="4" height="64" fill="#d8b998" />
+    <rect x="848" y="676" width="4" height="64" fill="#d8b998" />
+    <!-- ornament band -->
+    <rect x="312" y="676" width="536" height="10" fill="#6e1a1a" />
+    <rect x="312" y="730" width="536" height="10" fill="#6e1a1a" />
+    <g fill="#2e0c0c">
+      <rect x="336" y="679" width="5" height="5" />
+      <rect x="376" y="679" width="5" height="5" />
+      <rect x="416" y="679" width="5" height="5" />
+      <rect x="456" y="679" width="5" height="5" />
+      <rect x="496" y="679" width="5" height="5" />
+      <rect x="536" y="679" width="5" height="5" />
+      <rect x="576" y="679" width="5" height="5" />
+      <rect x="616" y="679" width="5" height="5" />
+      <rect x="656" y="679" width="5" height="5" />
+      <rect x="696" y="679" width="5" height="5" />
+      <rect x="736" y="679" width="5" height="5" />
+      <rect x="776" y="679" width="5" height="5" />
+      <rect x="816" y="679" width="5" height="5" />
+      <rect x="336" y="733" width="5" height="5" />
+      <rect x="376" y="733" width="5" height="5" />
+      <rect x="416" y="733" width="5" height="5" />
+      <rect x="456" y="733" width="5" height="5" />
+      <rect x="496" y="733" width="5" height="5" />
+      <rect x="536" y="733" width="5" height="5" />
+      <rect x="576" y="733" width="5" height="5" />
+      <rect x="616" y="733" width="5" height="5" />
+      <rect x="656" y="733" width="5" height="5" />
+      <rect x="696" y="733" width="5" height="5" />
+      <rect x="736" y="733" width="5" height="5" />
+      <rect x="776" y="733" width="5" height="5" />
+      <rect x="816" y="733" width="5" height="5" />
+    </g>
+    <!-- inner beige lines -->
+    <rect x="312" y="686" width="536" height="4" fill="#c9a179" />
+    <rect x="312" y="726" width="536" height="4" fill="#c9a179" />
+    <!-- field -->
+    <rect x="312" y="690" width="536" height="36" fill="#8a2525" />
+    <!-- medallion (stepped diamond), left -->
+    <g id="medal">
+      <g fill="#d8b998">
+        <rect x="414" y="690" width="12" height="4" />
+        <rect x="402" y="694" width="36" height="6" />
+        <rect x="390" y="700" width="60" height="14" />
+        <rect x="402" y="714" width="36" height="6" />
+        <rect x="414" y="720" width="12" height="6" />
+      </g>
+      <g fill="#4a1010">
+        <rect x="412" y="700" width="16" height="4" />
+        <rect x="404" y="704" width="32" height="8" />
+        <rect x="412" y="712" width="16" height="4" />
+      </g>
+      <rect x="416" y="705" width="8" height="6" fill="#d8b998" />
+      <g fill="#3a5a3a">
+        <rect x="378" y="704" width="6" height="8" />
+        <rect x="456" y="704" width="6" height="8" />
+      </g>
+    </g>
+    <use href="#medal" transform="translate(320,0)" />
+    <!-- corner hooks -->
+    <g fill="#c9a179">
+      <rect x="320" y="694" width="10" height="6" />
+      <rect x="320" y="700" width="6" height="16" />
+      <rect x="320" y="716" width="10" height="6" />
+      <rect x="830" y="694" width="10" height="6" />
+      <rect x="834" y="700" width="6" height="16" />
+      <rect x="830" y="716" width="10" height="6" />
+    </g>
+    <!-- fringe on the short sides -->
+    <g fill="#d8b998">
+      <rect x="288" y="668" width="12" height="4" />
+      <rect x="288" y="680" width="12" height="4" />
+      <rect x="288" y="692" width="12" height="4" />
+      <rect x="288" y="704" width="12" height="4" />
+      <rect x="288" y="716" width="12" height="4" />
+      <rect x="288" y="728" width="12" height="4" />
+      <rect x="288" y="740" width="12" height="4" />
+      <rect x="860" y="668" width="12" height="4" />
+      <rect x="860" y="680" width="12" height="4" />
+      <rect x="860" y="692" width="12" height="4" />
+      <rect x="860" y="704" width="12" height="4" />
+      <rect x="860" y="716" width="12" height="4" />
+      <rect x="860" y="728" width="12" height="4" />
+      <rect x="860" y="740" width="12" height="4" />
+    </g>
+
+    <!-- ====== FLOOR LAMP ====== -->
+    <rect x="976" y="368" width="8" height="232" fill="#3a3026" />
+    <rect x="952" y="600" width="56" height="8" fill="#241a18" />
+    <rect x="964" y="592" width="32" height="8" fill="#3a3026" />
+    <g>
+      <rect x="952" y="300" width="56" height="8" fill="#d17b3a" />
+      <rect x="946" y="308" width="68" height="16" fill="#b3622e" />
+      <rect x="940" y="324" width="80" height="16" fill="#b3622e" />
+      <rect x="936" y="340" width="88" height="16" fill="#9e5226" />
+      <rect x="936" y="356" width="88" height="6" fill="#ffb454" opacity="0.6">
+        <animate attributeName="opacity" values="0.6;0.75;0.6" dur="5s" repeatCount="indefinite" />
+      </rect>
+    </g>
+
+    <!-- ====== SNACKS ====== -->
+    <!-- steaming tea mug -->
+    <g>
+      <rect x="250" y="732" width="36" height="6" fill="#000000" opacity="0.25" />
+      <rect x="254" y="706" width="28" height="28" fill="#4a7a8a" />
+      <rect x="254" y="706" width="28" height="5" fill="#2b1a10" opacity="0.6" />
+      <rect x="254" y="716" width="28" height="6" fill="#d8b998" />
+      <rect x="282" y="712" width="8" height="6" fill="#4a7a8a" />
+      <rect x="286" y="712" width="4" height="16" fill="#4a7a8a" />
+      <rect x="282" y="724" width="8" height="6" fill="#4a7a8a" />
+      <!-- steam -->
+      <g fill="#e8dcc0">
+        <rect x="258" y="694" width="6" height="6" opacity="0">
+          <animate attributeName="opacity" values="0;0.75;0" dur="3s" repeatCount="indefinite" />
+          <animate attributeName="y" values="696;666" dur="3s" repeatCount="indefinite" />
+        </rect>
+        <rect x="272" y="694" width="5" height="5" opacity="0">
+          <animate attributeName="opacity" values="0;0.65;0" begin="1s" dur="3s" repeatCount="indefinite" />
+          <animate attributeName="y" values="698;668" begin="1s" dur="3s" repeatCount="indefinite" />
+        </rect>
+        <rect x="264" y="694" width="5" height="5" opacity="0">
+          <animate attributeName="opacity" values="0;0.7;0" begin="2s" dur="3s" repeatCount="indefinite" />
+          <animate attributeName="y" values="700;670" begin="2s" dur="3s" repeatCount="indefinite" />
+        </rect>
+      </g>
+    </g>
+    <!-- coke can -->
+    <rect x="292" y="734" width="40" height="6" fill="#000000" opacity="0.25" />
+    <rect x="296" y="682" width="32" height="52" fill="#d61a3c" />
+    <rect x="296" y="682" width="8" height="52" fill="#9e1029" />
+    <rect x="296" y="702" width="32" height="6" fill="#eef2f7" />
+    <rect x="304" y="708" width="16" height="4" fill="#eef2f7" opacity="0.85" />
+    <rect x="296" y="678" width="32" height="6" fill="#8fa3bf" />
+    <rect x="308" y="674" width="10" height="4" fill="#5f7085" />
+    <!-- chips bowl -->
+    <rect x="348" y="726" width="104" height="6" fill="#000000" opacity="0.25" />
+    <rect x="352" y="690" width="96" height="10" fill="#7a2e18" />
+    <!-- pixel chips in the bowl -->
+    <g fill="#fcee0a">
+      <rect x="362" y="688" width="4" height="4" />
+      <rect x="360" y="692" width="8" height="4" />
+      <rect x="358" y="696" width="12" height="4" />
+      <rect x="406" y="686" width="4" height="4" />
+      <rect x="404" y="690" width="8" height="4" />
+      <rect x="402" y="694" width="12" height="4" />
+      <rect x="428" y="690" width="4" height="4" />
+      <rect x="426" y="694" width="8" height="4" />
+      <rect x="424" y="698" width="12" height="4" />
+    </g>
+    <g fill="#e8d008">
+      <rect x="384" y="682" width="4" height="4" />
+      <rect x="382" y="686" width="8" height="4" />
+      <rect x="380" y="690" width="12" height="4" />
+    </g>
+    <rect x="344" y="698" width="112" height="14" fill="#b34a26" />
+    <rect x="352" y="712" width="96" height="10" fill="#b34a26" />
+    <rect x="364" y="722" width="72" height="8" fill="#7a2e18" />
+    <!-- stray pixel chips -->
+    <g fill="#fcee0a" opacity="0.9">
+      <rect x="472" y="720" width="4" height="4" />
+      <rect x="470" y="724" width="8" height="4" />
+      <rect x="468" y="728" width="12" height="4" />
+    </g>
+    <g fill="#e8d008" opacity="0.8">
+      <rect x="334" y="734" width="4" height="4" />
+      <rect x="332" y="738" width="8" height="4" />
+      <rect x="330" y="742" width="12" height="4" />
+    </g>
+
+    <!-- slippers kicked off beside the carpet -->
+    <g>
+      <rect x="888" y="716" width="36" height="8" fill="#8a4534" />
+      <rect x="888" y="710" width="20" height="8" fill="#a5613a" />
+      <rect x="932" y="726" width="36" height="8" fill="#8a4534" />
+      <rect x="948" y="720" width="20" height="8" fill="#a5613a" />
+    </g>
+
+    <!-- ====== SLEEPING RED-BROWN TOY POODLE ====== -->
+    <g transform="translate(772,704)">
+      <rect x="-64" y="28" width="128" height="8" fill="#000000" opacity="0.25" />
+      <g>
+        <animateTransform attributeName="transform" type="scale" values="1 1;1.02 1.05;1 1" dur="3.4s"
+          repeatCount="indefinite" additive="sum" />
+        <!-- curled fluffy body, rounded steps -->
+        <g fill="#a5613a">
+          <rect x="-20" y="-32" width="48" height="8" />
+          <rect x="-36" y="-24" width="80" height="8" />
+          <rect x="-44" y="-16" width="96" height="12" />
+          <rect x="-52" y="-4" width="112" height="16" />
+          <rect x="-48" y="12" width="104" height="10" />
+          <rect x="-36" y="22" width="80" height="6" />
+        </g>
+        <!-- fur highlights (lamp side) -->
+        <rect x="-8" y="-28" width="32" height="6" fill="#c08050" />
+        <rect x="-16" y="-20" width="40" height="4" fill="#c08050" />
+        <!-- belly shading -->
+        <g fill="#7e4826">
+          <rect x="-44" y="16" width="96" height="6" />
+          <rect x="40" y="-4" width="20" height="16" />
+        </g>
+        <!-- curly coat texture -->
+        <g fill="#7e4826">
+          <rect x="-24" y="-12" width="5" height="5" />
+          <rect x="8" y="-16" width="5" height="5" />
+          <rect x="24" y="0" width="5" height="5" />
+          <rect x="-8" y="4" width="5" height="5" />
+          <rect x="36" y="-14" width="5" height="5" />
+          <rect x="-36" y="-4" width="5" height="5" />
+        </g>
+        <!-- tail pom -->
+        <rect x="52" y="-40" width="16" height="8" fill="#a5613a">
+          <animate attributeName="y" values="-40;-40;-43;-40;-40" keyTimes="0;0.75;0.8;0.85;1" dur="7s"
+            repeatCount="indefinite" />
+        </rect>
+        <rect x="48" y="-34" width="24" height="16" fill="#a5613a" />
+        <rect x="52" y="-36" width="8" height="6" fill="#c08050" />
+        <!-- head tucked at left -->
+        <rect x="-88" y="-20" width="40" height="8" fill="#a5613a" />
+        <rect x="-96" y="-14" width="52" height="20" fill="#a5613a" />
+        <rect x="-88" y="6" width="40" height="6" fill="#a5613a" />
+        <!-- topknot pom -->
+        <rect x="-84" y="-32" width="28" height="10" fill="#a5613a" />
+        <rect x="-80" y="-38" width="20" height="8" fill="#a5613a" />
+        <rect x="-78" y="-36" width="10" height="4" fill="#c08050" />
+        <!-- shaved muzzle + nose -->
+        <rect x="-108" y="-4" width="14" height="10" fill="#8f5330" />
+        <rect x="-113" y="-2" width="6" height="6" fill="#2b1a10" />
+        <!-- floppy long ear -->
+        <rect x="-99" y="-8" width="14" height="30" fill="#7e4826">
+          <animate attributeName="y" values="-8;-8;-11;-8;-8" keyTimes="0;0.4;0.45;0.5;1" dur="9s"
+            repeatCount="indefinite" />
+        </rect>
+        <rect x="-97" y="20" width="10" height="6" fill="#7e4826" />
+        <!-- closed eye -->
+        <rect x="-84" y="-6" width="10" height="3" fill="#2b1a10" />
+      </g>
+      <!-- retro Z-z-z rising over the head -->
+      <g fill="#cdd6e0">
+        <g opacity="0">
+          <animate attributeName="opacity" values="0;0.9;0.9;0" keyTimes="0;0.2;0.7;1" dur="2.7s"
+            repeatCount="indefinite" />
+          <animateTransform attributeName="transform" type="translate" values="0 0;4 -20" dur="2.7s"
+            repeatCount="indefinite" />
+          <rect x="-84" y="-44" width="10" height="3" />
+          <rect x="-79" y="-41" width="3" height="3" />
+          <rect x="-82" y="-38" width="3" height="3" />
+          <rect x="-84" y="-35" width="10" height="3" />
+        </g>
+        <g opacity="0">
+          <animate attributeName="opacity" values="0;0.85;0.85;0" keyTimes="0;0.2;0.7;1" begin="0.9s" dur="2.7s"
+            repeatCount="indefinite" />
+          <animateTransform attributeName="transform" type="translate" values="0 0;5 -22" begin="0.9s" dur="2.7s"
+            repeatCount="indefinite" />
+          <rect x="-68" y="-62" width="14" height="4" />
+          <rect x="-60" y="-58" width="4" height="4" />
+          <rect x="-64" y="-54" width="4" height="4" />
+          <rect x="-68" y="-50" width="14" height="4" />
+        </g>
+        <g opacity="0">
+          <animate attributeName="opacity" values="0;0.8;0.8;0" keyTimes="0;0.2;0.7;1" begin="1.8s" dur="2.7s"
+            repeatCount="indefinite" />
+          <animateTransform attributeName="transform" type="translate" values="0 0;6 -24" begin="1.8s" dur="2.7s"
+            repeatCount="indefinite" />
+          <rect x="-48" y="-84" width="18" height="5" />
+          <rect x="-38" y="-79" width="5" height="5" />
+          <rect x="-43" y="-74" width="5" height="5" />
+          <rect x="-48" y="-69" width="18" height="5" />
+        </g>
+      </g>
+    </g>
+
+    <!-- ====== THE PLAYER (pixel, back view) ====== -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate"
+        values="0 568 748;1.2 568 748;0 568 748;-1.2 568 748;0 568 748" dur="6s" repeatCount="indefinite" />
+      <rect x="472" y="740" width="192" height="12" fill="#000000" opacity="0.3" />
+      <!-- torso: stepped sweater -->
+      <polygon
+        points="512,600 624,600 624,608 640,608 640,624 648,624 648,656 656,656 656,720 480,720 480,656 488,656 488,624 496,624 496,608 512,608"
+        fill="#b3622e" />
+      <rect x="480" y="656" width="20" height="64" fill="#9e5226" />
+      <rect x="642" y="640" width="14" height="80" fill="#c9702e" />
+      <!-- knitted stripes -->
+      <rect x="490" y="644" width="156" height="8" fill="#c9702e" />
+      <rect x="490" y="668" width="164" height="8" fill="#9e5226" />
+      <rect x="490" y="692" width="164" height="8" fill="#c9702e" />
+      <!-- elbows -->
+      <rect x="460" y="656" width="24" height="32" fill="#9e5226">
+        <animate attributeName="y" values="656;660;656" calcMode="discrete" dur="0.9s" repeatCount="indefinite" />
+      </rect>
+      <rect x="652" y="656" width="24" height="32" fill="#c9702e">
+        <animate attributeName="y" values="660;656;660" calcMode="discrete" dur="0.9s" repeatCount="indefinite" />
+      </rect>
+      <!-- crossed legs, folded in front -->
+      <rect x="484" y="716" width="80" height="24" fill="#2e3a56" />
+      <rect x="572" y="716" width="80" height="24" fill="#2e3a56" />
+      <rect x="484" y="716" width="168" height="6" fill="#3d4c6e" />
+      <rect x="468" y="722" width="20" height="18" fill="#eef2f7" />
+      <rect x="648" y="722" width="20" height="18" fill="#eef2f7" />
+      <rect x="468" y="736" width="20" height="4" fill="#aab6c4" />
+      <rect x="648" y="736" width="20" height="4" fill="#aab6c4" />
+      <!-- neck + collar -->
+      <rect x="552" y="588" width="32" height="12" fill="#c99b72" />
+      <rect x="536" y="596" width="64" height="8" fill="#7a3b2e" />
+      <!-- head -->
+      <rect x="544" y="512" width="48" height="8" fill="#241a14" />
+      <rect x="532" y="520" width="72" height="8" fill="#241a14" />
+      <rect x="524" y="528" width="88" height="16" fill="#241a14" />
+      <rect x="520" y="544" width="96" height="24" fill="#241a14" />
+      <rect x="524" y="568" width="88" height="12" fill="#241a14" />
+      <rect x="536" y="580" width="64" height="10" fill="#241a14" />
+      <!-- hair tufts -->
+      <rect x="536" y="506" width="12" height="8" fill="#241a14" />
+      <rect x="560" y="504" width="14" height="8" fill="#241a14" />
+      <rect x="586" y="506" width="12" height="8" fill="#241a14" />
+      <!-- hair shading: warm on lamp side, dark on window side -->
+      <rect x="596" y="528" width="16" height="40" fill="#3a2b20" />
+      <rect x="524" y="528" width="12" height="40" fill="#181009" />
+      <rect x="532" y="522" width="48" height="4" fill="#3a2b20" />
+      <!-- TV rim light -->
+      <rect x="544" y="512" width="48" height="4" fill="#5a8a96" />
+      <rect x="512" y="600" width="28" height="4" fill="#5a8a96" />
+      <rect x="596" y="600" width="28" height="4" fill="#5a8a96" />
+      <!-- headphones -->
+      <rect x="530" y="498" width="76" height="8" fill="#2e3a56" />
+      <rect x="522" y="506" width="10" height="16" fill="#2e3a56" />
+      <rect x="604" y="506" width="10" height="16" fill="#2e3a56" />
+      <rect x="504" y="544" width="20" height="34" fill="#1c2438" />
+      <rect x="612" y="544" width="20" height="34" fill="#1c2438" />
+      <rect x="504" y="544" width="20" height="6" fill="#3d4c6e" />
+      <rect x="612" y="544" width="20" height="6" fill="#3d4c6e" />
+      <rect x="508" y="556" width="5" height="10" fill="#7fd4e4">
+        <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
+      </rect>
+      <!-- headphone cable -->
+      <path d="M 514 578 V 644 H 504 V 706" fill="none" stroke="#241f2e" stroke-width="4" />
+    </g>
+
+    <!-- warm light spill on the floor from the lamp -->
+    <rect x="900" y="600" width="180" height="152" fill="url(#zdither)" />
+
+    <!-- game music notes drifting from the TV -->
+    <g fill="#7fd4e4">
+      <g opacity="0">
+        <animate attributeName="opacity" values="0;0.8;0.8;0" keyTimes="0;0.2;0.7;1" dur="3.2s"
+          repeatCount="indefinite" />
+        <animateTransform attributeName="transform" type="translate" values="0 0;10 -34" dur="3.2s"
+          repeatCount="indefinite" />
+        <rect x="822" y="470" width="3" height="16" />
+        <rect x="818" y="482" width="6" height="6" />
+        <rect x="825" y="470" width="7" height="3" />
+      </g>
+      <g opacity="0">
+        <animate attributeName="opacity" values="0;0.7;0.7;0" keyTimes="0;0.2;0.7;1" begin="1.6s" dur="3.2s"
+          repeatCount="indefinite" />
+        <animateTransform attributeName="transform" type="translate" values="0 0;-8 -30" begin="1.6s" dur="3.2s"
+          repeatCount="indefinite" />
+        <rect x="836" y="500" width="3" height="14" />
+        <rect x="832" y="510" width="6" height="6" />
+        <rect x="839" y="500" width="6" height="3" />
+      </g>
+    </g>
+  </g>
+
+  <!-- room-wide TV light flicker -->
+  <polygon points="120,120 1080,120 1112,136 1112,736 1080,752 120,752 88,736 88,136" fill="#00f0ff" opacity="0">
+    <animate attributeName="opacity" values="0;0.012;0;0.008;0;0" keyTimes="0;0.2;0.4;0.6;0.8;1" dur="4s"
+      repeatCount="indefinite" />
+  </polygon>
+
+  <!-- ====== SOFT LIGHTING (over pixels) ====== -->
+  <!-- lamp glow -->
+  <circle cx="980" cy="340" r="86" fill="#ffb454" opacity="0.15" filter="url(#zsoft)">
+    <animate attributeName="opacity" values="0.15;0.19;0.15;0.17;0.15" dur="5s" repeatCount="indefinite" />
+  </circle>
+  <!-- moth circling below the lamp shade -->
+  <g transform="translate(966,396)">
+    <g>
+      <animateMotion path="M 0 0 a 46 26 0 1 0 0.1 0 z" dur="6s" repeatCount="indefinite" />
+      <rect x="-2" y="-2" width="5" height="4" fill="#c9b18a" />
+      <rect x="-6" y="-4" width="4" height="4" fill="#d8cba6">
+        <animate attributeName="opacity" values="1;0.3;1" dur="0.16s" repeatCount="indefinite" />
+      </rect>
+      <rect x="3" y="-4" width="4" height="4" fill="#d8cba6">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="0.16s" repeatCount="indefinite" />
+      </rect>
+    </g>
+  </g>
+  <!-- dust motes -->
+  <g fill="#ffb454">
+    <rect x="960" y="440" width="4" height="4" opacity="0.5">
+      <animate attributeName="y" values="440;406;440" dur="9s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.5;0.15;0.5" dur="9s" repeatCount="indefinite" />
+    </rect>
+    <rect x="1000" y="478" width="4" height="4" opacity="0.4">
+      <animate attributeName="y" values="478;440;478" dur="11s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.4;0.1;0.4" dur="11s" repeatCount="indefinite" />
+    </rect>
+    <rect x="942" y="502" width="3" height="3" opacity="0.4">
+      <animate attributeName="y" values="502;468;502" dur="8s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.4;0.1;0.4" dur="8s" repeatCount="indefinite" />
+    </rect>
+  </g>
+  <!-- TV light cone -->
+  <polygon points="440,588 760,588 844,744 356,744" fill="url(#zcone)">
+    <animate attributeName="opacity" values="1;0.7;1;0.85;1" dur="4s" repeatCount="indefinite" />
+  </polygon>
+  <!-- moonlight falling on the floor below the window -->
+  <polygon points="184,600 348,600 316,724 148,724" fill="#aab6c4" opacity="0.035" />
+
+  <!-- author's mark: IVASIK-K7 in the 3x5 pixel font, like a retro game credit line -->
+  <g fill="#5f7085" opacity="0.85" transform="translate(548,766)" shape-rendering="crispEdges">
+    <use href="#pxI" />
+    <use href="#pxV" transform="translate(12,0)" />
+    <use href="#pxA" transform="translate(24,0)" />
+    <use href="#pxS" transform="translate(36,0)" />
+    <use href="#pxI" transform="translate(48,0)" />
+    <use href="#pxK" transform="translate(60,0)" />
+    <use href="#pxDash" transform="translate(72,0)" />
+    <use href="#pxK" transform="translate(84,0)" />
+    <use href="#px7" transform="translate(96,0)" />
+  </g>
+</svg>
