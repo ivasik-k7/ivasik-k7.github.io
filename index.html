@@ -2,21 +2,99 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ivasik-k7</title>
-    <meta name="description" content="Ivan Kovtun — Solution Architect. Cozy pixel corner of the internet." />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>A Small Apartment</title>
+    <meta
+      name="description"
+      content="Solution Architect. An interactive pixel-apartment resume: walk the rooms, put the kettle on, pet Gross the dog, smoke on the balcony, and read the papers on the old computer."
+    />
     <meta name="author" content="Ivan Kovtun" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 15 15'%3E%3Cg fill='%23fcee0a'%3E%3Crect x='6' y='0' width='3' height='3'/%3E%3Crect x='4' y='3' width='7' height='2'/%3E%3Crect x='0' y='5' width='15' height='3'/%3E%3Crect x='2' y='8' width='11' height='2'/%3E%3Crect x='3' y='10' width='4' height='3'/%3E%3Crect x='8' y='10' width='4' height='3'/%3E%3C/g%3E%3C/svg%3E" />
+    <link rel="canonical" href="https://ivasik-k7.github.io/" />
+    <!-- favicon: the tenant himself, 8×8 -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='6' height='2' fill='%233a2a1e'/%3E%3Crect x='0' y='1' width='2' height='4' fill='%233a2a1e'/%3E%3Crect x='2' y='2' width='5' height='3' fill='%23e0b48c'/%3E%3Crect x='5' y='3' width='1' height='1' fill='%233f8d52'/%3E%3Crect x='2' y='5' width='4' height='1' fill='%23e0b48c'/%3E%3Crect x='0' y='6' width='8' height='2' fill='%231d1d24'/%3E%3C/svg%3E"
+    />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="ivasik-k7" />
-    <meta property="og:description" content="Ivan Kovtun — Solution Architect. Cozy pixel corner of the internet." />
+    <meta property="og:title" content="A Small Apartment" />
+    <meta
+      property="og:description"
+      content="An interactive resume you can walk around in: a post-Soviet pixel apartment with a sleeping dog, a whistling kettle, a giria in the bedroom, and the formal papers on an old CRT."
+    />
     <meta property="og:url" content="https://ivasik-k7.github.io/" />
-    <meta property="og:image" content="https://ivasik-k7.github.io/social-preview.png" />
+    <meta
+      property="og:image"
+      content="https://ivasik-k7.github.io/social-preview.png"
+    />
+    <meta property="og:site_name" content="ivasik-k7" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#0d1117" />
+    <meta name="twitter:title" content="A Small Apartment" />
+    <meta
+      name="twitter:description"
+      content="An interactive pixel-apartment resume. Walk around, poke at things; the computer keeps the formal papers."
+    />
+    <meta name="theme-color" content="#0a0810" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Ivan Kovtun" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": "Ivan Kovtun",
+        "jobTitle": "Solution Architect",
+        "email": "mailto:ivan.kovtun@dataart.com",
+        "url": "https://ivasik-k7.github.io/",
+        "sameAs": [
+          "https://github.com/ivasik-k7",
+          "https://www.linkedin.com/in/ivan-kovtun/"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <noscript>
+      <div
+        style="
+          font-family: monospace;
+          color: #e3d9c2;
+          background: #0a0810;
+          min-height: 100vh;
+          padding: 3rem 1.5rem;
+          text-align: center;
+        "
+      >
+        <h1 style="letter-spacing: 0.3em">IVAN KOVTUN</h1>
+        <p>Solution Architect</p>
+        <p>
+          This resume is a small interactive pixel apartment and needs
+          JavaScript to open its door.
+        </p>
+        <p>
+          Meanwhile:
+          <a style="color: #ffb454" href="https://github.com/ivasik-k7"
+            >GitHub</a
+          >
+          ·
+          <a
+            style="color: #ffb454"
+            href="https://www.linkedin.com/in/ivan-kovtun/"
+            >LinkedIn</a
+          >
+          ·
+          <a style="color: #ffb454" href="mailto:ivan.kovtun@dataart.com"
+            >ivan.kovtun@dataart.com</a
+          >
+        </p>
+      </div>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

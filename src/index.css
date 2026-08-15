@@ -1,55 +1,208 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-night: #0d1117;
+  --color-panel: #141b2b;
+  --color-signal: #fcee0a;
+  --color-neon: #00f0ff;
+  --color-ice: #7fd4e4;
+  --color-ember: #ffb454;
+  --color-muted: #5f7085;
+  --color-parchment: #e3d9c2;
+  --color-term: #6fce80;
+  --color-term-bright: #c9f5cf;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
 }
 
-html,
-body {
-  background: #0d1117;
-  color: #5f7085;
-  font-family: "Courier New", monospace;
+@layer base {
+  html {
+    background-color: #000;
+    color: var(--color-muted);
+    font-family: var(--font-mono);
+  }
+
+  ::selection {
+    background: var(--color-signal);
+    color: #0a0a0a;
+  }
 }
 
-.page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 16px 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.scene img {
-  display: block;
-  width: 100%;
-  height: auto;
+.pixelated {
   image-rendering: pixelated;
 }
 
-.footer {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 14px;
-  padding-top: 24px;
-  font-size: 14px;
-  letter-spacing: 1px;
+/* --- game effects --------------------------------------------------------- */
+
+.dog-breathe {
+  animation: dog-breathe 3.4s ease-in-out infinite;
 }
 
-.footer a {
-  color: #7fd4e4;
-  text-decoration: none;
+@keyframes dog-breathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.06);
+  }
 }
 
-.footer a:hover {
-  color: #fcee0a;
+.steam {
+  position: absolute;
+  background: #e8e4d8;
+  opacity: 0;
+  animation: steam-rise 2.6s linear infinite;
 }
 
-.dot {
-  color: #fcee0a;
+.steam-2 {
+  animation-delay: 1.3s;
 }
 
-.mark {
-  color: #5f7085;
+@keyframes steam-rise {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translateY(-500%);
+    opacity: 0;
+  }
+}
+
+.meter-disc {
+  animation: meter-spin 7s linear infinite;
+}
+
+@keyframes meter-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.note {
+  display: inline-block;
+  opacity: 0;
+  animation: note-float 2.8s ease-out infinite;
+}
+
+.note-2 {
+  animation-delay: 1.4s;
+}
+
+@keyframes note-float {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-300%);
+    opacity: 0;
+  }
+}
+
+.crt-cursor {
+  animation: crt-blink 1.1s steps(1) infinite;
+}
+
+@keyframes crt-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.crt-screen {
+  box-shadow: inset 0 0 40px #00000088;
+}
+
+.crt-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 2px, #00000026 2px 4px);
+}
+
+.tulle-sway {
+  animation: tulle-sway 3s ease-in-out infinite;
+}
+
+@keyframes tulle-sway {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(2px);
+  }
+}
+
+.washer-rumble {
+  animation: washer-rumble 0.15s steps(1, end) infinite;
+}
+
+@keyframes washer-rumble {
+  0% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(1px, 0);
+  }
+  50% {
+    transform: translate(0, 1px);
+  }
+  75% {
+    transform: translate(-1px, 0);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+.tv-static {
+  animation: tv-static 0.2s steps(1, end) infinite;
+}
+
+@keyframes tv-static {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  33% {
+    opacity: 0.82;
+    filter: brightness(1.3);
+  }
+  66% {
+    opacity: 0.94;
+    filter: brightness(0.85);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dog-breathe,
+  .steam,
+  .crt-cursor,
+  .meter-disc,
+  .note,
+  .tulle-sway,
+  .washer-rumble,
+  .tv-static,
+  .animate-pulse {
+    animation: none;
+  }
 }
