@@ -1,57 +1,79 @@
-// Shared contract between the engine (ApartmentGame), room art (rooms.tsx) and data.
-//
-// CSS classes referenced by room art and defined in src/index.css:
-//   .tulle-sway     — gentle curtain sway while a window is open
-//   .washer-rumble  — washing machine shake while running
-//   .tv-static      — animated static flicker on the TV screen
-//   .dog-breathe, .crt-cursor, .meter-disc, .steam, .note — already exist
+// World-wide state that persists across all locations
 
 export type LightRoom = "hallway" | "kitchen" | "living" | "study" | "bath";
 
-export type TvChannel = "off" | "film" | "football" | "static";
-
 export interface WindowState {
   open: boolean;
-  /** A cigarette has been smoked since this window was opened (next E closes it). */
   smoked: boolean;
 }
 
+export type DayPhase = "morning" | "day" | "dusk" | "night";
+
 export interface WorldState {
-  /** Per-room lighting — the balcony is outside and has no light of its own. */
-  lights: Record<LightRoom, boolean>;
-  tv: TvChannel;
+  // Global progression
+  money: number; // złoty — Żabka runs
+  inventory: Array<{ itemId: string; quantity: number }>;
+
+  // The flat
+  lights: Record<string, boolean>;
+  windows: Record<string, WindowState>;
+  tv: "off" | "film" | "football" | "static";
   radioOn: boolean;
   kettleOn: boolean;
+  cookerState: "off" | "open" | "on";
+  doorOpening: string | null;
   fridgeOpen: boolean;
   wardrobeOpen: boolean;
   washerOn: boolean;
-  windows: {
-    "window-kitchen": WindowState;
-    "window-yard": WindowState;
-  };
   dogPets: number;
+
+  // The Golf, level -1
+  golfLocked: boolean;
+
+  // The corridor, floor 4
+  corridor: {
+    parcelTaken: boolean;
+    plantWatered: boolean;
+    extOpen: boolean;
+    liftOpen: boolean;
+  };
+
+  // Ulica Słoneczna
+  street: {
+    binOpen: boolean;
+    paczkomatUsed: boolean;
+  };
+
+  // The Żabka downstairs
+  zabka: {
+    fridgeOpen: boolean;
+    freezerOpen: boolean;
+  };
 }
 
 export const initialWorld: WorldState = {
-  lights: { hallway: true, kitchen: true, living: true, study: true, bath: true },
-  tv: "off",
-  radioOn: false,
-  kettleOn: false,
-  fridgeOpen: false,
-  wardrobeOpen: false,
-  washerOn: false,
+  money: 50,
+  inventory: [],
+  lights: { studio: true, hallway: true, kitchen: true, living: true, study: true, bath: true },
   windows: {
     "window-kitchen": { open: false, smoked: false },
     "window-yard": { open: false, smoked: false },
   },
+  tv: "off",
+  radioOn: false,
+  kettleOn: false,
+  cookerState: "off",
+  doorOpening: null,
+  fridgeOpen: false,
+  wardrobeOpen: false,
+  washerOn: false,
   dogPets: 0,
+  golfLocked: true,
+  corridor: { parcelTaken: false, plantWatered: false, extOpen: false, liftOpen: false },
+  street: { binOpen: false, paczkomatUsed: false },
+  zabka: { fridgeOpen: false, freezerOpen: false },
 };
 
-export const TV_CYCLE: TvChannel[] = ["off", "film", "football", "static"];
-
-export type DayPhase = "morning" | "day" | "dusk" | "night";
-
-/** Phase of day from a real-clock hour (0–23). */
 export function dayPhase(hour: number): DayPhase {
   if (hour >= 6 && hour < 11) return "morning";
   if (hour >= 11 && hour < 17) return "day";
@@ -59,7 +81,6 @@ export function dayPhase(hour: number): DayPhase {
   return "night";
 }
 
-/** How dark a room feels: 0 = fully lit, 1 = deepest dark. Balcony is always 0. */
 export function roomDarkness(phase: DayPhase, lightOn: boolean): number {
   if (lightOn) return phase === "night" ? 0.08 : 0;
   switch (phase) {
@@ -73,3 +94,6 @@ export function roomDarkness(phase: DayPhase, lightOn: boolean): number {
       return 0.78;
   }
 }
+
+export const TV_CYCLE = ["off", "film", "football", "static"] as const;
+export type TvChannel = (typeof TV_CYCLE)[number];

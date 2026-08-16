@@ -6,7 +6,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!public/*.svg"]
+    "includes": ["**", "!public/*.svg", "!src/routeTree.gen.ts"]
   },
   "css": {
     "parser": {

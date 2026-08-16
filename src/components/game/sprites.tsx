@@ -39,14 +39,15 @@ export function PixelMap({
 
 export const PLAYER_PALETTE: Palette = {
   h: "#3a2a1e", // hair
-  H: "#2b1e15", // hair shade (back of the head)
+  H: "#2b1e15", // hair shade / hair dark
   s: "#e0b48c", // skin
-  S: "#c79a72", // skin shade (jaw shadow, far forearm)
-  e: "#2f6b3f", // green eyes — muted so they read as eyes, not a glow
+  S: "#c79a72", // skin shade — jaw, neck shadow, inner arm
+  y: "#ead9a8", // skin highlight — pecs, bicep swell, forearm catch
+  e: "#2f6b3f", // green eyes — muted
   t: "#1d1d24", // black sport t-shirt
-  T: "#101016", // shirt shade — contour between arm and torso, hem shadow
-  u: "#2e4568", // navy accents
-  U: "#23344d", // navy shadow
+  T: "#0a0a0e", // shirt deep shade — pec shadow, under-arm
+  u: "#2e4568", // navy accents (unused, kept for compatibility)
+  U: "#23344d", // navy shadow (unused, kept for compatibility)
   p: "#33415e", // trousers
   q: "#28344c", // trousers shade (back leg)
   b: "#d8d8d0", // sneakers
@@ -59,98 +60,101 @@ export const PLAYER_PALETTE: Palette = {
   o: "#e07a30", // ember
 };
 
-// Rows 0–21: head, torso, hips. Rows 22–34 are supplied by a legs variant.
-// Connected athletic silhouette: sloped 14-wide delts, arms attached to the
-// torso with a dark contour line (T) instead of a gap, taper 14 → 12 → 10.
-// Sleeves rows 8–11; bare forearms below.
+// Rows 0–24: head, shoulders, full torso with arm definition, hips. Rows 25–37 are legs.
+// 24 wide, fully volumetric: pec definition (T/y contrast), bicep swell (S inner edge),
+// proper hand-length forearms (5 cells), tapered waist (12 cells).
+// Sleeves end row 10; bare forearms rows 11–18.
 const BODY = [
-  "........hhhhh.......",
-  ".......Hhhhhhh......",
-  ".......Hhhhhhh......",
-  ".......hSsssss......",
-  ".......hsssses......",
-  ".......hssssss......",
-  "........SSsss.......",
-  "......tttttttttt....",
-  "....tttttttttttttt..",
-  "....ttTttttttttTtt..",
-  "....ttTttttttttTtt..",
-  "....ttTttttttttTtt..",
-  "....SSTttttttttTss..",
-  "....SSTttttttttTss..",
-  ".....SSTttttttTss...",
-  ".....SSTttttttTss...",
-  ".....tttttttttt.....",
-  ".....TttttttttT.....",
-  ".....pppppppppp.....",
-  ".....pppppppppp.....",
-  ".....qppppppppp.....",
-  ".....qppppppppp.....",
+  "............hhhhhh............",
+  "...........HhhhhhH...........",
+  "...........hhhhhhhh...........",
+  "...........hSssssSh...........",
+  "...........hsssessh...........",
+  "...........hsssssh............",
+  ".........sshsssshhss.........",
+  "......ttTssTttttTssTt......",
+  "......ttTssyttytssTt......",
+  "....ttttTTssTTyTTssTTtttt....",
+  "....ttttTyssTyTTssTTtttt....",
+  "....SSTtssTysyssTTSs.....",
+  "....SSyssTysyssTTSs.....",
+  "...SSSyssTysyssSSSs...",
+  "...SSSyssTysyssSSSs...",
+  "...SSyssTysyssSSSs...",
+  "...SSysstysystSSSs...",
+  "....sssTttttTTTss.....",
+  ".....sssTTttTTss......",
+  ".....pppppppppppppp.....",
+  ".....pppppppppppppp.....",
+  ".....ppqpppppppppq.....",
+  ".....ppqpppppppppq.....",
+  ".....qpppppppppppq.....",
+  ".....qpppppppppppq.....",
 ];
 
 const LEGS_STAND = [
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....qqqq..pppp.....",
-  ".....bbbb..bbbb.....",
-  ".....BBBB..BBBBB....",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......qqqqqq..qqqqqq.......",
+  ".......BBBBBB..BBBBBB.......",
 ];
 
 const LEGS_STRIDE = [
-  "....qqqq....pppp....",
-  "....qqqq....pppp....",
-  "....qqqq....pppp....",
-  "....qqqq....pppp....",
-  "...qqqq......pppp...",
-  "...qqqq......pppp...",
-  "...qqqq......pppp...",
-  "...qqqq......pppp...",
-  "...qqqq......pppp...",
-  "...qqqq......pppp...",
-  "...qqqq......pppp...",
-  "...bbbb......bbbb...",
-  "..BBBBB......BBBBB..",
+  "......pppppp....pppppp......",
+  "......pppppp....pppppp......",
+  "......pppppp....pppppp......",
+  "......pppppp....pppppp......",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....qqqqqq........qqqqqq...",
+  "....BBBBBB........BBBBBB....",
 ];
 
 const LEGS_PASS = [
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......qqpppppp......",
-  "......bbbbbbbb......",
-  ".....BBBBBBBBB......",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........QQQQQQQQQQQQ........",
+  ".......BBBBBBBBBBBB.........",
 ];
 
 // Bent knees for petting the dog and for the low sambo entry.
 const LEGS_BENT = [
-  "....qqqqq..ppppp....",
-  "....qqqqq..ppppp....",
-  "....qqqqq..ppppp....",
-  "...qqqq......pppp...",
-  "...qqqq......pppp...",
-  "...qq..........pp...",
-  "...qq..........pp...",
-  "...qq..........pp...",
-  "...qq..........pp...",
-  "...qq..........pp...",
-  "...qq..........pp...",
-  "...bbb........bbb...",
-  "..BBBB........BBBB..",
+  "......pppppp..pppppp.......",
+  "......pppppp..pppppp.......",
+  "......pppppp..pppppp.......",
+  ".....pppppp....pppppp......",
+  ".....pppppp....pppppp......",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....qqqq........qqqq......",
+  "...BBBB........BBBB.......",
 ];
 
 interface Patch {
@@ -184,80 +188,78 @@ const ARM_DOWN = ["ss", "ss", "ss", "ss", "ss", "ss", "ss", "ss", "ss", "ss"];
 
 // Leaning on the balcony railing (rail top ≈ sprite rows 16–17), cigarette in hand…
 const LEAN_A = [
-  "....................",
-  "....................",
-  "..........hhhh......",
-  ".........hhhhhh.....",
-  ".........hhhhhh.....",
-  ".........hsssss.....",
-  ".........hssses.....",
-  ".........hsssss.....",
-  "..........ssss......",
-  "....tttttttttttt....",
-  "...tttttttttttttt...",
-  "...tttttttttttttt...",
-  "...tttttttttt.ss....",
-  "...tttttttttt..ss...",
-  "...tttttttttt...ss..",
-  "...tttttttttt....ss.",
-  "...tttttttttt....ssc",
-  "...tttttttttt......o",
-  "....pppppppppp......",
-  "....pppppppppp......",
-  "....pppppppppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....bbbb..bbbb......",
-  "...BBBBB..BBBBB.....",
+  "........................",
+  "........................",
+  "...........hhhhhh........",
+  "..........HhhhhhH........",
+  "..........hhhhhhhh........",
+  "..........hSssssSh........",
+  "..........hsssessh........",
+  "..........hssssss.........",
+  "...........ssssh.........",
+  ".....ttssTttttTssTTt.....",
+  "....ttssTttyttssTTtt.....",
+  "....ttTTssTTyTTssTTt.....",
+  "....ttTyssTyTTssTTs......",
+  "....SSTyssTysyssTss......",
+  "....SSyssTysyssSSSs......",
+  "....SSyssTysyssSSSs......",
+  "....SSyssTysyssSSSc......",
+  "....SsysstysystSSso......",
+  ".....ppppppppppppp.......",
+  ".....ppppppppppppp.......",
+  ".....ppppppppppppp.......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......qqqqqq..qqqqqq......",
+  ".......BBBBBB..BBBBBB......",
 ];
 
 // …and taking a drag, hand at the mouth, ember bright, far hand on the rail.
 const LEAN_B = [
-  "....................",
-  "....................",
-  "..........hhhh......",
-  ".........hhhhhh.....",
-  ".........hhhhhh.....",
-  ".........hsssss.....",
-  ".........hssses.....",
-  ".........hsssssco...",
-  "..........ssss.ss...",
-  "....ttttttttttttss..",
-  "...ttttttttttttttss.",
-  "...tttttttttttttt...",
-  "...tttttttttt.......",
-  "...tttttttttt.......",
-  "...tttttttttt.......",
-  "...tttttttttt.......",
-  "...ttttttttttss.....",
-  "...ttttttttttss.....",
-  "....pppppppppp......",
-  "....pppppppppp......",
-  "....pppppppppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....qqqq..pppp......",
-  "....bbbb..bbbb......",
-  "...BBBBB..BBBBB.....",
+  "........................",
+  "........................",
+  "...........hhhhhh........",
+  "..........HhhhhhH........",
+  "..........hhhhhhhh........",
+  "..........hSssssSh........",
+  "..........hsssessh........",
+  "..........hsssscs.........",
+  "...........ssshos.........",
+  ".....ttssTttttTssyTTt.....",
+  "....ttssTttyttssTtytt.....",
+  "....ttTTssTTyTTssTTt.....",
+  "....ttTyssTyTTssTTs.......",
+  "....ttTyssTysyssTTt.......",
+  "....SSTyssTysyssSSSs......",
+  "....SSyssTysyssSSSs......",
+  "....SSyssTysyssSSSs......",
+  "....SsysstysystSSss......",
+  ".....ppppppppppppp.......",
+  ".....ppppppppppppp.......",
+  ".....ppppppppppppp.......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......qqqqqq..qqqqqq......",
+  ".......BBBBBB..BBBBBB......",
 ];
 
 // The same lean, hands empty — for idling on the balcony without a cigarette.
@@ -419,7 +421,11 @@ const STRETCH_BODY = [
 ];
 
 // …and the same stretch up on the toes.
-const LEGS_TIPTOE = [...LEGS_STAND.slice(0, 11), ".....bbbb..bbbb.....", ".......BB....BB....."];
+const LEGS_TIPTOE = [
+  ...LEGS_STAND.slice(0, 11),
+  ".......bbbbb...bbbbb.......",
+  ".......BBBBB...BBBBB.......",
+];
 
 // Deep squat: head six rows lower, thighs level, arms forward for balance.
 const SQUAT = [
@@ -590,8 +596,8 @@ export const PLAYER_FRAMES: Record<FrameName, string[]> = {
 // strideLow is the contact frame — one pixel lower, giving the walk its bob.
 export const WALK_CYCLE: FrameName[] = ["strideLow", "stand", "pass", "stand"];
 
-export const PLAYER_W = 40; // gp
-export const PLAYER_H = 70; // gp
+export const PLAYER_W = 48; // gp (24 cells × 2)
+export const PLAYER_H = 76; // gp (38 cells × 2 = 185cm exactly)
 
 export type ActionId =
   | "swing"
@@ -603,7 +609,9 @@ export type ActionId =
   | "pray"
   | "use"
   | "sit"
-  | "drink";
+  | "drink"
+  | "reach"
+  | "talk";
 
 export interface ActionDef {
   frames: FrameName[];
@@ -644,6 +652,8 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
   },
   sit: { frames: ["sit"], frameMs: 5000, loops: 1, interruptible: true },
   drink: { frames: ["drinkA", "drinkB", "drinkB", "drinkA"], frameMs: 550, loops: 1 },
+  reach: { frames: ["reach"], frameMs: 350, loops: 1 },
+  talk: { frames: ["phoneA", "phoneB"], frameMs: 400, loops: 1 },
 };
 
 export function actionDuration(action: ActionDef): number {
