@@ -1,0 +1,273 @@
+import type { ReactNode } from "react";
+import type {
+  AnyWorld,
+  GameConfig,
+  InteractionCtx,
+  SceneObject,
+  SpriteMap,
+  SpritePalette,
+} from "./types";
+
+/**
+ * runtime-types.ts — the *additive* type surface for GameRuntime.
+ *
+ * Nothing in `core/types.ts` changes. Everything here either
+ *  - infers from the existing types (SceneDefOf, SceneKeyOf), or
+ *  - intersects optional fields onto them (RuntimeSceneDef, RuntimeObject),
+ * so an untouched `GameConfig<W>` is still a valid `RuntimeConfig<W>`.
+ */
+
+/* ------------------------------------------------------------------ basics */
+
+export type QualityTier = "high" | "medium" | "low";
+
+/** The scene-definition shape of a world, read back out of the existing config. */
+export type SceneDefOf<W extends AnyWorld> =
+  GameConfig<W>["scenes"] extends Record<string, infer S>
+    ? S
+    : GameConfig<W>["scenes"][keyof GameConfig<W>["scenes"]];
+
+export type SceneKeyOf<W extends AnyWorld> = keyof GameConfig<W>["scenes"] & string;
+
+export type InputAction =
+  | "left"
+  | "right"
+  | "interact"
+  | "cancel"
+  | "menu"
+  | "targetNext"
+  | "targetPrev"
+  | "debug";
+
+/* ------------------------------------------------------- objects & scenes */
+
+/** Optional per-object metadata. Objects without any of it behave exactly as before. */
+export type RuntimeObjectExtras = {
+  /** Logical width, used for pointer hit-testing and marker centring. */
+  width: number;
+  /** Extra slack (logical px) around the hit box for touch. */
+  hitPad: number;
+  /** Where the player should stand to use this. Defaults to the object's own x. */
+  approachX: number;
+  /** Consumed after one successful interaction — stops being a candidate. */
+  once: boolean;
+  /** Ignore repeat interactions for this long. */
+  cooldownMs: number;
+  /** Opt out of tap-to-walk for this object. */
+  autoWalk: boolean;
+  /** Announced to screen readers when focused. */
+  ariaLabel: string;
+};
+
+export type RuntimeObject = SceneObject & Partial<RuntimeObjectExtras>;
+
+/** A cheap scripted background character. Rendered and stepped by the runtime. */
+export type ActorDef<W extends AnyWorld> = {
+  id: string;
+  width: number;
+  height: number;
+  cell: number;
+  frames: Record<string, SpriteMap>;
+  palette: SpritePalette;
+  /** Frames cycled while walking, by distance travelled. */
+  walkCycle?: string[];
+  /** Frame shown while standing. Defaults to "stand" if present. */
+  idleFrame?: string;
+  x: number;
+  /** Baseline override; defaults to the scene floor. */
+  y?: number;
+  facing?: 1 | -1;
+  /** Simple back-and-forth patrol. */
+  patrol?: { from: number; to: number; speed?: number; pauseMs?: number };
+  /** Full manual control; return a partial pose. Called at most once per frame. */
+  step?: (t: number, world: W) => { x?: number; facing?: 1 | -1; frame?: string } | undefined;
+  /** Hidden entirely (and skipped) when this returns false. */
+  visible?: (world: W) => boolean;
+  /** Stacking order relative to the player (player sits at 10). */
+  z?: number;
+};
+
+export type RuntimeSceneExtras<W extends AnyWorld> = {
+  /**
+   * Cheap fingerprint of everything the scene artwork actually reads.
+   * Without it, any world write repaints hundreds of rects; with it, the art
+   * only re-renders when its own inputs change. The single biggest win here.
+   */
+  artKey: (world: W, phase: string) => string;
+  /** Background characters. */
+  actors: ActorDef<W>[];
+  /** Screen-reader description of the room. */
+  describe: string | ((world: W) => string);
+  /** Default spawn when travelling here without an explicit x. */
+  spawnX: number;
+  /** Culling granularity for <CullBox> children (logical px). */
+  chunkWidth: number;
+};
+
+export type RuntimeSceneDef<W extends AnyWorld> = SceneDefOf<W> & Partial<RuntimeSceneExtras<W>>;
+
+/* ------------------------------------------------------------- sequencing */
+
+/** One beat of a cutscene. Steps run in order; each blocks until it resolves. */
+export type SeqStep<W extends AnyWorld> =
+  | { wait: number }
+  | { say: string }
+  | { walkTo: number; timeoutMs?: number }
+  | { face: 1 | -1 }
+  | { hold: string; forMs: number }
+  | { action: string }
+  | { world: Partial<W> | ((w: W) => W) }
+  | { fx: { kind: string; x?: number; ttlMs?: number; data?: unknown } }
+  | { shake: number; ms?: number }
+  | { flash: { color?: string; ms?: number } }
+  | { focus: number | null; ms?: number }
+  | { letterbox: boolean }
+  | { travel: { scene: string; spawnX?: number } }
+  | { dialogue: unknown }
+  | { sound: string }
+  | { do: (ctx: RuntimeCtx<W>) => void }
+  | { until: () => boolean; timeoutMs?: number };
+
+/* -------------------------------------------------------- interaction ctx */
+
+/** Everything the runtime adds on top of the original InteractionCtx. */
+export type RuntimeCtxExtras<W extends AnyWorld> = {
+  /** Walk the player to a logical x. Resolves true on arrival, false if cancelled. */
+  walkTo(x: number, opts?: { timeoutMs?: number }): Promise<boolean>;
+  /** Pin the camera to a point (or null to follow the player again). */
+  focusCamera(x: number | null, ms?: number): void;
+  /** Eased zoom multiplier around the current focus. 1 = normal. */
+  zoom(mult: number, ms?: number): void;
+  flash(color?: string, ms?: number): void;
+  letterbox(on: boolean): void;
+  /** Ignore player input without pausing the simulation. */
+  lockInput(on: boolean): void;
+  runSequence(steps: SeqStep<W>[], opts?: { cinematic?: boolean }): Promise<boolean>;
+  cancelSequence(): void;
+  /** setTimeout on the *game* clock: pauses with the game, dies with the runtime. */
+  after(ms: number, fn: () => void): number;
+  cancelAfter(id: number): void;
+  /** Runtime-owned, persisted flag store — no need to widen your world type. */
+  flag(key: string): boolean;
+  setFlag(key: string, on?: boolean): void;
+  counter(key: string): number;
+  bump(key: string, by?: number): number;
+  /** True exactly once per key, ever (persisted). */
+  once(key: string): boolean;
+  saveNow(): void;
+  playSound(name: string, opts?: { volume?: number; rate?: number }): void;
+  quality(): QualityTier;
+  reducedMotion(): boolean;
+  /** Force a player frame until cleared with null. */
+  setPlayerFrame(frame: string | null): void;
+  /** Game-clock milliseconds. */
+  now(): number;
+  playerAt(): { x: number; facing: 1 | -1 };
+  setTarget(id: string): void;
+  vibrate(ms: number): void;
+};
+
+export type RuntimeCtx<W extends AnyWorld> = InteractionCtx<W> & RuntimeCtxExtras<W>;
+
+/* ------------------------------------------------------------------ stats */
+
+export type RuntimeStats = {
+  fps: number;
+  frameMs: number;
+  emaMs: number;
+  simSteps: number;
+  quality: QualityTier;
+  fxAlive: number;
+  candidates: number;
+  band: { x0: number; x1: number };
+  domWrites: number;
+  domSkips: number;
+  commits: number;
+  alarms: number;
+  timers: number;
+  heapMb: number | null;
+  spriteMode: "dom" | "canvas";
+  mountedFrames: number;
+};
+
+/* -------------------------------------------------------------------- api */
+
+/** Imperative handle handed to `config.onReady`, for tests and debug tooling. */
+export type RuntimeApi<W extends AnyWorld> = {
+  interact(id?: string): void;
+  travel(scene: string, spawnX?: number): void;
+  walkTo(x: number): Promise<boolean>;
+  runSequence(steps: SeqStep<W>[], opts?: { cinematic?: boolean }): Promise<boolean>;
+  getWorld(): W;
+  updateWorld(patch: Partial<W> | ((w: W) => W)): void;
+  getStats(): RuntimeStats;
+  saveNow(): void;
+};
+
+/* ----------------------------------------------------------------- config */
+
+export type RuntimePersist<W extends AnyWorld> = NonNullable<GameConfig<W>["persist"]> &
+  Partial<{
+    /** Repair or upgrade a loaded save before it is applied. Return null to discard. */
+    migrate: (saved: unknown, fromVersion: number) => unknown | null;
+    /** Autosave debounce. Default 800ms. */
+    autosaveMs: number;
+  }>;
+
+export type RuntimeConfigExtras<W extends AnyWorld> = {
+  /** Fixed simulation rate. Default 120Hz — movement stops depending on frame rate. */
+  simHz: number;
+  /** Backlog guard: substeps per frame before time is dropped. Default 5. */
+  maxSubsteps: number;
+  /** Render cap; 0 = uncapped (still vsync-bound). Default 0. */
+  maxFps: number;
+  /** Rate while a dialogue/overlay/intro is up. Default 24. */
+  pausedHz: number;
+  /** Park the whole loop when the tab or viewport is hidden. Default true. */
+  pauseWhenHidden: boolean;
+  /** "canvas" collapses the player's hundreds of rects into one node. Default "auto". */
+  spriteMode: "auto" | "dom" | "canvas";
+  /** Cell count above which "auto" picks canvas. Default 2400. */
+  spriteAtlasThreshold: number;
+  /** Mount sprite frames on demand, prewarming the rest when idle. Default true. */
+  lazySpriteFrames: boolean;
+  /** Downgrade `quality` when frames get long. Default true. */
+  adaptiveQuality: boolean;
+  targetFps: number;
+  onQualityChange: (tier: QualityTier) => void;
+  reducedMotion: "auto" | boolean;
+  keymap: Partial<Record<InputAction, string[]>>;
+  gamepad: boolean;
+  /** Tap an object in the world to target it. Default true. */
+  pointerPicking: boolean;
+  /** Picking an out-of-range object walks there, then interacts. Default true. */
+  autoWalkToTargets: boolean;
+  /** Interact presses during an action fire when it ends. Default 220ms. */
+  inputBufferMs: number;
+  fxCapacity: number;
+  /** Restore your last x when re-entering a scene without an explicit spawn. */
+  rememberSceneX: boolean;
+  showAllMarkers: boolean;
+  debug: boolean;
+  renderDebug: (stats: RuntimeStats) => ReactNode;
+  onSound: (name: string, opts?: { volume?: number; rate?: number }) => void;
+  onReady: (api: RuntimeApi<W>) => void;
+};
+
+/** What GameRuntime accepts. A plain GameConfig<W> satisfies it unchanged. */
+export type RuntimeConfig<W extends AnyWorld> = Omit<GameConfig<W>, "persist"> &
+  Partial<RuntimeConfigExtras<W>> & { persist?: RuntimePersist<W> };
+
+/* ------------------------------------------------------------------ saves */
+
+export type SavePayload<W extends AnyWorld> = {
+  version: number;
+  world: W;
+  scene: string;
+  x: number;
+  savedAt: string;
+  facing?: 1 | -1;
+  flags?: Record<string, true>;
+  counters?: Record<string, number>;
+  sceneX?: Record<string, number>;
+};

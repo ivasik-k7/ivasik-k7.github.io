@@ -66,9 +66,15 @@ export function LayeredScene(layers: SceneLayers) {
       {ORDER.map((key) => {
         if (!layers[key]) return null;
         const factor = layers.parallax?.[key] ?? DEFAULT_PARALLAX[key];
+        // will-change promotes the group to its own compositor layer where the
+        // browser supports composited SVG transforms — without it, every --cam
+        // tick repaints the whole (often scene-wide) layer on the CPU
         const style =
           factor < 1
-            ? { transform: `translateX(calc(var(--cam, 0) * ${(1 - factor).toFixed(3)}px))` }
+            ? {
+                transform: `translateX(calc(var(--cam, 0) * ${(1 - factor).toFixed(3)}px))`,
+                willChange: "transform",
+              }
             : undefined;
         return (
           <g key={key} data-layer={key} style={style}>

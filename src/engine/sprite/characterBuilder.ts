@@ -67,6 +67,8 @@ type FrameFactory = {
   patch: (p: Patch) => FrameFactory;
   /** Use a raw map instead of parts. */
   raw: (map: SpriteMap) => FrameFactory;
+  /** Transform the accumulated frame (drop the body, bow the head…). */
+  map: (fn: (m: SpriteMap) => string[]) => FrameFactory;
 };
 
 export class CharacterBuilder {
@@ -78,7 +80,11 @@ export class CharacterBuilder {
   private actionTable: Record<string, ActionDef> = {};
   private speed?: number;
 
-  constructor(opts: { palette: SpritePalette; cell?: number; walkSpeed?: number }) {
+  constructor(opts: {
+    palette: SpritePalette;
+    cell?: number;
+    walkSpeed?: number;
+  }) {
     this.palette = opts.palette;
     this.cellSize = opts.cell ?? 2;
     this.speed = opts.walkSpeed;
@@ -112,6 +118,11 @@ export class CharacterBuilder {
       },
       raw: (map) => {
         acc = [...map];
+        return factory;
+      },
+      map: (fn) => {
+        if (!acc) throw new Error(`character: frame "${name}" maps before stack/raw`);
+        acc = fn(acc);
         return factory;
       },
     };
@@ -160,19 +171,24 @@ export class CharacterBuilder {
   /** Validate everything and produce a PlayerConfig. */
   build(): PlayerConfig {
     if (this.frames.size === 0) throw new Error("character: no frames defined");
-    const [firstName, first] = [...this.frames.entries()][0];
-    const rows = first.length;
-    const cols = first[0]?.length ?? 0;
+    // Hand-drawn maps trim trailing transparency, and some poses are a few
+    // rows short (a stretch, a crouch) — the classic renderer top-aligned
+    // them in a fixed box. Normalize instead of rejecting: pad every row to
+    // the widest, pad every frame to the tallest with empty bottom rows.
+    let cols = 0;
+    let rows = 0;
+    for (const map of this.frames.values()) {
+      rows = Math.max(rows, map.length);
+      for (const row of map) cols = Math.max(cols, row.length);
+    }
+    const emptyRow = ".".repeat(cols);
     for (const [name, map] of this.frames) {
-      if (map.length !== rows) {
-        throw new Error(
-          `character: frame "${name}" is ${map.length} rows; "${firstName}" is ${rows}`,
-        );
-      }
+      const padded = map.map((row) =>
+        row.length < cols ? row + ".".repeat(cols - row.length) : row,
+      );
+      while (padded.length < rows) padded.push(emptyRow);
+      this.frames.set(name, padded);
       for (const row of map) {
-        if (row.length !== cols) {
-          throw new Error(`character: frame "${name}" has a row of ${row.length}, want ${cols}`);
-        }
         for (const ch of row) {
           if (ch !== "." && ch !== " " && !(ch in this.palette)) {
             throw new Error(`character: frame "${name}" uses unknown palette key "${ch}"`);

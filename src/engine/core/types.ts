@@ -60,6 +60,15 @@ export interface SceneObject {
   x: number;
   /** Proximity radius; DEFAULT_RANGE when omitted. */
   range?: number;
+  /**
+   * Targeting weight: each point counts as PRIORITY_GP closer. Lets NPCs and
+   * doors win focus over background flavor sharing the same spot.
+   */
+  priority?: number;
+  /** Hidden from targeting entirely while this returns false. */
+  when?: (world: AnyWorld) => boolean;
+  /** Height (gp from scene top) of the floating target marker; MARKER_Y default. */
+  markerY?: number;
   /** Doors: travel target. Handled by the engine's built-in `door` handler. */
   to?: { scene: string; spawnX: number };
   /** Sport-style objects: which player action animation to run. */
@@ -142,6 +151,8 @@ export interface InteractionCtx<W extends AnyWorld = AnyWorld> {
   queueToast: (text: string, delayMs: number) => void;
   /** Open a branching dialogue (see systems/dialogue). */
   startDialogue: (tree: unknown) => void;
+  /** Kick the camera: a decaying random shake (intensity in device px). */
+  shakeCamera: (intensity: number, ms: number) => void;
   /** Current scene id. */
   scene: string;
 }
@@ -159,12 +170,35 @@ export interface GameConfig<W extends AnyWorld = AnyWorld> {
   handlers: Record<string, InteractionHandler<W>>;
   /** Label for the "▸ OBJECT [E]" prompt. */
   objectLabel: (obj: SceneObject) => string;
+  /** Verb for the interact chip ("TALK", "OPEN"); omit for a label-only chip. */
+  objectVerb?: (obj: SceneObject) => string;
   /** Day phase fed to scenes; re-evaluated every minute. */
   dayPhase?: () => string;
-  /** Top-left HUD; receives the live scene id, world and day phase. */
-  renderHud?: (scene: string, world: W, phase: string) => ReactNode;
-  /** Overlay renderer (panels, terminal, menu). */
-  renderOverlay?: (overlay: unknown, close: () => void, world: W) => ReactNode;
+  /** HUD renderer; receives scene id, world, day phase and an overlay opener. */
+  renderHud?: (
+    scene: string,
+    world: W,
+    phase: string,
+    openOverlay: (overlay: unknown) => void,
+  ) => ReactNode;
+  /**
+   * Custom renderer for the player's overhead monologue bubble (toasts).
+   * Rendered inside an anchor that rides above the player's head; `toast` is
+   * null while nothing is said — keep rendering so exit animations can play.
+   */
+  renderMonologue?: (toast: { id: number; text: string } | null, scale: number) => ReactNode;
+  /** Overlay renderer (panels, terminal, menu, wardrobe). */
+  renderOverlay?: (
+    overlay: unknown,
+    close: () => void,
+    world: W,
+    updateWorld: (patch: Partial<W> | ((w: W) => W)) => void,
+  ) => ReactNode;
+  /**
+   * Live player palette derived from the world (outfits, appearance).
+   * Falls back to player.palette when omitted.
+   */
+  playerAppearance?: (world: W) => SpritePalette;
   /** Fired on mount and after every travel — drive ambience, music, weather. */
   onSceneChange?: (scene: string) => void;
   /** Menu overlay opened by TAB/M; opaque to the engine. */

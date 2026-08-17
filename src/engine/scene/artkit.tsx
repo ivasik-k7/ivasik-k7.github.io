@@ -6,7 +6,12 @@ import { FLOOR_Y, SCENE_HEIGHT } from "../core/constants";
  * Everything renders into the width×180 logical canvas, crisp edges.
  */
 
-/** One pixel-art rectangle. The atom of every scene. */
+/**
+ * One pixel-art rectangle. The atom of every scene.
+ * The fill is part of the default key: scenes legitimately overdraw the same
+ * geometry (glass + a warm light tint), and geometry-only keys collide there —
+ * React then warns and may drop one of the rects.
+ */
 export function px(
   x: number,
   y: number,
@@ -15,7 +20,9 @@ export function px(
   fill: string,
   key?: string,
 ): ReactNode {
-  return <rect key={key ?? `${x}:${y}:${w}:${h}`} x={x} y={y} width={w} height={h} fill={fill} />;
+  return (
+    <rect key={key ?? `${x}:${y}:${w}:${h}:${fill}`} x={x} y={y} width={w} height={h} fill={fill} />
+  );
 }
 
 /** Sky gradient stops per phase of day — shared by windows and exteriors. */

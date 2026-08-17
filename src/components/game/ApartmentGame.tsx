@@ -779,8 +779,9 @@ export function ApartmentGame() {
           {overlay?.type === "menu" ? (
             <StatusMenu
               key="menu"
-              dogPets={world.dogPets}
-              teaMade={world.kettleOn}
+              world={world}
+              visited={[room]}
+              scenes={Object.keys(ROOMS)}
               onClose={() => setOverlay(null)}
             />
           ) : null}

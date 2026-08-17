@@ -1,5 +1,13 @@
-import { DEFAULT_RANGE, MAX_SCALE, MIN_SCALE, SCENE_HEIGHT } from "./constants";
-import type { SceneObject } from "./types";
+import {
+  DEFAULT_RANGE,
+  FACING_AHEAD_MULT,
+  FACING_BEHIND_MULT,
+  MAX_SCALE,
+  MIN_SCALE,
+  PRIORITY_GP,
+  SCENE_HEIGHT,
+} from "./constants";
+import type { AnyWorld, SceneObject } from "./types";
 
 /** Integer pixel scale for a viewport height — keeps sprites crisp. */
 export function viewportScale(viewH: number): number {
@@ -25,6 +33,40 @@ export function cameraTransform(
   }
   const cam = Math.max(0, Math.min(playerX * scale - viewW / 2, scenePx - viewW));
   return { x: -cam, y, camLogical: cam / scale };
+}
+
+/** One targeting candidate: raw distance plus the shaped score it competes on. */
+export interface DetectedObject {
+  obj: SceneObject;
+  dist: number;
+  /** Lower is better — distance shaped by facing direction and priority. */
+  score: number;
+}
+
+/**
+ * Every interactable in range, best first. The score is the distance bent by
+ * intent: objects the player faces feel closer, objects behind feel farther,
+ * and `priority` lets an NPC out-rank the bin it's standing next to.
+ * Objects with a false `when(world)` don't exist for targeting at all.
+ */
+export function detectObjects(
+  objects: SceneObject[],
+  x: number,
+  facing: 1 | -1,
+  world: AnyWorld,
+): DetectedObject[] {
+  const found: DetectedObject[] = [];
+  for (const obj of objects) {
+    if (obj.when && !obj.when(world)) continue;
+    const dist = Math.abs(obj.x - x);
+    if (dist > (obj.range ?? DEFAULT_RANGE)) continue;
+    const ahead = dist < 2 || Math.sign(obj.x - x) === facing;
+    const score =
+      dist * (ahead ? FACING_AHEAD_MULT : FACING_BEHIND_MULT) - (obj.priority ?? 0) * PRIORITY_GP;
+    found.push({ obj, dist, score });
+  }
+  found.sort((a, b) => a.score - b.score);
+  return found;
 }
 
 /** Nearest object within its interaction range, or null. */

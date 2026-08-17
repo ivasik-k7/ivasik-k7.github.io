@@ -46,10 +46,17 @@ export const PLAYER_PALETTE: Palette = {
   e: "#2f6b3f", // green eyes — muted
   t: "#1d1d24", // black sport t-shirt
   T: "#0a0a0e", // shirt deep shade — pec shadow, under-arm
-  u: "#2e4568", // navy accents (unused, kept for compatibility)
-  U: "#23344d", // navy shadow (unused, kept for compatibility)
+  u: "#7a8f9f", // duvet — matches the bedroom's slate ramp
+  U: "#687c8b", // duvet fold shade
   p: "#33415e", // trousers
   q: "#28344c", // trousers shade (back leg)
+  Q: "#1e2839", // trousers deep shade (inner back leg mid-stride)
+  k: "#2e4568", // cap crown (wardrobe-deletable zone)
+  K: "#23344d", // cap brim/shade
+  m: "#6d7278", // hood & pocket (wardrobe-deletable zone)
+  M: "#565a60", // hood shade
+  f: "#7a5c48", // stubble
+  F: "#5f4636", // stubble shade
   b: "#d8d8d0", // sneakers
   B: "#8f9089", // soles
   g: "#43434b", // giria (kettlebell)
@@ -58,6 +65,11 @@ export const PLAYER_PALETTE: Palette = {
   P: "#3f3f47", // barbell plates
   c: "#f0ede4", // cigarette / mug
   o: "#e07a30", // ember
+  x: "#c96a28", // ember halo — the light the coal throws on skin and air
+  v: "#b8b4ac", // cigarette smoke
+  w: "#c9863f", // guitar top — the same honeyed spruce as the one on the wall
+  W: "#8a5a28", // guitar rim / side shade
+  n: "#3a2614", // guitar neck, fretboard, soundhole
 };
 
 // Rows 0–24: head, shoulders, full torso with arm definition, hips. Rows 25–37 are legs.
@@ -66,30 +78,30 @@ export const PLAYER_PALETTE: Palette = {
 // Sleeves end row 10; bare forearms rows 11–18.
 const BODY = [
   "............hhhhhh............",
-  "...........HhhhhhH...........",
+  "...........HhhhhhH............",
   "...........hhhhhhhh...........",
-  "...........hSssssSh...........",
+  "...........hSsshsSh...........",
   "...........hsssessh...........",
-  "...........hsssssh............",
-  ".........sshsssshhss.........",
-  "......ttTssTttttTssTt......",
-  "......ttTssyttytssTt......",
-  "....ttttTTssTTyTTssTTtttt....",
-  "....ttttTyssTyTTssTTtttt....",
-  "....SSTtssTysyssTTSs.....",
-  "....SSyssTysyssTTSs.....",
-  "...SSSyssTysyssSSSs...",
-  "...SSSyssTysyssSSSs...",
-  "...SSyssTysyssSSSs...",
-  "...SSysstysystSSSs...",
-  "....sssTttttTTTss.....",
-  ".....sssTTttTTss......",
-  ".....pppppppppppppp.....",
-  ".....pppppppppppppp.....",
-  ".....ppqpppppppppq.....",
-  ".....ppqpppppppppq.....",
-  ".....qpppppppppppq.....",
-  ".....qpppppppppppq.....",
+  "...........hssssff............",
+  ".........sshsssshhss..........",
+  "......ttTssTtTTtTssTt.........",
+  "......ttTssyttytssTt..........",
+  "....ttttTTssTTyTTssTTtttt.....",
+  "....ttttTyssTyTTssTTtttt......",
+  "....SSTtsstsssssTTSs..........",
+  "....SSssstsssssTTSs...........",
+  "...SSSssstsssssSSSs...........",
+  "...SSSssstsssssSSSs...........",
+  "...SSssstsssssSSSs............",
+  "...SSssstsssstSSSs............",
+  "....sssTttttttTss.............",
+  ".....sssttttttss..............",
+  ".....TttttttttttttT...........",
+  ".....pppppppppppppp...........",
+  ".....ppqpppppppppq............",
+  ".....ppqpppppppppq............",
+  ".....qpppppppppppq............",
+  ".....qpppppppppppq............",
 ];
 
 const LEGS_STAND = [

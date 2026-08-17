@@ -24,3 +24,21 @@ export const MAX_SCALE = 6;
 export const TRAVEL_FADE_OUT_MS = 200;
 export const TRAVEL_SWITCH_AT_MS = 220;
 export const TRAVEL_FADE_IN_DELAY_MS = 60;
+
+/* --- targeting -----------------------------------------------------------------
+ * Detection is a scored competition, not a plain distance check: objects the
+ * player faces read as "in front of me", important objects (NPCs, doors) can
+ * out-rank clutter, and the current target keeps focus until something is
+ * clearly better — so the prompt never flickers between two neighbours.
+ */
+
+/** Distance multiplier for objects on the side the player faces. */
+export const FACING_AHEAD_MULT = 0.82;
+/** Distance multiplier for objects behind the player's back. */
+export const FACING_BEHIND_MULT = 1.18;
+/** Each `priority` point on an object counts as being this many gp closer. */
+export const PRIORITY_GP = 12;
+/** The current target keeps focus while its score is within this of the best. */
+export const STICKY_MARGIN = 7;
+/** Default height (gp from scene top) of the floating target marker — clears the player's head. */
+export const MARKER_Y = 70;

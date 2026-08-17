@@ -99,13 +99,32 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     }
   },
 
-  toilet: ({ blackout }) => {
-    playSfx("water");
-    blackout(1000, t("toast.toilet"));
+  // both play out in back projection — he faces the porcelain, not the camera.
+  // Sounds ride the animation clock; interrupting cancels what hasn't played.
+  toilet: ({ startAction, queueToast }) => {
+    const timers: number[] = [];
+    startAction("pee", {
+      onInterrupt: () => {
+        for (const timer of timers) window.clearTimeout(timer);
+      },
+    });
+    timers.push(window.setTimeout(() => playSfx("trickle"), 900));
+    timers.push(window.setTimeout(() => playSfx("trickle"), 2700));
+    timers.push(window.setTimeout(() => playSfx("flush"), 4200));
+    queueToast(t("toast.pee"), 6100);
   },
-  bath: ({ blackout }) => {
-    playSfx("water");
-    blackout(2000, t("toast.tub"));
+  bath: ({ startAction, queueToast }) => {
+    const timers: number[] = [];
+    startAction("shower", {
+      onInterrupt: () => {
+        for (const timer of timers) window.clearTimeout(timer);
+      },
+    });
+    // tap turns at the end of frame 4 (380ms each); spray carries to frame 16
+    for (const at of [1900, 3700, 5500]) {
+      timers.push(window.setTimeout(() => playSfx("water"), at));
+    }
+    queueToast(t("toast.shower"), 8200);
   },
 
   washer: ({ world, updateWorld, showToast, startAction }) => {
@@ -116,20 +135,26 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     showToast(t(nextOn ? "toast.washerOn" : "toast.washerOff"));
   },
 
-  openable: ({ obj, world, updateWorld, showToast, startAction }) => {
+  openable: ({ obj, world, updateWorld, showToast, startAction, openOverlay }) => {
     startAction("use");
-    playSfx(obj.id === "fridge" ? "fridge" : "creak");
-    const key = obj.id === "fridge" ? "fridgeOpen" : "wardrobeOpen";
-    const nextOpen = !world[key];
-    updateWorld({ [key]: nextOpen } as Partial<WorldState>);
+    if (obj.id === "wardrobe" || obj.id === "wardrobe-hall") {
+      playSfx("creak");
+      if (obj.id === "wardrobe") updateWorld({ wardrobeOpen: true });
+      openOverlay({ type: "wardrobe" });
+      return;
+    }
+    playSfx("fridge");
+    const nextOpen = !world.fridgeOpen;
+    updateWorld({ fridgeOpen: nextOpen });
     showToast(t(`toast.${obj.id}${nextOpen ? "Open" : "Close"}`));
   },
 
-  sport: ({ obj, showToast, startAction, queueToast }) => {
+  sport: ({ obj, showToast, startAction, queueToast, shakeCamera }) => {
     if (!obj.action) return;
     startAction(obj.action);
     if (obj.action === "smoke") playSfx("match");
     if (obj.action === "sit") playSfx("doorshut");
+    if (obj.action === "press" || obj.action === "swing") shakeCamera(2, 300);
     showToast(t(`toast.${obj.id}`));
     if (obj.action === "call") {
       queueToast(t("toast.call2"), 3200);
@@ -151,9 +176,64 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
 
   flavor: ({ obj, showToast }) => showToast(t(`flavor.${obj.id}`)),
 
+  // the guitar comes off the wall for one quiet loop of Am–F–C–G.
+  // Strums are timed to the animation (320ms frames): first stroke as the
+  // hand first crosses the strings, half-time while the head nods, the
+  // last chord rung out with the chin up and left to decay.
+  guitar: ({ obj, startAction, spawnFx, queueToast, shakeCamera }) => {
+    const timers: number[] = [];
+    startAction("strum", {
+      onInterrupt: () => {
+        for (const timer of timers) window.clearTimeout(timer);
+      },
+    });
+    const strums = [
+      1280,
+      1600,
+      1920,
+      2240, // first bar, eyes on the hand
+      2560,
+      3200, // half-time under the nod
+      3840,
+      4160,
+      4480,
+      4800, // chord change, second bar
+      5120,
+      5440,
+      5760,
+      6080, // weight on the back foot
+    ];
+    strums.forEach((at, i) => {
+      timers.push(
+        window.setTimeout(() => {
+          playSfx("guitar");
+          if (i % 2 === 0) spawnFx("note", obj.x - 8 + (i % 3) * 7, 1600);
+        }, at),
+      );
+    });
+    timers.push(
+      window.setTimeout(() => {
+        playSfx("guitarEnd");
+        shakeCamera(0.8, 220);
+        spawnFx("note", obj.x, 2100);
+      }, 6400),
+    );
+    queueToast(t("toast.guitar"), 7000);
+  },
+
   panel: ({ obj, openOverlay }) => {
     playSfx("click");
     if (obj.data) openOverlay({ type: "panel", id: obj.data });
+  },
+
+  bed: ({ obj, startAction, showToast, openOverlay, shakeCamera }) => {
+    startAction("lay");
+    playSfx("doorshut");
+    window.setTimeout(() => shakeCamera(1.5, 200), 1200);
+    showToast(t("toast.bedLie"));
+    window.setTimeout(() => {
+      if (obj.data) openOverlay({ type: "panel", id: obj.data });
+    }, 5400);
   },
 
   computer: ({ openOverlay }) => {
@@ -180,9 +260,10 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     travel(obj.to.scene, obj.to.spawnX);
   },
 
-  stairs: ({ obj, travel }) => {
+  stairs: ({ obj, travel, shakeCamera }) => {
     if (!obj.to) return;
     playSfx("thud");
+    shakeCamera(3, 220);
     travel(obj.to.scene, obj.to.spawnX);
   },
 
@@ -211,16 +292,18 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
   },
 
   npc: (ctx) => {
-    const tree =
-      ctx.obj.id === "pani-natalia"
-        ? NATALIA_TREE
-        : ctx.obj.id === "smoker"
-          ? SMOKER_TREE
-          : ctx.obj.id === "babcia"
-            ? BABCIA_TREE
-            : ctx.obj.id === "zbyszek"
-              ? ZBYSZEK_TREE
-              : MAREK_TREE;
+    const NPC_TREES: Record<string, DialogueTree<Ctx>> = {
+      "pani-natalia": NATALIA_TREE,
+      smoker: SMOKER_TREE,
+      babcia: BABCIA_TREE,
+      zbyszek: ZBYSZEK_TREE,
+      courier: COURIER_TREE,
+      trener: TRENER_TREE,
+      golebiarka: GOLEBIARKA_TREE,
+      student: STUDENT_TREE,
+      "waiting-man": WAITING_TREE,
+    };
+    const tree = NPC_TREES[ctx.obj.id] ?? MAREK_TREE;
     ctx.startDialogue(tree as DialogueTree<never>);
   },
 
@@ -234,7 +317,10 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
       return;
     }
     playSfx("chime");
-    updateWorld((w) => ({ ...w, street: { ...w.street, paczkomatUsed: true } }));
+    updateWorld((w) => ({
+      ...w,
+      street: { ...w.street, paczkomatUsed: true },
+    }));
     showToast(t("toast.paczkomatOpen"));
   },
 
@@ -288,7 +374,10 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     startAction("use");
     const watered = !world.corridor.plantWatered;
     if (watered) playSfx("pour");
-    updateWorld((w) => ({ ...w, corridor: { ...w.corridor, plantWatered: watered } }));
+    updateWorld((w) => ({
+      ...w,
+      corridor: { ...w.corridor, plantWatered: watered },
+    }));
     showToast(t(watered ? "toast.plantWatered" : "toast.plantAdmired"));
   },
 
@@ -304,11 +393,18 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     if (!ctx.obj.to || ctx.world.corridor.liftOpen) return;
     const { to } = ctx.obj;
     playSfx("liftding");
-    ctx.updateWorld((w) => ({ ...w, corridor: { ...w.corridor, liftOpen: true } }));
+    ctx.shakeCamera(1.5, 260);
+    ctx.updateWorld((w) => ({
+      ...w,
+      corridor: { ...w.corridor, liftOpen: true },
+    }));
     window.setTimeout(() => {
       ctx.travel(to.scene, to.spawnX);
       window.setTimeout(() => {
-        ctx.updateWorld((w) => ({ ...w, corridor: { ...w.corridor, liftOpen: false } }));
+        ctx.updateWorld((w) => ({
+          ...w,
+          corridor: { ...w.corridor, liftOpen: false },
+        }));
       }, 800);
     }, 750);
   },
@@ -324,7 +420,7 @@ function buildGolfTree(locked: boolean): DialogueTree<Ctx> {
         start: {
           lines: [
             {
-              text: "Your Golf sleeps under the dying tube. Lapiz Blue holds its color even in this light.",
+              text: "Your Golf sleeps under the dying tube. Snow White holds its color even in this light.",
             },
           ],
           choices: [
@@ -343,7 +439,9 @@ function buildGolfTree(locked: boolean): DialogueTree<Ctx> {
         },
         unlocked: {
           lines: [
-            { text: "The indicators blink twice. The mirrors unfold like it's glad to see you." },
+            {
+              text: "The indicators blink twice. The mirrors unfold like it's glad to see you.",
+            },
           ],
         },
         walk: {
@@ -360,7 +458,11 @@ function buildGolfTree(locked: boolean): DialogueTree<Ctx> {
     start: "start",
     nodes: {
       start: {
-        lines: [{ text: "The Golf sits unlocked, puddle light warm on the concrete." }],
+        lines: [
+          {
+            text: "The Golf sits unlocked, puddle light warm on the concrete.",
+          },
+        ],
         choices: [
           {
             label: "Sit inside for a minute.",
@@ -377,6 +479,7 @@ function buildGolfTree(locked: boolean): DialogueTree<Ctx> {
             effect: (ctx: Ctx) => {
               playSfx("engine");
               ctx.spawnFx("golf-rev", 0, 2600);
+              ctx.shakeCamera(2.5, 900);
             },
             next: "started",
           },
@@ -401,7 +504,9 @@ function buildGolfTree(locked: boolean): DialogueTree<Ctx> {
       },
       locked: {
         lines: [
-          { text: "One low blink. The mirrors fold in. Alarm set, level −1 goes quiet again." },
+          {
+            text: "One low blink. The mirrors fold in. Alarm set, level −1 goes quiet again.",
+          },
         ],
       },
     },
@@ -415,7 +520,10 @@ const MAREK_TREE: DialogueTree<Ctx> = {
   nodes: {
     start: {
       lines: [
-        { speaker: "Pan Marek", text: "You wax it — it rains. You don't wax it — it also rains." },
+        {
+          speaker: "Pan Marek",
+          text: "You wax it — it rains. You don't wax it — it also rains.",
+        },
       ],
       choices: [
         { label: "How's the Octavia holding up?", next: "octavia" },
@@ -447,7 +555,10 @@ const MAREK_TREE: DialogueTree<Ctx> = {
     },
     bye: {
       lines: [
-        { speaker: "Pan Marek", text: "Trzymaj się. And check your tyre pressures. Front left." },
+        {
+          speaker: "Pan Marek",
+          text: "Trzymaj się. And check your tyre pressures. Front left.",
+        },
       ],
     },
   },
@@ -540,11 +651,203 @@ const NATALIA_TREE: DialogueTree<Ctx> = {
 
 // --- the street's regulars ------------------------------------------------------------
 
+const GOLEBIARKA_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        {
+          speaker: "Pani Gołębiarka",
+          text: "Ostrożnie, młody. Zbyszek je. Jak je, to nie lubi publiczności.",
+        },
+      ],
+      choices: [
+        { label: "Który to Zbyszek?", next: "zbyszek" },
+        { label: "Fontanna kiedyś działała?", next: "fountain" },
+        { label: "Miłego dnia.", next: "bye" },
+      ],
+    },
+    zbyszek: {
+      lines: [
+        {
+          speaker: "Pani Gołębiarka",
+          text: "Ten siwy z charakterem. Nazwałam po prezesie spółdzielni. Obaj gruchają, żaden nie słucha.",
+        },
+      ],
+      next: "start",
+    },
+    fountain: {
+      lines: [
+        {
+          speaker: "Pani Gołębiarka",
+          text: "Na Dzień Dziecka w dziewięćdziesiątym szóstym. Woda leciała do drugiej po południu.",
+        },
+        {
+          speaker: "Pani Gołębiarka",
+          text: "Pamiętam, bo Zbyszek pierwszy się kąpał. Znaczy — tamten Zbyszek. Prezes.",
+        },
+      ],
+      next: "start",
+    },
+    bye: { lines: [{ speaker: "Pani Gołębiarka", text: "Kaszę bierz, nie chleb. Zapamiętaj." }] },
+  },
+};
+
+const TRENER_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [{ speaker: "Trener", text: "O, sambista. Biodra dzisiaj, czy znowu tylko ramiona?" }],
+      choices: [
+        { label: "Biodra, trenerze.", next: "hips" },
+        { label: "Co z tą girą przy oknie?", next: "gira" },
+        { label: "Do roboty.", next: "bye" },
+      ],
+    },
+    hips: {
+      lines: [
+        { speaker: "Trener", text: "Dobrze. Rwanie zaczyna się od ziemi, nie od lustra." },
+        {
+          speaker: "Trener",
+          text: "Lustro jest dla formy. Forma jest dla stawów. Stawy są na całe życie.",
+        },
+      ],
+      next: "start",
+    },
+    gira: {
+      lines: [
+        {
+          speaker: "Trener",
+          text: "Ta? Trzydzieści dwa kilo, rocznik osiemdziesiąty. Ze starej kotłowni.",
+        },
+        {
+          speaker: "Trener",
+          text: "Przeżyła trzy remonty i dwóch prezesów spółdzielni. Szanuj ją.",
+        },
+      ],
+      next: "start",
+    },
+    bye: { lines: [{ speaker: "Trener", text: "Plecy proste. Nie każ mi tego powtarzać." }] },
+  },
+};
+
+const COURIER_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        {
+          speaker: "Kurier",
+          text: "Kovtun? Nie? To nie podpisujesz. Sekunda, szukam czternastki.",
+        },
+      ],
+      choices: [
+        { label: "To ja, z czternastki.", next: "parcel" },
+        { label: "Ciężki dzień?", next: "day" },
+        { label: "Powodzenia.", next: "bye" },
+      ],
+    },
+    parcel: {
+      lines: [
+        { speaker: "Kurier", text: "Serio? To i tak wrzuciłem do paczkomatu. Nawyk. Przepraszam." },
+      ],
+      next: "start",
+    },
+    day: {
+      lines: [
+        {
+          speaker: "Kurier",
+          text: "Sto dwadzieścia paczek, cztery godziny. Apka mówi, że dam radę.",
+        },
+        { speaker: "Kurier", text: "Apka nigdy nie nosiła lodówki na trzecie piętro." },
+      ],
+      next: "start",
+    },
+    bye: { lines: [{ speaker: "Kurier", text: "Dzięki. Miłego." }] },
+  },
+};
+
+const STUDENT_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        {
+          speaker: "Student",
+          text: "Panie, ta lodówka z energetykami to najlepsza półka w mieście.",
+        },
+      ],
+      choices: [
+        { label: "Sesja?", next: "exam" },
+        { label: "Śpij więcej, młody.", next: "sleep" },
+        { label: "Trzymaj się.", next: "bye" },
+      ],
+    },
+    exam: {
+      lines: [
+        {
+          speaker: "Student",
+          text: "Kolokwium z analizy o ósmej. Plan jest taki: nie spać, to się nie zaśpię.",
+        },
+      ],
+      next: "start",
+    },
+    sleep: {
+      lines: [{ speaker: "Student", text: "Spanie jest dla ludzi po sesji. Czyli teoretycznych." }],
+      next: "start",
+    },
+    bye: {
+      lines: [{ speaker: "Student", text: "Powodzenia na siłce, widzę kettlebell w oczach." }],
+    },
+  },
+};
+
+const WAITING_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        { speaker: "Czekający", text: "Czekam na żonę. Powiedziała: dwie minuty, tylko chleb." },
+      ],
+      choices: [
+        { label: "Dawno tak stoisz?", next: "time" },
+        { label: "Znam ten ból.", next: "pain" },
+        { label: "Powodzenia.", next: "bye" },
+      ],
+    },
+    time: {
+      lines: [
+        {
+          speaker: "Czekający",
+          text: "Czterdzieści minut. Ale w Żabce czas płynie inaczej. Jak w kosmosie.",
+        },
+      ],
+      next: "start",
+    },
+    pain: {
+      lines: [
+        {
+          speaker: "Czekający",
+          text: "Najgorsze, że wyjdzie z chlebem. I z pięcioma rzeczami, których nie ma na liście.",
+        },
+        { speaker: "Czekający", text: "Lista jest we mnie. Ja jestem listą." },
+      ],
+      next: "start",
+    },
+    bye: { lines: [{ speaker: "Czekający", text: "No. Stoję dalej. Taki sport." }] },
+  },
+};
+
 const SMOKER_TREE: DialogueTree<Ctx> = {
   start: "start",
   nodes: {
     start: {
-      lines: [{ speaker: "Smoker", text: "Ej. Sąsiad z czternastki, nie? Ognia nie trzeba, mam." }],
+      lines: [
+        {
+          speaker: "Smoker",
+          text: "Ej. Sąsiad z czternastki, nie? Ognia nie trzeba, mam.",
+        },
+      ],
       choices: [
         { label: "Ciężki dzień?", next: "day" },
         { label: "Szkodzi zdrowiu, wiesz.", next: "health" },
@@ -622,7 +925,10 @@ const ZBYSZEK_TREE: DialogueTree<Ctx> = {
   nodes: {
     start: {
       lines: [
-        { speaker: "Pan Zbyszek", text: "Idź przodem, ja jeszcze myślę. Nad życiem i nad piwem." },
+        {
+          speaker: "Pan Zbyszek",
+          text: "Idź przodem, ja jeszcze myślę. Nad życiem i nad piwem.",
+        },
       ],
       choices: [
         { label: "Długa kolejka?", next: "queue" },
@@ -649,7 +955,12 @@ const ZBYSZEK_TREE: DialogueTree<Ctx> = {
       next: "start",
     },
     bye: {
-      lines: [{ speaker: "Pan Zbyszek", text: "No. I paragon bierz, bo potem nie ma człowieka." }],
+      lines: [
+        {
+          speaker: "Pan Zbyszek",
+          text: "No. I paragon bierz, bo potem nie ma człowieka.",
+        },
+      ],
     },
   },
 };
@@ -705,7 +1016,10 @@ function buildCashierTree(world: WorldState): DialogueTree<Ctx> {
       },
       "sold-12": {
         lines: [
-          { speaker: "Cashier", text: "Twelve even. The matches are a gift, they don't scan." },
+          {
+            speaker: "Cashier",
+            text: "Twelve even. The matches are a gift, they don't scan.",
+          },
         ],
         next: "more",
       },

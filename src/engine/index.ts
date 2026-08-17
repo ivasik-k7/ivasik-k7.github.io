@@ -18,6 +18,20 @@ export { mumble, type VoiceProfile, voiceFor } from "./audio/voice";
 // core
 export * from "./core/constants";
 export * from "./core/math";
+// runtime v2 — culling, sequencing, actors, adaptive quality
+export { CullBox, CullStrip, useIsVisible, useVisibleBand } from "./core/runtime-cull";
+export type {
+  ActorDef,
+  InputAction,
+  QualityTier,
+  RuntimeApi,
+  RuntimeConfig,
+  RuntimeCtx,
+  RuntimeObject,
+  RuntimeSceneDef,
+  RuntimeStats,
+  SeqStep,
+} from "./core/runtime-types";
 export type {
   ActionDef,
   AnyWorld,
@@ -30,12 +44,26 @@ export type {
   SceneObject,
   SceneRenderProps,
   SpriteMap,
+  SpritePalette,
 } from "./core/types";
 // runtime
 export { GameRuntime } from "./runtime/GameRuntime";
 // scene composition & art kit
 export * from "./scene/artkit";
 export * from "./scene/layers";
+export * from "./scene/pixelKit";
+export {
+  BANDS,
+  bandPath,
+  LightDefs,
+  type LightTiers,
+  Pool,
+  PoolFlicker,
+  pool,
+  StringLights,
+  SunBand,
+  TierLight,
+} from "./scene/pixelLight";
 export * from "./scene/props";
 // sprites & characters
 export {
@@ -56,4 +84,6 @@ export * from "./systems/save";
 // ui
 export { AudioHud } from "./ui/AudioHud";
 export { DialogueBox } from "./ui/DialogueBox";
+export { FpsMeter } from "./ui/FpsMeter";
+export { InteractPrompt, TargetMarker } from "./ui/InteractPrompt";
 export { PixelSprite } from "./ui/PixelSprite";

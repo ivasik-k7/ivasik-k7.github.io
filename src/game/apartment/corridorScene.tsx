@@ -1,80 +1,393 @@
 import { useEffect, useState } from "react";
-import { LayeredScene, px, type SceneDef, stripes } from "@/engine";
+import {
+  AOSet,
+  aoPaths,
+  Bev,
+  Bevel,
+  bevelPaths,
+  bulbPaths,
+  Contact,
+  contactPaths,
+  dim,
+  dth,
+  LayeredScene,
+  Light,
+  M,
+  type Mat,
+  type Ph,
+  PixelText,
+  px,
+  pxPath,
+  type Rect,
+  repeat,
+  type SceneDef,
+  SharedDefs,
+  STEP_DROOP,
+  STEP_FADE,
+  STEP_SLIDE,
+  steppedCone,
+  steppedEllipse,
+  steppedQuad,
+  textPath,
+  tiers,
+  toPhase,
+  Vignette,
+  vignettePaths,
+} from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 import { NpcMonologue } from "./NpcMonologue";
 
 // --- КОРИДОР / a modern Polish landing, floor 4 -------------------------------------
 
 /**
- * The landing has no daylight of its own except the stairwell window, so that
- * window does all the work: it decides whether the tiles are cold blue or warm
- * amber, whether the blind is half down or fully down, whether it's raining.
+ * Second pass. Same landing, rebuilt to the house standard.
  *
- * Everything here has a state and most of them are on the clock rather than on
- * a flag — the neighbours take the pram out in the morning and bring it back at
- * night, a strip of light shows under 13's door once it's dark, Pani Natalia
- * mops at dawn, leans on the mop by midday, wrings out at dusk, and by night
- * has gone home leaving the bucket parked against the wall.
+ * Four planes now, where there was one:
+ *   middleBackground (0.88) — the world outside the stairwell window. Thirty
+ *     metres away, so it barely lags; enough to feel like glass, not a mural.
+ *   ground (1.0) — ceiling, walls, window, doors, every wall fitting, the
+ *     tile. All hitboxes resolve here.
+ *   staticObjects (1.0) — everything standing on the tile: the pram, the
+ *     plant, the parcel, Pani Natalia and her bucket.
+ *   Foreground (fixed) — the near edge. The corridor's own near corner at the
+ *     left, the underside of the ceiling at the top, six pixels of tile at the
+ *     bottom, and a spider on a thread that is very nearly in the lens.
+ *
+ * The lighting premise has not changed and it is still the whole model: this
+ * floor has no daylight of its own except the stairwell window, and the ceiling
+ * spots are on a twenty-second motion timer. So the window sets the palette —
+ * the walls and tile are palette-shifted per phase rather than washed with an
+ * overlay — and the sensor decides how much of it you can see. Pani Natalia
+ * being on the landing counts as motion, which is why it is never dark while
+ * she is working.
+ *
+ * All light is quantised: stepped cones, dithered edges, stepped floor pools,
+ * no gradients and no ellipses anywhere. Transitions run on steps() so a light
+ * coming up does it in three visible jumps rather than 460ms of subpixel fade,
+ * and the lift leaves slide in four-pixel increments.
+ *
+ * Budget: ~560 live nodes, ~18 animations depending on phase. The four spot
+ * cones account for 20 of those nodes and stay mounted at opacity 0 so the
+ * stepped fade has something to fade; everything else static is precomputed to
+ * a path at module load.
  */
 
 const W = 560;
+const H = 180;
 
-/** Ceiling spot positions — the motion lights cone down from these. */
-const CORRIDOR_SPOTS = [80, 230, 380, 500];
+/* Landmark rows. A landing is a stack of horizontal bands and these are them. */
+const CEIL = 43; // underside of the suspended ceiling
+const BAND = 103; // top of the graphite accent band — dado height, where a pram handle hits
+const SKIRT = 144;
+const FLOOR = 150; // tile surface
+const CY = FLOOR - 2; // where contact shadows sit
 
-const C = {
-  ceil: "#e8e6e0",
-  ceilLo: "#d0cec6",
-  ceilSeam: "#dcd9d1",
-  wallHi: "#d6d2c8",
-  wallLo: "#c9c5ba",
-  wallScuff: "#bfbbb0",
-  wallPatch: "#ded9cf",
-  band: "#4a4d52",
-  bandHi: "#5a5d62",
-  skirt: "#3f4246",
-  tile: "#9d9a92",
-  tileLo: "#8b8880",
-  tileHi: "#b5b2aa",
-  tileWet: "#aab0ae",
-  steel: "#aeb2b8",
-  steelHi: "#c8ccd2",
-  steelDark: "#6b6e73",
-  graphite: "#3f4246",
-  graphiteHi: "#4a4d52",
-  glassDay: "#a8c2d4",
-  glassDusk: "#c99a72",
-  glassNight: "#232a34",
-  blind: "#e8e6e0",
-  blindLo: "#d0cec6",
-  oak: "#a8895e",
-  oakLo: "#9a7c52",
-  white: "#e2e0da",
-  whiteLo: "#d8d6d0",
-  brass: "#c9a24b",
-  red: "#b03030",
-  redHi: "#c94040",
-  green: "#3ddc84",
-  leaf: "#4e6b4e",
-  leafDry: "#8a8a4a",
-  teal: "#3a7d84",
-  tealLo: "#2f6a70",
-  tealHi: "#459098",
-  skin: "#e0b48c",
-  skinShade: "#c79a72",
-  warm: "#ffd98a",
-  shadow: "#00000033",
-  shadowSoft: "#0000001c",
-};
+/** Ceiling spots. 500 is dead — see Ceiling(). */
+const SPOTS = [80, 230, 380, 500] as const;
+const LIVE_SPOTS = [80, 230, 380] as const;
 
-type Ph = "dawn" | "day" | "dusk" | "night";
+/* ================================================================== *
+ * palette
+ * ================================================================== */
 
-function toPhase(phase?: string): Ph {
-  if (phase === "night") return "night";
-  if (phase === "dusk") return "dusk";
-  if (phase === "dawn" || phase === "morning") return "dawn";
-  return "day";
+/**
+ * The two surfaces that dominate the frame get a real ramp per phase instead
+ * of a tint rect over the top. This is the expensive-to-author, cheap-to-draw
+ * option, and on a corridor — where 70% of the pixels are wall and floor — it
+ * is the one that pays.
+ */
+const DAWN_CAST = "#8c86a8"; // the violet the sky is before it commits
+const DUSK_CAST = "#c98a52";
+const NIGHT_CAST = "#141a24";
+
+function ramp(mat: Mat): Record<Ph, Mat> {
+  return {
+    dawn: dim(mat, DAWN_CAST, 0.15),
+    day: mat,
+    dusk: dim(mat, DUSK_CAST, 0.16),
+    night: dim(mat, NIGHT_CAST, 0.6),
+  };
 }
+
+const PLASTER = ramp(M.plaster);
+const TILE = ramp(M.tile);
+const CEILING = ramp({
+  hi: "#f0eee8",
+  base: "#e8e6e0",
+  mid: "#dcd9d1",
+  lo: "#d0cec6",
+  deep: "#b8b6ae",
+});
+const GRAPHITE = ramp(M.graphite);
+
+const K = {
+  glass: { dawn: "#c6c0d0", day: "#a8c2d4", dusk: "#c99a72", night: "#232a34" } as Record<
+    Ph,
+    string
+  >,
+  sky: { dawn: "#b0aec6", day: "#bcd2e0", dusk: "#d8a478", night: "#1b2029" } as Record<Ph, string>,
+  scuff: "#bfbbb0",
+  patch: "#ded9cf",
+  /** the greige they used for the second overpaint, which was not the greige */
+  overpaint: "#cfcabe",
+  warm: "#ffd98a",
+  green: "#3ddc84",
+  amber: "#ff8a3a",
+  ledDead: "#c9c7bf",
+  brass: M.brass.base,
+  leafDry: "#8a8a4a",
+  gum: "#2e2c28",
+  chalk: "#e2e0da",
+} as const;
+
+/* ================================================================== *
+ * precomputed geometry
+ * ================================================================== */
+
+/* --- ceiling --- */
+const CEIL_SEAMS = pxPath([93, 186, 279, 372, 465].map((x) => [x, 0, 1, CEIL] as Rect));
+const SPOT_HOUSINGS = bevelPaths(SPOTS.map((x) => [x - 6, 36, 12, 4] as Rect));
+const SPOT_LENSES = pxPath(LIVE_SPOTS.map((x) => [x - 4, 40, 8, 2] as Rect));
+const VENT_FINS = pxPath(repeat(6, 5, [303, 35, 2, 5]));
+/** the panel that was lifted for the riser survey and never seated back flat */
+const PANEL_LIFT = aoPaths([[279, 1, 93]]);
+
+/* --- walls --- */
+/** the floor numeral, painted by hand and cropped by the corner */
+const NUMERAL_4 = pxPath([
+  [0, 54, 5, 30],
+  [0, 78, 18, 5],
+  [13, 54, 5, 42],
+]);
+/** where a trolley wheel went through it */
+const NUMERAL_SCUFF = pxPath([
+  [2, 68, 9, 2],
+  [8, 82, 6, 1],
+]);
+const WALL_SCUFFS = pxPath([
+  [172, 128, 40, 6],
+  [430, 132, 34, 4],
+  [96, 136, 22, 3],
+  /* the arc door 13 has worn where it swings past the wall */
+  [164, 118, 4, 22],
+  [166, 116, 2, 2],
+]);
+const ANCHOR_HOLES = pxPath([
+  [340, 96, 2, 2],
+  [352, 96, 2, 2],
+  /* and the four from the frame that used to hang here, filled with the wrong filler */
+  [234, 56, 2, 2],
+  [272, 56, 2, 2],
+  [234, 100, 2, 2],
+  [272, 100, 2, 2],
+]);
+/** a tag, painted over twice, still legible if you know it's there */
+const GRAFFITI = pxPath([
+  [300, 114, 14, 2],
+  [300, 118, 3, 8],
+  [305, 122, 8, 2],
+  [311, 114, 3, 12],
+  [298, 126, 18, 2],
+]);
+/** paint that ran when they cut in the band and nobody came back with a rag */
+const DRIP = pxPath([
+  [244, 109, 2, 16],
+  [245, 125, 1, 5],
+]);
+
+/* --- notice board above the pram --- */
+const BOARD = bevelPaths([[168, 52, 34, 46]]);
+const BOARD_PINS = pxPath([
+  [174, 58, 1, 1],
+  [190, 57, 1, 1],
+  [176, 78, 1, 1],
+  [192, 80, 1, 1],
+]);
+const BOARD_PAPERS = bevelPaths([
+  [172, 57, 12, 17],
+  [187, 56, 13, 18],
+  [173, 77, 14, 16],
+  [190, 79, 10, 14],
+]);
+const BOARD_LINES = pxPath([
+  [174, 61, 8, 1],
+  [174, 64, 6, 1],
+  [174, 67, 9, 1],
+  [189, 60, 9, 1],
+  [189, 63, 7, 1],
+  [175, 81, 10, 1],
+  [175, 84, 8, 1],
+  [175, 87, 11, 1],
+  [192, 83, 6, 1],
+]);
+
+/* --- floor --- */
+/** large-format tile: joints every 70 across, two courses deep */
+const TILE_JOINTS = pxPath([...repeat(8, 70, [70, FLOOR, 1, 30]), [0, 158, W, 1], [0, 174, W, 1]]);
+const MATS = bevelPaths([
+  [26, FLOOR, 40, 4],
+  [124, FLOOR, 34, 3],
+  [322, FLOOR, 34, 3],
+]);
+const MAT_BRISTLES = pxPath(repeat(6, 6, [30, 151, 2, 3]));
+/** the gum somebody left in 2023 and the heel-marks around it */
+const FLOOR_GRIME = pxPath([
+  [210, 168, 3, 2],
+  [211, 167, 1, 1],
+  [96, 170, 2, 1],
+  [148, 172, 6, 1],
+  [152, 171, 3, 1],
+]);
+/** pram wheels, when the pram has been out and back */
+const PRAM_TRACKS = pxPath([
+  [176, 154, 2, 18],
+  [196, 154, 2, 18],
+]);
+
+/* --- doors --- */
+const D14_FRAME = bevelPaths([[20, 62, 50, 88]]);
+const D14_LEAF = bevelPaths([[24, 66, 42, 84]]);
+const D14_PANELS = bevelPaths([
+  [30, 74, 30, 22],
+  [30, 100, 30, 22],
+  [30, 126, 30, 16],
+]);
+const D13_FRAME = bevelPaths([[118, 64, 46, 86]]);
+const D13_LEAF = bevelPaths([[122, 68, 38, 82]]);
+const D13_PANELS = bevelPaths([
+  [126, 74, 30, 30],
+  [126, 108, 30, 32],
+]);
+const D15_FRAME = bevelPaths([[316, 64, 46, 86]]);
+const D15_LEAF = bevelPaths([[320, 68, 38, 82]]);
+const D15_PANELS = bevelPaths([[324, 74, 30, 66]]);
+/** a child measured against the architrave of 15, twice a year, in pencil */
+const HEIGHT_MARKS = pxPath([
+  [317, 128, 4, 1],
+  [317, 121, 4, 1],
+  [317, 115, 4, 1],
+  [317, 110, 3, 1],
+]);
+const T_14 = textPath("14", 40, 73);
+const T_13 = textPath("13", 138, 70);
+const T_15 = textPath("15", 336, 70);
+const T_METER = textPath("4152", 212, 93);
+const T_METER_SHUT = textPath("4152", 215, 77);
+const T_PPOZ = textPath("P", 396, 64);
+
+/* --- lift --- */
+const LIFT_PORTAL = bevelPaths([[426, 54, 56, 96]]);
+const LEAF_L = bevelPaths([[432, 60, 22, 88]]);
+const LEAF_R = bevelPaths([[454, 60, 22, 88]]);
+/** Polish ground floor is P, not 0. The car spends its life between P and 4. */
+const IND_SEQUENCE = ["P", "1", "2", "3"].map((d) => textPath(d, 446, 45));
+const IND_ARROW = pxPath([
+  [458, 45, 5, 1],
+  [459, 46, 3, 1],
+  [460, 47, 1, 1],
+]);
+/** the dent at kick height, from a wardrobe that went up in 2021 */
+const LEAF_DENT = pxPath([
+  [466, 124, 6, 3],
+  [467, 127, 4, 1],
+]);
+const CAR_BUTTONS = pxPath(repeat(4, 5, [468, 85, 4, 3], "y"));
+
+/* --- riser --- */
+const RISER_BOX = bevelPaths([[204, 64, 34, 56]]);
+const RISER_BREAKERS = bevelPaths(repeat(6, 4, [209, 72, 3, 10]));
+const RISER_TRIPPED = pxPath([
+  [213, 72, 3, 4],
+  [221, 72, 3, 4],
+]);
+
+/* --- fittings --- */
+const INTERCOM_BOX = bevelPaths([[88, 72, 18, 28]]);
+const INTERCOM_GRILLE = pxPath(repeat(4, 3, [91, 91, 2, 4]));
+const SWITCH_BOX = bevelPaths([
+  [108, 88, 10, 13],
+  [107, 128, 12, 12],
+]);
+/** two standby LEDs on one wall, one path, one animation */
+const STANDBY_LEDS = pxPath([
+  [102, 86, 2, 2],
+  [111, 92, 4, 2],
+]);
+const PRINT_FRAME = bevelPaths([[238, 58, 30, 40]]);
+const EXT_BOX = bevelPaths([[388, 70, 30, 44]]);
+
+/* --- window --- */
+const WIN_FRAME = bevelPaths([[490, 44, 68, 56]]);
+const WIN_SILL = bevelPaths([[490, 96, 68, 4]]);
+const SILL_AO = aoPaths([[491, 100, 66]]);
+const BLIND_SLATS = [52, 56, 60, 64, 68, 72, 76, 80] as const;
+
+/* --- stairs --- */
+const TREADS = bevelPaths([
+  [494, 112, 52, 4],
+  [500, 124, 46, 4],
+  [506, 136, 40, 4],
+]);
+const NOSINGS = pxPath([
+  [494, 115, 52, 1],
+  [500, 127, 46, 1],
+  [506, 139, 40, 1],
+]);
+
+/* --- contact shadows, all in one pass --- */
+const CONTACTS = contactPaths([
+  [280, 26, CY], // plant pot
+  [170, 38, CY], // pram
+  [64, 26, CY], // parcel
+  [158, 20, CY], // shoes, scooter, bowl
+]);
+
+/* ================================================================== *
+ * light — precomputed, quantised
+ * ================================================================== */
+
+/** A ceiling spot: cone from the fitting to the floor, plus its pool. */
+const SPOT_CONES = LIVE_SPOTS.map((x) =>
+  tiers((s) => steppedCone(x, CEIL, Math.round(8 * s), FLOOR, Math.round(46 * s), 6), "w"),
+);
+const SPOT_POOLS = LIVE_SPOTS.map((x) =>
+  tiers(
+    (s) => steppedEllipse(x, 152, Math.round(46 * s), Math.max(2, Math.round(7 * s)), 2),
+    "w",
+    0.7,
+  ),
+);
+/** the lens itself, so the fitting reads as the source and not just a hole */
+const SPOT_SOURCES = pxPath(LIVE_SPOTS.map((x) => [x - 5, 40, 10, 3] as Rect));
+
+/**
+ * The window shaft. Daylight rakes down and to the left across the tile; at
+ * dusk it goes long and amber, at dawn it is short, high and cold.
+ */
+const SHAFT: Record<Ph, ReturnType<typeof tiers> | null> = {
+  dawn: tiers((s) => steppedQuad(48, 496, 552, FLOOR + 18, 500 - 40 * s, 552, 8), "c", 0.7),
+  day: tiers((s) => steppedQuad(48, 496, 552, H, 480 - 60 * s, 556, 8), "c"),
+  dusk: tiers((s) => steppedQuad(48, 496, 552, H, 440 - 90 * s, 558, 8), "e", 0.85),
+  night: null,
+};
+/** what the streetlamp manages, which is not much */
+const LAMP_WASH = tiers((s) => steppedQuad(48, 500, 548, H, 470 - 30 * s, 552, 8), "c", 0.32);
+
+const EXIT_GLOW = bulbPaths([[499, 42]]);
+/** dust turning over in the middle cone — one path, one animation */
+const MOTES = pxPath([
+  [214, 72, 1, 1],
+  [228, 88, 1, 1],
+  [240, 64, 1, 1],
+  [232, 106, 1, 1],
+  [220, 120, 1, 1],
+]);
+
+const VIG = vignettePaths(W, H);
+
+/* ================================================================== *
+ * state
+ * ================================================================== */
 
 /** Optional corridor flags, read defensively so this compiles unchanged. */
 function extras(world: WorldState) {
@@ -85,194 +398,229 @@ function extras(world: WorldState) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// a 3×5 font for door numbers and the lift indicator
-// ---------------------------------------------------------------------------
+type Mode = "mop" | "rest" | "wring" | "away";
 
-const GLYPHS: Record<string, string[]> = {
-  "0": ["111", "101", "101", "101", "111"],
-  "1": ["010", "110", "010", "010", "111"],
-  "2": ["111", "001", "111", "100", "111"],
-  "3": ["111", "001", "111", "001", "111"],
-  "4": ["101", "101", "111", "001", "001"],
-  "5": ["111", "100", "111", "001", "111"],
-  P: ["111", "101", "111", "100", "100"],
-  "-": ["000", "000", "111", "000", "000"],
-  " ": ["00", "00", "00", "00", "00"],
-};
-
-function PixelText({
-  x,
-  y,
-  text,
-  fill,
-  gap = 1,
-}: {
-  x: number;
-  y: number;
-  text: string;
-  fill: string;
-  gap?: number;
-}) {
-  const out: React.ReactNode[] = [];
-  let cx = x;
-  for (let i = 0; i < text.length; i++) {
-    const rows = GLYPHS[text[i]] ?? GLYPHS[" "];
-    const w = rows[0].length;
-    for (let r = 0; r < rows.length; r++) {
-      for (let col = 0; col < w; col++) {
-        if (rows[r][col] === "1") out.push(px(cx + col, y + r, 1, 1, fill, `g${i}${r}${col}`));
-      }
-    }
-    cx += w + gap;
-  }
-  return <g>{out}</g>;
+function modeFor(ph: Ph): Mode {
+  if (ph === "dawn") return "mop";
+  if (ph === "day") return "rest";
+  if (ph === "dusk") return "wring";
+  return "away";
 }
 
-// ---------------------------------------------------------------------------
-// ceiling + walls
-// ---------------------------------------------------------------------------
+/* ================================================================== *
+ * PLANE 1 — outside the window (parallax 0.88)
+ * drawn wider than the opening so it never runs dry
+ * ================================================================== */
 
-function Ceiling() {
+const BLOCK_WINDOWS = pxPath([
+  [504, 66, 5, 5],
+  [530, 64, 5, 5],
+  [522, 84, 5, 5],
+]);
+const RAIN = pxPath([
+  [502, 48, 1, 5],
+  [517, 56, 1, 5],
+  [534, 64, 1, 5],
+  [545, 52, 1, 5],
+  [509, 72, 1, 5],
+]);
+
+function OutsideView({ ph }: { ph: Ph }) {
+  const night = ph === "night";
   return (
     <g>
-      {px(0, 0, W, 40, C.ceil)}
-      {/* suspended panel seams */}
-      {[93, 186, 279, 372, 465].map((x) => px(x, 0, 1, 40, C.ceilSeam, `cs${x}`))}
-      {px(0, 26, W, 1, C.ceilSeam)}
-      {px(0, 40, W, 3, C.ceilLo)}
-      {/* recessed spot housings */}
-      {CORRIDOR_SPOTS.map((x) => (
-        <g key={`spot${x}`}>
-          {px(x - 6, 36, 12, 4, "#b8b6ae")}
-          {px(x - 6, 36, 12, 1, "#c9c7bf")}
-          {px(x - 4, 40, 8, 2, "#fff8e0")}
+      {/* sky, and the block that has been opposite since 2006 */}
+      {px(482, 40, 84, 66, K.sky[ph])}
+      {px(482, 40, 84, 12, night ? "#232a34" : dim(M.tin, K.sky[ph], 0.5).base)}
+      {px(494, 58, 54, 48, night ? "#1b2029" : "#8fa8b8")}
+      {px(494, 58, 54, 2, night ? "#242b36" : "#9fb6c4")}
+      {!night ? (
+        <g>
+          {px(500, 68, 12, 10, "#7d97a8")}
+          {px(524, 64, 14, 12, "#7d97a8")}
+          {px(500, 88, 12, 10, "#7d97a8")}
+          {/* their dish, and the pigeons that sit on their parapet not ours */}
+          {px(540, 70, 7, 7, "#a8a49a")}
+          {px(494, 56, 54, 2, "#a8a49a")}
+          {px(508, 52, 4, 4, "#6d7278")}
+          {px(514, 53, 4, 3, "#6d7278")}
         </g>
-      ))}
+      ) : (
+        <g>
+          {/* three windows awake, one of them watching something */}
+          <path d={BLOCK_WINDOWS} fill={K.warm} opacity={0.85}>
+            <animate
+              attributeName="opacity"
+              calcMode="discrete"
+              values="0.85;0.85;0.6;0.85;0.85;0.4;0.85"
+              dur="53s"
+              repeatCount="indefinite"
+            />
+          </path>
+          {px(516, 72, 5, 5, "#9fc7d6")}
+          <rect x={516} y={72} width={5} height={5} fill="#9fc7d6" opacity={0.5}>
+            <animate
+              attributeName="opacity"
+              calcMode="discrete"
+              values="0.5;0.2;0.45;0.15;0.5"
+              dur="2.2s"
+              repeatCount="indefinite"
+            />
+          </rect>
+          {/* rain, on the outside of the glass where it belongs */}
+          <g>
+            <path d={RAIN} fill="#9fb6c8" opacity={0.45} />
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              values="0 0;0 44"
+              dur="1.6s"
+              repeatCount="indefinite"
+            />
+          </g>
+        </g>
+      )}
+    </g>
+  );
+}
+
+/* ================================================================== *
+ * PLANE 2 — the landing itself. Hitboxes live here.
+ * ================================================================== */
+
+function Ceiling({ ph, lit }: { ph: Ph; lit: boolean }) {
+  const c = CEILING[ph];
+  return (
+    <g>
+      {px(0, 0, W, CEIL, c.base)}
+      <path d={CEIL_SEAMS} fill={c.mid} />
+      {px(0, 26, W, 1, c.mid)}
+      {px(0, CEIL - 3, W, 3, c.lo)}
+      {px(0, CEIL - 3, W, 1, c.mid)}
+      {/* the panel they lifted for the riser survey and never seated flat */}
+      <AOSet set={PANEL_LIFT} op={0.7} />
+      {/* fittings */}
+      <Bev set={SPOT_HOUSINGS} mat={dim(M.tin, c.base, 0.4)} />
+      <path d={SPOT_LENSES} fill={lit ? "#fff8e0" : "#cfcdc6"} />
+      {/* the one over the window has been cold for a year and nobody has
+          reported it, because that end of the landing has the window */}
+      {px(496, 40, 8, 2, K.ledDead)}
       {/* smoke detector, blinking the way they do at 3am */}
-      {px(152, 34, 16, 6, "#e2e0da")}
-      {px(154, 32, 12, 2, "#e8e6e0")}
-      {px(156, 40, 8, 1, "#c9c7bf")}
+      {px(152, 34, 16, 6, c.base)}
+      {px(152, 34, 16, 1, c.hi)}
+      {px(154, 32, 12, 2, c.hi)}
+      {px(156, 40, 8, 1, c.lo)}
       <rect x={158} y={37} width={2} height={2} fill="#ff5050">
-        <animate attributeName="opacity" values="0;0;1;0;0" dur="8s" repeatCount="indefinite" />
+        <animate
+          attributeName="opacity"
+          calcMode="discrete"
+          values="0;0;1;0;0"
+          dur="8s"
+          repeatCount="indefinite"
+        />
       </rect>
-      {/* ventilation grille */}
-      {px(300, 33, 34, 8, "#c9c7bf")}
-      {px(300, 33, 34, 1, "#dcd9d1")}
-      {[303, 308, 313, 318, 323, 328].map((x) => px(x, 35, 2, 5, "#a8a69e", `vg${x}`))}
-      {/* the cable tray nobody was supposed to see */}
-      {px(410, 38, 60, 2, "#b8b6ae")}
+      {/* extract grille, furred with dust on the leeward side of every fin */}
+      {px(300, 33, 34, 8, c.lo)}
+      {px(300, 33, 34, 1, c.mid)}
+      <path d={VENT_FINS} fill={c.deep} />
+      <rect x={300} y={33} width={34} height={8} fill="url(#px-grain)" />
+      {px(302, 41, 30, 1, "#a8a49a")}
+      {/* the cable tray nobody was supposed to see, and its zip-tie tail */}
+      {px(410, 38, 60, 2, c.deep)}
+      {px(438, 40, 1, 4, "#4a4d52")}
     </g>
   );
 }
 
 function Walls({ ph }: { ph: Ph }) {
+  const p = PLASTER[ph];
+  const g = GRAPHITE[ph];
   return (
     <g>
-      {/* greige upper wall with roller texture */}
-      {px(0, 43, W, 60, C.wallHi)}
-      {stripes(W, 43, 60, 74, "#cfcbc1", 20)}
-      {/* the big painted floor numeral, cropped by the corner */}
-      {px(0, 50, 5, 30, "#c2beb4")}
-      {px(0, 74, 18, 5, "#c2beb4")}
-      {px(13, 50, 5, 42, "#c2beb4")}
-      {/* graphite accent band, with the cable trunking it hides */}
-      {px(0, 103, W, 6, C.band)}
-      {px(0, 103, W, 1, C.bandHi)}
-      {px(0, 108, W, 1, "#33363a")}
-      {/* lower wall, scuffed where trolleys and prams pass */}
-      {px(0, 109, W, 35, C.wallLo)}
-      {px(172, 128, 40, 6, C.wallScuff)}
-      {px(430, 132, 34, 4, C.wallScuff)}
-      {px(96, 136, 22, 3, C.wallScuff)}
-      {/* a filled-and-not-repainted patch */}
-      {px(266, 116, 12, 10, C.wallPatch)}
+      {/* upper wall, rollered by one man in an afternoon */}
+      {px(0, CEIL, W, BAND - CEIL, p.base)}
+      <rect x={0} y={CEIL} width={W} height={BAND - CEIL} fill="url(#px-roller)" />
+      {px(0, CEIL, W, 1, p.hi)}
+      {/* the floor numeral, and the trolley that went through it */}
+      <path d={NUMERAL_4} fill={p.lo} />
+      <path d={NUMERAL_SCUFF} fill={p.mid} />
+      {/* the ghost of the bigger frame that hung here before the print */}
+      {px(232, 52, 42, 52, p.hi)}
+      {px(232, 52, 42, 1, p.base)}
+      {/* graphite accent band, hiding the trunking */}
+      {px(0, BAND, W, 6, g.base)}
+      {px(0, BAND, W, 1, g.hi)}
+      {px(0, BAND + 5, W, 1, g.deep)}
+      <path d={DRIP} fill={g.mid} />
+      {/* lower wall, scuffed where prams and trolleys pass */}
+      {px(0, BAND + 6, W, SKIRT - BAND - 6, p.mid)}
+      <rect x={0} y={BAND + 6} width={W} height={SKIRT - BAND - 6} fill="url(#px-roller)" />
+      <path d={WALL_SCUFFS} fill={K.scuff} opacity={0.5} />
+      {/* filled and not repainted; overpainted twice and still legible */}
+      {px(266, 116, 12, 10, K.patch)}
       {px(266, 116, 12, 1, "#e6e2d8")}
-      {/* skirting with the LED channel */}
-      {px(0, 144, W, 6, C.skirt)}
-      {px(0, 144, W, 1, "#565a5f")}
-      {px(0, 148, W, 1, "#2e3135")}
-      {/* the drilled-and-abandoned anchor holes above the band */}
-      {px(340, 96, 2, 2, "#a8a49a")}
-      {px(352, 96, 2, 2, "#a8a49a")}
-      {ph === "night" ? px(0, 43, W, 101, "#141a24", "wallnight") : null}
+      <path d={GRAFFITI} fill={K.overpaint} opacity={0.55} />
+      <path d={ANCHOR_HOLES} fill={p.deep} opacity={0.6} />
+      {/* skirting with its LED channel */}
+      {px(0, SKIRT, W, 6, g.base)}
+      {px(0, SKIRT, W, 1, g.hi)}
+      {px(0, SKIRT + 4, W, 1, g.deep)}
+      <rect x={0} y={CEIL} width={W} height={SKIRT - CEIL} fill="url(#px-grain)" />
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// the stairwell window — the only daylight on this floor
-// ---------------------------------------------------------------------------
+function NoticeBoard() {
+  return (
+    <g>
+      <Bev set={BOARD} mat={M.wood} />
+      <rect x={168} y={52} width={34} height={46} fill="url(#px-wood)" />
+      <Bev set={BOARD_PAPERS} mat={M.linen} />
+      <path d={BOARD_LINES} fill="#8a8d92" opacity={0.7} />
+      <path d={BOARD_PINS} fill="#c94040" />
+      {/* the one about the water being off, from March */}
+      {px(189, 58, 9, 2, "#a33a30")}
+      {px(174, 79, 10, 2, "#3f5b7a")}
+    </g>
+  );
+}
 
 function StairWindow({ ph }: { ph: Ph }) {
   const night = ph === "night";
-  const glass =
-    ph === "night"
-      ? C.glassNight
-      : ph === "dusk"
-        ? C.glassDusk
-        : ph === "dawn"
-          ? "#c6c0d0"
-          : C.glassDay;
-  // the blind gets pulled further down after dark
+  // the blind comes further down after dark, the way people do it
   const blindH = night ? 34 : ph === "dusk" ? 24 : 16;
+  const slats = BLIND_SLATS.filter((y) => y < 48 + blindH - 2);
   return (
     <g>
-      {px(492, 44, 64, 56, "#b8b6ae")}
-      {px(492, 44, 64, 2, "#c9c7bf")}
-      {px(496, 48, 56, 48, glass)}
-      {!night ? px(496, 48, 56, 16, "#bcd2e0") : null}
-      {/* the block opposite, and its lit windows after dark */}
-      {night ? (
-        <g>
-          {px(500, 60, 44, 36, "#1b2029")}
-          {[
-            [504, 66],
-            [516, 72],
-            [530, 64],
-            [522, 84],
-          ].map(([wx, wy], i) => (
-            <rect key={`${wx}${wy}`} x={wx} y={wy} width={5} height={5} fill={C.warm}>
-              <animate
-                attributeName="opacity"
-                values="1;1;0.2;1"
-                dur={`${45 + i * 13}s`}
-                repeatCount="indefinite"
-              />
-            </rect>
-          ))}
-          {/* rain on the glass */}
-          {[502, 517, 534, 545].map((rx, i) => (
-            <rect key={rx} x={rx} y={50} width={1} height={5} fill="#9fb6c8" opacity={0.5}>
-              <animate
-                attributeName="y"
-                values="48;92"
-                dur={`${1.5 + i * 0.3}s`}
-                repeatCount="indefinite"
-              />
-            </rect>
-          ))}
-        </g>
-      ) : (
-        <g>
-          {px(500, 62, 44, 34, "#8fa8b8")}
-          {px(504, 70, 12, 10, "#7d97a8")}
-          {px(524, 66, 14, 12, "#7d97a8")}
-        </g>
-      )}
-      {/* mullion + roller blind */}
-      {px(522, 48, 2, 48, "#b8b6ae")}
-      {px(496, 48, 56, blindH, C.blind)}
-      {px(496, 48 + blindH - 2, 56, 2, C.blindLo)}
-      {[52, 56, 60]
-        .filter((y) => y < 48 + blindH - 2)
-        .map((y) => px(496, y, 56, 1, "#dcd9d1", `bl${y}`))}
-      {px(522, 48 + blindH, 2, 5, "#c9c7bf")}
-      {/* sill, and the dust that gathers on every sill */}
-      {px(490, 96, 68, 4, "#d0cec6")}
-      {px(490, 96, 68, 1, "#e2e0da")}
-      {px(491, 100, 66, 3, C.shadowSoft)}
-      {px(494, 94, 8, 2, "#c2beb4")}
+      <Bev set={WIN_FRAME} mat={dim(M.tin, PLASTER[ph].base, 0.45)} />
+      {px(496, 48, 56, 48, K.glass[ph])}
+      {/* the mullion, and the handle somebody painted over */}
+      {px(522, 48, 2, 48, M.tin.lo)}
+      {px(524, 70, 5, 3, PLASTER[ph].base)}
+      {/* condensation, low in the pane, on the cold nights */}
+      {night ? px(496, 84, 56, 12, "#cfe0ea", "cond") : null}
+      {night ? px(496, 84, 26, 12, "#cfe0ea", "cond2") : null}
+      {/* roller blind, one slat bent since the handle went */}
+      {px(496, 48, 56, blindH, M.linen.base)}
+      {px(496, 48, 56, 1, M.linen.hi)}
+      {px(496, 48 + blindH - 2, 56, 2, M.linen.lo)}
+      <path d={pxPath(slats.map((y) => [496, y, 56, 1] as Rect))} fill={M.linen.mid} />
+      {px(516, 48 + blindH - 4, 12, 1, M.linen.deep)}
+      {px(522, 48 + blindH, 2, 5, M.linen.lo)}
+      {/* sill */}
+      <Bev set={WIN_SILL} mat={dim(M.tin, PLASTER[ph].base, 0.3)} />
+      <AOSet set={SILL_AO} op={0.8} />
+      {/* the burn from whoever smokes out of this window, and their tin */}
+      {px(534, 94, 4, 2, "#6b5f4c")}
+      {px(532, 90, 10, 6, M.tin.base)}
+      {px(532, 90, 10, 1, M.tin.hi)}
+      {px(534, 92, 6, 2, M.tin.deep)}
+      {/* a wasp that got in in August and did not get out */}
+      {px(546, 94, 3, 2, "#8a6d2f")}
+      {px(546, 94, 1, 2, "#2e3033")}
+      {/* a pigeon feather caught in the gasket */}
+      {px(492, 93, 5, 1, M.linen.mid)}
+      {px(491, 92, 2, 3, M.linen.lo)}
     </g>
   );
 }
@@ -282,124 +630,123 @@ function SillCat({ ph }: { ph: Ph }) {
   const asleep = ph === "night" || ph === "dusk";
   const coat = "#4a4440";
   const coatHi = "#5a534e";
-  if (asleep) {
-    return (
-      <g>
-        {px(502, 88, 24, 8, coat)}
-        {px(502, 88, 24, 2, coatHi)}
-        {px(520, 84, 9, 8, coat)}
-        {px(521, 82, 3, 3, coat)}
-        {px(526, 82, 3, 3, coat)}
-        {px(522, 87, 2, 1, "#c9a24b")}
-        {px(526, 87, 2, 1, "#c9a24b")}
-        <rect x={498} y={93} width={7} height={3} fill={coat}>
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            values="0 505 94;-9 505 94;3 505 94;0 505 94"
-            dur="8.4s"
-            repeatCount="indefinite"
-          />
-        </rect>
-        <rect x={506} y={86} width={12} height={4} fill={coatHi} opacity={0.9}>
-          <animate attributeName="y" values="86;85;86" dur="4.8s" repeatCount="indefinite" />
-        </rect>
-      </g>
-    );
-  }
-  // sitting up, watching whatever is happening in the yard
   return (
     <g>
-      {px(506, 84, 11, 12, coat)}
-      {px(506, 84, 11, 2, coatHi)}
-      {px(505, 76, 12, 9, coat)}
-      {px(505, 73, 4, 4, coat)}
-      {px(512, 73, 4, 4, coat)}
-      {px(506, 78, 2, 2, "#8fa86a")}
-      {px(513, 78, 2, 2, "#8fa86a")}
-      {px(509, 81, 2, 1, "#b98b86")}
-      {px(504, 93, 5, 3, coat)}
-      <g>
-        {px(517, 88, 3, 8, coat)}
-        {px(517, 93, 7, 3, coat)}
-        <animateTransform
-          attributeName="transform"
-          type="rotate"
-          values="0 518 90;-6 518 90;4 518 90;-3 518 90;0 518 90"
-          dur="6.2s"
-          repeatCount="indefinite"
-        />
-      </g>
-      {/* ear flick */}
-      <rect x={512} y={73} width={4} height={4} fill={coat}>
-        <animateTransform
-          attributeName="transform"
-          type="rotate"
-          values="0 514 77;0 514 77;-20 514 77;0 514 77;0 514 77"
-          dur="9.5s"
-          repeatCount="indefinite"
-        />
-      </rect>
+      {/* somebody puts a saucer out. Nobody admits to it. */}
+      {px(554, 92, 6, 4, M.tin.base)}
+      {px(554, 92, 6, 1, M.tin.hi)}
+      {px(555, 93, 4, 2, "#7d97a8")}
+      {asleep ? (
+        <g>
+          {px(502, 88, 24, 8, coat)}
+          {px(502, 88, 24, 2, coatHi)}
+          {px(520, 84, 9, 8, coat)}
+          {px(521, 82, 3, 3, coat)}
+          {px(526, 82, 3, 3, coat)}
+          {px(522, 87, 2, 1, K.brass)}
+          {px(526, 87, 2, 1, K.brass)}
+          <rect x={498} y={93} width={7} height={3} fill={coat}>
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              values="0 505 94;-9 505 94;3 505 94;0 505 94"
+              dur="8.4s"
+              repeatCount="indefinite"
+            />
+          </rect>
+          <rect x={506} y={86} width={12} height={4} fill={coatHi}>
+            <animate attributeName="y" values="86;85;86" dur="4.8s" repeatCount="indefinite" />
+          </rect>
+        </g>
+      ) : (
+        <g>
+          {px(506, 84, 11, 12, coat)}
+          {px(506, 84, 11, 2, coatHi)}
+          {px(505, 76, 12, 9, coat)}
+          {px(505, 73, 4, 4, coat)}
+          {px(506, 78, 2, 2, "#8fa86a")}
+          {px(513, 78, 2, 2, "#8fa86a")}
+          {px(509, 81, 2, 1, "#b98b86")}
+          {px(504, 93, 5, 3, coat)}
+          <g>
+            {px(517, 88, 3, 8, coat)}
+            {px(517, 93, 7, 3, coat)}
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              values="0 518 90;-6 518 90;4 518 90;-3 518 90;0 518 90"
+              dur="6.2s"
+              repeatCount="indefinite"
+            />
+          </g>
+          <rect x={512} y={73} width={4} height={4} fill={coat}>
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              values="0 514 77;0 514 77;-20 514 77;0 514 77;0 514 77"
+              dur="9.5s"
+              repeatCount="indefinite"
+            />
+          </rect>
+        </g>
+      )}
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// doors
-// ---------------------------------------------------------------------------
+/* --- doors ------------------------------------------------------------ */
 
-/** Your door: anthracite steel, vertical bar handle, number 14. */
-function FlatDoor({ ph }: { ph: Ph }) {
+/** Yours: anthracite steel, bar handle, and a number the developer chose. */
+function Door14({ ph }: { ph: Ph }) {
+  const warm = ph === "night" || ph === "dusk";
   return (
     <g>
-      {px(20, 62, 50, 88, C.steel)}
-      {px(20, 62, 50, 2, C.steelHi)}
-      {px(24, 66, 42, 84, C.graphite)}
-      {px(26, 68, 38, 80, C.graphiteHi)}
-      {px(26, 68, 38, 1, "#5a5d62")}
-      {/* three shallow panels the catalogue called "modern" */}
-      {px(30, 74, 30, 22, "#454850")}
-      {px(30, 100, 30, 22, "#454850")}
-      {px(30, 126, 30, 16, "#454850")}
-      {/* bar handle, lock, spyhole, and the number */}
-      {px(56, 92, 3, 30, "#b8b6ae")}
-      {px(56, 92, 3, 2, "#d4d2ca")}
-      {px(52, 124, 4, 3, "#8a8d92")}
+      <Bev set={D14_FRAME} mat={M.steel} />
+      <Bev set={D14_LEAF} mat={M.graphite} />
+      <Bev set={D14_PANELS} mat={{ ...M.graphite, base: "#454850" }} />
+      {/* bar handle, lock, spyhole */}
+      {px(56, 92, 3, 30, M.tin.base)}
+      {px(56, 92, 3, 2, M.tin.hi)}
+      {px(52, 124, 4, 3, M.steel.mid)}
       {px(34, 84, 3, 3, "#2e3033")}
-      {px(34, 84, 3, 1, "#8a8d92")}
-      <PixelText x={40} y={73} text="14" fill={C.white} />
-      {/* the sticker asking for no adverts, half scraped off */}
-      {px(46, 128, 12, 8, "#d8d6d0")}
+      {px(34, 84, 3, 1, M.steel.base)}
+      <path d={T_14} fill={M.laminate.base} />
+      {/* the no-adverts sticker, half scraped off by somebody's thumbnail */}
+      {px(46, 128, 12, 8, M.laminate.mid)}
       {px(48, 130, 8, 1, "#8a8d92")}
       {px(48, 133, 6, 1, "#8a8d92")}
+      {px(54, 128, 4, 3, M.graphite.mid)}
       {/* warm line under your own door in the evening */}
-      {ph === "night" || ph === "dusk" ? px(26, 147, 38, 2, "#ffcf7a") : null}
+      {warm ? px(26, 147, 38, 2, "#ffcf7a", "u14") : null}
     </g>
   );
 }
 
-/** Neighbour 13: white laminate, brass knob, and a life behind it. */
+/** 13: white laminate, brass knob, a dog, a small child, a lot of life. */
 function Door13({ ph }: { ph: Ph }) {
   const lightsOn = ph === "dusk" || ph === "night";
   return (
     <g>
-      {px(118, 64, 46, 86, C.steel)}
-      {px(122, 68, 38, 82, C.white)}
-      {px(122, 68, 38, 2, "#eceae4")}
-      {px(126, 74, 30, 30, C.whiteLo)}
-      {px(126, 74, 30, 1, "#c9c7bf")}
-      {px(126, 108, 30, 32, C.whiteLo)}
-      {px(126, 108, 30, 1, "#c9c7bf")}
-      {px(152, 104, 4, 5, C.brass)}
-      {px(152, 108, 4, 2, "#a8863a")}
+      <Bev set={D13_FRAME} mat={M.steel} />
+      <Bev set={D13_LEAF} mat={M.laminate} />
+      <Bev set={D13_PANELS} mat={{ ...M.laminate, base: M.laminate.mid }} />
+      {px(152, 104, 4, 5, K.brass)}
+      {px(152, 108, 4, 2, M.brass.lo)}
       {px(130, 82, 3, 3, "#2e3033")}
-      <PixelText x={138} y={70} text="13" fill="#8a8d92" />
-      {/* a wreath that has outlasted three seasons */}
-      {px(134, 84, 14, 14, "#4e6b4e")}
-      {px(136, 86, 10, 10, C.whiteLo)}
-      {px(133, 88, 3, 6, "#57755a")}
-      {px(146, 88, 3, 6, "#57755a")}
+      <path d={T_13} fill={M.steel.base} />
+      {/* the wreath that has outlasted three seasons */}
+      {px(134, 84, 14, 14, M.leaf.base)}
+      {px(136, 86, 10, 10, M.laminate.mid)}
+      {px(133, 88, 3, 6, M.leaf.mid)}
+      {px(146, 88, 3, 6, M.leaf.mid)}
       {px(139, 82, 5, 4, "#a33a30")}
+      {/* stickers at the height of whoever put them there */}
+      {px(128, 130, 5, 5, "#e8c445")}
+      {px(135, 132, 4, 4, "#4a90d9")}
+      {px(141, 129, 5, 4, "#c94040")}
+      {/* and the smudges at the height of whoever waits to go out */}
+      {px(124, 138, 10, 6, M.laminate.lo)}
+      {px(126, 140, 4, 2, M.laminate.deep)}
       {/* light under the door, and somebody crossing it now and then */}
       {lightsOn ? (
         <g>
@@ -420,157 +767,156 @@ function Door13({ ph }: { ph: Ph }) {
   );
 }
 
-/** Neighbour 15: oak veneer, quiet people, a newspaper at dawn. */
+/** 15: oak veneer, quiet people, a newspaper at dawn, a child growing. */
 function Door15({ ph }: { ph: Ph }) {
   return (
     <g>
-      {px(316, 64, 46, 86, C.steel)}
-      {px(320, 68, 38, 82, C.oak)}
-      {px(320, 68, 38, 2, "#bb9c6c")}
-      {px(324, 74, 30, 66, C.oakLo)}
-      {px(324, 74, 30, 1, "#b08f5e")}
-      {px(324, 106, 30, 1, "#8a6f48")}
-      {px(350, 104, 4, 5, C.graphiteHi)}
+      <Bev set={D15_FRAME} mat={M.steel} />
+      <Bev set={D15_LEAF} mat={M.oak} />
+      <Bev set={D15_PANELS} mat={{ ...M.oak, base: M.oak.mid }} />
+      <rect x={320} y={68} width={38} height={82} fill="url(#px-wood)" />
+      {px(324, 106, 30, 1, M.oak.deep)}
+      {px(350, 104, 4, 5, M.graphite.hi)}
       {px(328, 82, 3, 3, "#2e3033")}
-      <PixelText x={336} y={70} text="15" fill="#6b5a3c" />
+      <path d={T_15} fill={M.oak.deep} />
       {/* the sticker they actually mean */}
-      {px(334, 118, 16, 9, C.white)}
+      {px(334, 118, 16, 9, M.laminate.base)}
       {px(336, 120, 12, 1, "#a33a30")}
       {px(336, 123, 9, 1, "#8a8d92")}
-      {/* the morning paper, leaning */}
+      {/* pencil, on the architrave, twice a year */}
+      <path d={HEIGHT_MARKS} fill="#8a8578" opacity={0.8} />
+      {/* the felt pad that stops it banging at six in the morning */}
+      {px(358, 106, 3, 3, M.linen.lo)}
+      {/* the morning paper, leaning; the takeaway menu, at the other end of the day */}
       {ph === "dawn" ? (
         <g>
-          {px(340, 136, 12, 14, "#d8d6d0")}
-          {px(340, 136, 12, 2, "#eceae4")}
+          {px(340, 136, 12, 14, M.linen.base)}
+          {px(340, 136, 12, 2, M.linen.hi)}
           {px(342, 140, 8, 1, "#8a8d92")}
           {px(342, 143, 6, 1, "#8a8d92")}
         </g>
       ) : null}
+      {ph === "dusk" || ph === "night" ? (
+        <g>
+          {px(336, 146, 18, 4, M.linen.mid)}
+          {px(336, 146, 18, 1, M.linen.hi)}
+          {px(340, 148, 6, 1, "#a33a30")}
+        </g>
+      ) : null}
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// the lift
-// ---------------------------------------------------------------------------
+/* --- the lift --------------------------------------------------------- */
 
-function Lift({ open }: { open: boolean }) {
+/** The car. One metre behind the doors, so it lives on the wall plane. */
+function LiftCar() {
   return (
     <g>
-      {/* portal */}
-      {px(426, 54, 56, 96, C.steelDark)}
-      {px(426, 54, 56, 2, "#8a8d92")}
-      {px(430, 58, 48, 92, "#2b2e32")}
-      {/* the car behind the doors: mirror, handrail, panel, light */}
-      {open ? (
-        <g>
-          {px(432, 60, 44, 88, "#4a4d52")}
-          {px(432, 60, 44, 6, "#fff8e0")}
-          {px(434, 66, 40, 60, "#7d8a92")}
-          {px(436, 68, 36, 56, "#8e9aa2")}
-          {/* your own blurred reflection, standing where you stand */}
-          {px(446, 78, 14, 46, "#6d7a84")}
-          {px(448, 70, 10, 9, "#7d8a92")}
-          {px(434, 100, 40, 2, "#b8bcc2")}
-          {/* button panel */}
-          {px(466, 82, 8, 26, "#3a3d42")}
-          {[0, 1, 2, 3].map((i) => (
-            <rect
-              key={i}
-              x={468}
-              y={85 + i * 5}
-              width={4}
-              height={3}
-              fill={i === 0 ? C.warm : "#8a8d92"}
-            />
-          ))}
-          {px(434, 126, 40, 22, "#3a3d42")}
-          {px(434, 126, 40, 1, "#5a5d62")}
-          {/* the free newspaper somebody left on the floor */}
-          {px(452, 140, 14, 6, "#d8d6d0")}
-        </g>
-      ) : null}
-      {/* leaves */}
-      <g
-        style={{
-          transition: "transform 650ms ease-in-out",
-          transform: open ? "translateX(-20px)" : "none",
-        }}
-      >
-        {px(432, 60, 22, 88, C.steel)}
-        {px(434, 62, 2, 84, C.steelHi)}
-        {px(448, 62, 1, 84, "#9a9ea4")}
-        {px(432, 104, 22, 1, "#9a9ea4")}
+      {px(432, 60, 44, 88, M.graphite.base)}
+      {px(432, 60, 44, 6, "#fff8e0")}
+      {/* mirror, and your own blurred reflection standing where you stand */}
+      {px(434, 66, 40, 60, "#7d8a92")}
+      {px(436, 68, 36, 56, "#8e9aa2")}
+      {px(446, 78, 14, 46, "#6d7a84")}
+      {px(448, 70, 10, 9, "#7d8a92")}
+      {px(434, 100, 40, 2, M.tin.base)}
+      {/* the ad frame, empty since the agency folded */}
+      {px(436, 70, 12, 16, M.graphite.mid)}
+      {px(438, 72, 8, 12, M.graphite.hi)}
+      {/* buttons — 4 is lit because you are on 4 */}
+      {px(466, 82, 8, 26, M.graphite.lo)}
+      <path d={CAR_BUTTONS} fill={M.steel.base} />
+      {px(468, 85, 4, 3, K.warm)}
+      {px(434, 126, 40, 22, M.graphite.lo)}
+      {px(434, 126, 40, 1, M.graphite.hi)}
+      {/* the free paper somebody left on the floor */}
+      {px(452, 140, 14, 6, M.linen.mid)}
+      {px(452, 140, 14, 1, M.linen.hi)}
+    </g>
+  );
+}
+
+/** The doors, the indicator, and the button worn shiny in the middle. */
+function LiftFront({ open }: { open: boolean }) {
+  return (
+    <g>
+      <Bev set={LIFT_PORTAL} mat={M.steel} />
+      {!open ? px(430, 58, 48, 92, "#2b2e32") : null}
+      {/* leaves. Four-pixel steps, because a leaf that slides smoothly is a
+          leaf that spends 640ms not being pixel art. */}
+      <g style={{ transition: STEP_SLIDE, transform: open ? "translateX(-20px)" : "none" }}>
+        <Bev set={LEAF_L} mat={M.steel} />
+        {px(434, 62, 2, 84, M.steel.hi)}
+        {px(448, 62, 1, 84, M.steel.mid)}
       </g>
-      <g
-        style={{
-          transition: "transform 650ms ease-in-out",
-          transform: open ? "translateX(20px)" : "none",
-        }}
-      >
-        {px(454, 60, 22, 88, C.steel)}
-        {px(472, 62, 2, 84, C.steelHi)}
-        {px(457, 62, 1, 84, "#9a9ea4")}
-        {px(454, 104, 22, 1, "#9a9ea4")}
+      <g style={{ transition: STEP_SLIDE, transform: open ? "translateX(20px)" : "none" }}>
+        <Bev set={LEAF_R} mat={M.steel} />
+        {px(472, 62, 2, 84, M.steel.hi)}
+        {px(457, 62, 1, 84, M.steel.mid)}
+        {/* the dent at kick height, from a wardrobe that went up in 2021 */}
+        <path d={LEAF_DENT} fill={M.steel.lo} />
       </g>
-      {open ? px(453, 60, 2, 88, "#14161a") : null}
-      {/* threshold */}
-      {px(430, 148, 48, 2, "#8a8d92")}
-      {/* indicator: floor digits cycling when the car is elsewhere */}
+      {open ? px(453, 60, 2, 88, "#14161a", "gap") : null}
+      {px(430, 148, 48, 2, M.steel.mid)}
+      {/* indicator. One segment of the display has been dead for months. */}
       {px(440, 42, 28, 11, "#14161a")}
-      {px(440, 42, 28, 1, "#3a3d42")}
+      {px(440, 42, 28, 1, M.graphite.lo)}
       {open ? (
         <g>
-          <PixelText x={446} y={45} text="4" fill={C.green} />
-          {px(454, 45, 3, 1, C.green)}
-          {px(455, 46, 1, 3, C.green)}
+          <PixelText x={446} y={45} text="4" fill={K.green} />
+          {px(454, 45, 3, 1, K.green)}
+          {px(455, 46, 1, 3, K.green)}
         </g>
       ) : (
         <g>
-          {["1", "2", "3", "4"].map((d, i) => (
-            <g key={d} opacity={0}>
-              <PixelText x={446} y={45} text={d} fill={C.brass} />
-              <animate
-                attributeName="opacity"
-                values="0;1;1;0;0"
-                keyTimes={`0;${0.02 + i * 0.22};${0.18 + i * 0.22};${0.2 + i * 0.22};1`}
-                dur="11s"
-                repeatCount="indefinite"
-              />
-            </g>
-          ))}
-          {/* the up arrow, blinking while it climbs */}
-          <g>
-            {px(458, 45, 5, 1, C.brass)}
-            {px(459, 46, 3, 1, C.brass)}
-            {px(460, 47, 1, 1, C.brass)}
-            <animate attributeName="opacity" values="1;0.2;1" dur="1.4s" repeatCount="indefinite" />
-          </g>
+          {/* one <path>, one animation, four floors */}
+          <path d={IND_SEQUENCE[0]} fill={K.brass}>
+            <animate
+              attributeName="d"
+              calcMode="discrete"
+              values={IND_SEQUENCE.join(";")}
+              dur="11s"
+              repeatCount="indefinite"
+            />
+          </path>
+          <path d={IND_ARROW} fill={K.brass}>
+            <animate
+              attributeName="opacity"
+              calcMode="discrete"
+              values="1;0.2;1"
+              dur="1.4s"
+              repeatCount="indefinite"
+            />
+          </path>
         </g>
       )}
-      {/* call button and its plate */}
-      {px(484, 92, 8, 14, C.steel)}
-      {px(484, 92, 8, 1, C.steelHi)}
-      {px(485, 95, 6, 6, open ? C.green : "#e8e6e0")}
-      {px(486, 96, 4, 4, open ? "#7bf0ae" : "#d0cec6")}
-      {px(486, 103, 4, 1, "#8a8d92")}
+      {px(447, 47, 1, 1, "#14161a")}
+      {/* call button, and the inspection sticker that expired in April */}
+      {px(484, 92, 8, 14, M.steel.base)}
+      {px(484, 92, 8, 1, M.steel.hi)}
+      {px(485, 95, 6, 6, open ? K.green : M.laminate.base)}
+      {px(486, 96, 4, 4, open ? "#7bf0ae" : M.laminate.lo)}
+      {px(484, 110, 8, 6, M.linen.base)}
+      {px(485, 112, 6, 1, "#a33a30")}
     </g>
   );
 }
 
-/** The A4 notice taped up by the lift, corner lifting in the draft. */
+/** The A4 by the lift, and the older one curling underneath it. */
 function LiftNotice() {
   return (
     <g>
-      {px(414, 70, 16, 22, "#e8e6e0")}
-      {px(414, 70, 16, 1, "#f4f2ec")}
+      {px(412, 72, 16, 21, M.linen.lo)}
+      {px(414, 70, 16, 22, M.linen.base)}
+      {px(414, 70, 16, 1, M.linen.hi)}
       {px(416, 73, 12, 2, "#a33a30")}
-      {[78, 81, 84].map((y) => px(416, y, 11, 1, "#8a8d92", `nl${y}`))}
+      <path d={pxPath([78, 81, 84].map((y) => [416, y, 11, 1] as Rect))} fill="#8a8d92" />
       {px(416, 87, 7, 1, "#8a8d92")}
-      {px(413, 69, 6, 3, "#d8e4ec99")}
-      {/* the bottom corner has come unstuck */}
+      {px(413, 69, 6, 3, "#d8e4ec")}
+      {/* the bottom corner has come unstuck and the draft knows it */}
       <g>
-        {px(426, 88, 4, 4, "#dcd9d1")}
+        {px(426, 88, 4, 4, M.linen.mid)}
         <animateTransform
           attributeName="transform"
           type="rotate"
@@ -583,15 +929,12 @@ function LiftNotice() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// wall fittings
-// ---------------------------------------------------------------------------
+/* --- wall fittings ---------------------------------------------------- */
 
 function Intercom() {
   return (
     <g>
-      {px(88, 72, 18, 28, "#2e3033")}
-      {px(88, 72, 18, 1, "#4a4d52")}
+      <Bev set={INTERCOM_BOX} mat={M.graphite} />
       {px(90, 75, 14, 14, "#141a24")}
       {/* standby, with the occasional look at whoever is downstairs */}
       <g>
@@ -606,14 +949,13 @@ function Intercom() {
           repeatCount="indefinite"
         />
       </g>
-      <rect x={102} y={86} width={2} height={2} fill={C.green}>
-        <animate attributeName="opacity" values="1;0.25;1" dur="3.4s" repeatCount="indefinite" />
-      </rect>
-      {/* speaker grille, key button, and the tiny lens above */}
-      {[91, 94, 97, 100].map((x) => px(x, 91, 2, 4, "#4a4d52", `ig${x}`))}
-      {px(100, 91, 4, 4, "#8a8d92")}
-      {px(95, 69, 4, 3, "#4a4d52")}
+      <path d={INTERCOM_GRILLE} fill={M.graphite.hi} />
+      {px(100, 91, 4, 4, M.steel.base)}
+      {/* the lens, and the code somebody wrote on tape beside it */}
+      {px(95, 69, 4, 3, M.graphite.hi)}
       {px(96, 70, 2, 1, "#8fb0c4")}
+      {px(86, 102, 10, 4, M.linen.base)}
+      {px(88, 103, 6, 1, "#8a8d92")}
     </g>
   );
 }
@@ -621,22 +963,15 @@ function Intercom() {
 function LightSwitch() {
   return (
     <g>
-      {px(108, 88, 10, 13, "#e2e0da")}
-      {px(108, 88, 10, 1, "#f0eee8")}
-      {px(110, 91, 6, 7, "#d0cec6")}
-      <rect x={111} y={92} width={4} height={2} fill="#ff8a3a" opacity={0.9}>
-        <animate
-          attributeName="opacity"
-          values="0.9;0.35;0.9"
-          dur="2.8s"
-          repeatCount="indefinite"
-        />
-      </rect>
-      {/* and the socket under it that everybody uses for the vacuum */}
-      {px(107, 128, 12, 12, "#e2e0da")}
-      {px(109, 131, 8, 6, "#d0cec6")}
-      {px(110, 133, 2, 2, "#8a8d92")}
-      {px(114, 133, 2, 2, "#8a8d92")}
+      <Bev set={SWITCH_BOX} mat={M.laminate} />
+      {px(110, 91, 6, 7, M.laminate.mid)}
+      {px(109, 131, 8, 6, M.laminate.mid)}
+      {px(110, 133, 2, 2, M.steel.base)}
+      {px(114, 133, 2, 2, M.steel.base)}
+      {/* somebody charges their phone from the corridor socket. Still here. */}
+      {px(112, 137, 4, 3, M.laminate.hi)}
+      {px(113, 140, 2, 8, "#e2e0da")}
+      {px(113, 147, 6, 2, "#e2e0da")}
     </g>
   );
 }
@@ -645,50 +980,54 @@ function LightSwitch() {
 function Riser({ open }: { open: boolean }) {
   return (
     <g>
-      {px(204, 64, 34, 56, "#b8b6ae")}
-      {px(204, 64, 34, 2, "#c9c7bf")}
+      <Bev set={RISER_BOX} mat={dim(M.tin, M.plaster.base, 0.4)} />
       {open ? (
         <g>
-          {/* door swung, breakers exposed, meter counting away */}
-          {px(206, 66, 30, 52, "#3a3d42")}
-          {px(208, 70, 26, 14, "#2b2e32")}
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <g key={i}>
-              {px(209 + i * 4, 72, 3, 10, "#d8d6d0", `br${i}`)}
-              {px(209 + i * 4, i % 2 ? 72 : 78, 3, 4, i % 2 ? "#a33a30" : "#4a4d52", `bs${i}`)}
-            </g>
-          ))}
-          {px(208, 88, 26, 16, "#c9c7bf")}
-          {px(210, 91, 22, 8, "#2b2e32")}
-          <PixelText x={212} y={93} text="4152" fill="#d8d6d0" />
+          {px(206, 66, 30, 52, M.graphite.lo)}
+          {px(208, 70, 26, 14, M.graphite.deep)}
+          <Bev set={RISER_BREAKERS} mat={M.laminate} />
+          <path d={RISER_TRIPPED} fill="#a33a30" />
+          {px(208, 88, 26, 16, M.tin.base)}
+          {px(210, 91, 22, 8, M.graphite.deep)}
+          <path d={T_METER} fill={M.laminate.mid} />
           <rect x={230} y={100} width={2} height={2} fill="#ff5050">
-            <animate attributeName="opacity" values="1;0;0;1" dur="1.9s" repeatCount="indefinite" />
+            <animate
+              attributeName="opacity"
+              calcMode="discrete"
+              values="1;0;0;1"
+              dur="1.9s"
+              repeatCount="indefinite"
+            />
           </rect>
-          {px(208, 106, 26, 10, "#4a4d52")}
-          {px(210, 108, 8, 6, "#8a8d92")}
+          {px(208, 106, 26, 10, M.graphite.base)}
+          {px(210, 108, 8, 6, M.steel.base)}
+          {/* the step-ladder somebody keeps in here, against the rules */}
+          {px(222, 104, 3, 14, M.tin.lo)}
+          {px(226, 106, 3, 12, M.tin.lo)}
           {/* the door itself, swung flat against the wall */}
-          {px(196, 64, 8, 56, "#c2beb4")}
-          {px(196, 64, 2, 56, "#d0cec6")}
+          {px(196, 64, 8, 56, M.plaster.lo)}
+          {px(196, 64, 2, 56, M.plaster.base)}
         </g>
       ) : (
         <g>
-          {px(206, 66, 30, 52, "#c2beb4")}
-          {px(206, 66, 30, 1, "#d0cec6")}
-          {px(206, 92, 30, 1, "#a8a49a")}
+          {px(206, 66, 30, 52, M.plaster.lo)}
+          {px(206, 66, 30, 1, M.plaster.base)}
+          {px(206, 92, 30, 1, M.plaster.deep)}
           {/* the little window over the meter */}
-          {px(212, 74, 18, 10, "#2b2e32")}
+          {px(212, 74, 18, 10, M.graphite.deep)}
           {px(213, 75, 16, 8, "#3a4148")}
-          <PixelText x={215} y={77} text="4152" fill="#8fa86a" />
+          <path d={T_METER_SHUT} fill="#8fa86a" />
           {/* hasp, padlock, warning triangle */}
-          {px(232, 88, 4, 8, "#8a8d92")}
-          {px(231, 92, 6, 5, "#6b6e73")}
-          {px(210, 100, 14, 12, "#e8c445")}
-          {px(212, 103, 10, 7, "#e8c445")}
+          {px(232, 88, 4, 8, M.steel.base)}
+          {px(231, 92, 6, 5, M.steel.lo)}
+          {px(210, 100, 14, 12, M.enamel.base)}
+          {px(210, 100, 14, 1, M.enamel.hi)}
           {px(216, 104, 2, 5, "#2e3033")}
           {px(216, 110, 2, 1, "#2e3033")}
-          {/* stickers: an electrician's, a takeaway's */}
-          {px(226, 102, 9, 6, "#d8d6d0")}
+          {/* an electrician's sticker, and a takeaway's over the top of it */}
+          {px(226, 102, 9, 6, M.linen.base)}
           {px(227, 104, 7, 1, "#a33a30")}
+          {px(228, 108, 7, 4, "#4a90d9")}
         </g>
       )}
     </g>
@@ -698,22 +1037,88 @@ function Riser({ open }: { open: boolean }) {
 function FramedPrint() {
   return (
     <g>
-      {px(238, 58, 30, 40, "#2e3033")}
-      {px(238, 58, 30, 1, "#4a4d52")}
-      {px(241, 61, 24, 34, "#e8e6e0")}
+      <Bev set={PRINT_FRAME} mat={M.graphite} />
+      {px(241, 61, 24, 34, M.linen.hi)}
       {px(243, 63, 20, 30, "#f0eee8")}
       {/* a cheap abstract: a horizon, a sun, three strokes */}
       {px(245, 70, 16, 12, "#7a8f9f")}
       {px(245, 70, 16, 4, "#8ea3b2")}
-      {px(255, 66, 5, 5, "#c9a24b")}
-      {px(245, 84, 16, 3, "#b8b6ae")}
-      {px(247, 88, 9, 1, "#c9c7bf")}
-      {/* glass catching the ceiling spot, and one corner hanging low */}
-      <polygon points="241,95 253,61 261,61 249,95" fill="#ffffff" opacity={0.09} />
-      {px(238, 56, 30, 2, "#4a4d52")}
+      {px(255, 66, 5, 5, K.brass)}
+      {px(245, 84, 16, 3, M.tin.mid)}
+      {px(247, 88, 9, 1, M.tin.base)}
+      {/* glass catching the near spot, dust on the top rail, one corner low */}
+      <path
+        d={pxPath([
+          [243, 88, 8, 1],
+          [245, 82, 10, 1],
+          [249, 74, 8, 1],
+        ])}
+        fill="#ffffff"
+        opacity={0.12}
+      />
+      {px(238, 56, 30, 2, M.graphite.hi)}
+      {px(240, 57, 26, 1, "#c9c7bf")}
+      {px(266, 96, 2, 3, M.graphite.mid)}
     </g>
   );
 }
+
+/** Fire point: extinguisher behind glass, blanket, and the tag that expired. */
+function ExtCabinet({ open }: { open: boolean }) {
+  return (
+    <g>
+      <Bev set={EXT_BOX} mat={M.red} />
+      {open ? (
+        <g>
+          {px(390, 72, 26, 40, M.red.deep)}
+          {px(396, 80, 10, 28, M.red.hi)}
+          {px(396, 80, 10, 1, "#e8756a")}
+          {px(398, 76, 6, 5, "#2e3033")}
+          {px(404, 78, 5, 2, M.steel.base)}
+          {px(407, 80, 2, 10, "#2e3033")}
+          {px(397, 92, 8, 4, M.linen.base)}
+          {/* the folded blanket beside it */}
+          {px(408, 96, 8, 12, M.red.mid)}
+          {px(408, 96, 8, 2, M.red.hi)}
+          {/* the glass door, swung wide */}
+          {px(378, 70, 10, 44, "#d8e4ec")}
+          {px(378, 70, 2, 44, "#e8f0f5")}
+          {px(378, 70, 10, 1, "#f0f6fa")}
+        </g>
+      ) : (
+        <g>
+          {px(391, 73, 24, 38, "#c6d6e2")}
+          {px(391, 73, 24, 2, "#e8f0f5")}
+          {px(396, 80, 9, 26, M.red.mid)}
+          {px(398, 76, 6, 5, "#28292c")}
+          {px(408, 92, 3, 7, M.linen.base)}
+          {/* reflection, quantised into three strokes, and the latch */}
+          <path
+            d={pxPath([
+              [395, 104, 6, 1],
+              [398, 94, 8, 1],
+              [402, 82, 7, 1],
+            ])}
+            fill="#ffffff"
+            opacity={0.16}
+          />
+          {px(412, 90, 3, 7, M.linen.base)}
+        </g>
+      )}
+      {/* the sign above it never goes out, and the tag below it expired in April */}
+      {px(392, 62, 22, 8, "#a33a30")}
+      <path d={T_PPOZ} fill="#f0eee8" />
+      {px(402, 64, 12, 1, "#f0eee8")}
+      {px(402, 67, 8, 1, "#f0eee8")}
+      {px(400, 116, 8, 5, M.linen.base)}
+      {px(401, 118, 6, 1, "#a33a30")}
+    </g>
+  );
+}
+
+/* ================================================================== *
+ * PLANE 3 — things standing on the tile
+ * ================================================================== */
 
 /** The monstera. Droops and yellows if you forget it. */
 function Monstera({ watered }: { watered: boolean }) {
@@ -722,60 +1127,43 @@ function Monstera({ watered }: { watered: boolean }) {
   const hi = watered ? "#63915f" : "#7a8552";
   return (
     <g>
-      {px(278, 146, 26, 4, C.shadow)}
-      {/* concrete pot, dry ring or damp saucer */}
-      {px(280, 130, 20, 18, "#8b8880")}
-      {px(280, 130, 20, 2, "#9a978f")}
-      {px(282, 128, 16, 3, "#7a776f")}
+      {/* the pot, and the supermarket price sticker still on the back of it */}
+      <Bevel boxes={[[280, 130, 20, 18]]} mat={M.concrete} />
+      {px(282, 128, 16, 3, M.concrete.lo)}
+      <rect x={280} y={130} width={20} height={18} fill="url(#px-agg)" />
+      {px(296, 140, 4, 3, M.linen.base)}
       {px(282, 132, 16, 4, watered ? "#4a3f33" : "#7a6a55")}
-      {!watered ? px(285, 133, 3, 1, "#8a7a62") : null}
-      {!watered ? px(291, 134, 4, 1, "#8a7a62") : null}
-      {watered ? px(278, 146, 24, 3, "#7d8a8e") : null}
+      {!watered ? px(285, 133, 3, 1, "#8a7a62", "dry1") : null}
+      {!watered ? px(291, 134, 4, 1, "#8a7a62", "dry2") : null}
+      {watered ? px(278, 146, 24, 3, "#7d8a8e", "saucer") : null}
+      {/* somebody stubs cigarettes in it, which is its own small tragedy */}
+      {px(292, 133, 3, 2, M.linen.base)}
+      {px(294, 133, 1, 1, "#4a4438")}
       {/* stems */}
       {px(288, 104, 3, 26, dark)}
       {px(292, 110, 2, 20, dark)}
       {px(285, 112, 2, 18, dark)}
-      {/* leaves — heavy and lifted when watered, folded down when not */}
-      <g
-        transform={watered ? "translate(0,0)" : "translate(0,6)"}
-        style={{ transition: "transform 600ms ease" }}
-      >
+      {/* leaves — lifted when watered, folded down when not. One sway for all. */}
+      <g transform={watered ? undefined : "translate(0,6)"} style={{ transition: STEP_DROOP }}>
         <g>
           {px(276, 94, 14, 13, mid)}
           {px(276, 94, 14, 2, hi)}
           {px(280, 98, 3, 7, "#2f4a35")}
           {px(285, 100, 3, 5, "#2f4a35")}
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            values={
-              watered
-                ? "0 288 106;1.5 288 106;-1 288 106;0 288 106"
-                : "6 288 106;7 288 106;5 288 106;6 288 106"
-            }
-            dur="9s"
-            repeatCount="indefinite"
-          />
-        </g>
-        <g>
           {px(291, 88, 15, 15, watered ? hi : mid)}
           {px(291, 88, 15, 2, watered ? "#74a26e" : hi)}
           {px(296, 92, 3, 8, "#2f4a35")}
           {px(301, 94, 3, 6, "#2f4a35")}
+          {px(282, 84, 10, 10, watered ? hi : "#8a8a52")}
+          {px(282, 84, 10, 1, watered ? "#74a26e" : "#9a9a5e")}
           <animateTransform
             attributeName="transform"
             type="rotate"
-            values={
-              watered
-                ? "0 292 104;-2 292 104;1 292 104;0 292 104"
-                : "5 292 104;4 292 104;6 292 104;5 292 104"
-            }
-            dur="11s"
+            values="0 289 106;1.5 289 106;-1 289 106;0 289 106"
+            dur="9s"
             repeatCount="indefinite"
           />
         </g>
-        {px(282, 84, 10, 10, watered ? hi : "#8a8a52")}
-        {px(282, 84, 10, 1, watered ? "#74a26e" : "#9a9a5e")}
       </g>
       {watered ? (
         <g>
@@ -787,7 +1175,7 @@ function Monstera({ watered }: { watered: boolean }) {
       ) : (
         <g>
           {/* the leaf that gave up, on the tiles */}
-          {px(302, 152, 9, 4, C.leafDry)}
+          {px(302, 152, 9, 4, K.leafDry)}
           {px(303, 151, 5, 1, "#9a9a5e")}
           {px(276, 118, 6, 6, "#8a8a52")}
         </g>
@@ -796,91 +1184,158 @@ function Monstera({ watered }: { watered: boolean }) {
   );
 }
 
-/** Fire point: extinguisher behind glass, blanket, and the P.POŻ label. */
-function ExtCabinet({ open }: { open: boolean }) {
+/**
+ * The pram lives on the landing because it does not fit in the flat. It goes
+ * out with them in the daytime, and the recycling bag it hides goes with it.
+ */
+function PramCluster({ ph }: { ph: Ph }) {
+  if (ph === "day") {
+    return (
+      <g>
+        {/* out. What is left is the bag they meant to take down, and a dummy. */}
+        {px(178, 128, 16, 22, "#c9c5ba")}
+        {px(178, 128, 16, 2, M.linen.hi)}
+        {px(180, 132, 8, 6, "#4a90d9")}
+        <rect x={178} y={128} width={16} height={22} fill="url(#px-weave)" />
+        {px(204, 166, 4, 3, "#e8a4c0")}
+        {px(205, 165, 2, 1, M.linen.base)}
+      </g>
+    );
+  }
   return (
     <g>
-      {px(388, 70, 30, 44, C.red)}
-      {px(388, 70, 30, 2, "#c74a44")}
-      {px(388, 112, 30, 2, "#8a2424")}
-      {open ? (
-        <g>
-          {px(390, 72, 26, 40, "#7d2820")}
-          {/* the bottle, its hose, and the pin still in */}
-          {px(396, 80, 10, 28, C.redHi)}
-          {px(396, 80, 10, 2, "#d85a50")}
-          {px(398, 76, 6, 5, "#2e3033")}
-          {px(404, 78, 5, 2, "#8a8d92")}
-          {px(407, 80, 2, 10, "#2e3033")}
-          {px(397, 92, 8, 4, "#e8e6e0")}
-          {/* the folded blanket beside it */}
-          {px(408, 96, 8, 12, "#c9463c")}
-          {px(408, 96, 8, 2, "#d85a50")}
-          {/* the glass door, swung wide */}
-          {px(378, 70, 10, 44, "#d8e4ec88")}
-          {px(378, 70, 2, 44, "#e8f0f5")}
-          {px(378, 70, 10, 1, "#f0f6fa")}
-        </g>
-      ) : (
-        <g>
-          {px(391, 73, 24, 38, "#d8e4ec66")}
-          {px(391, 73, 24, 2, "#e8f0f5")}
-          {/* the bottle, dimmed behind the glass */}
-          {px(396, 80, 9, 26, "#b83a34")}
-          {px(398, 76, 6, 5, "#28292c")}
-          {px(408, 92, 3, 7, "#e8e6e0")}
-          {/* reflection band and the latch */}
-          <polygon points="393,111 405,73 411,73 399,111" fill="#ffffff" opacity={0.12} />
-          {px(412, 90, 3, 7, "#e8e6e0")}
-        </g>
-      )}
-      {/* the sign above it never goes out */}
-      {px(392, 62, 22, 8, "#a33a30")}
-      <PixelText x={396} y={64} text="P" fill="#f0eee8" />
-      {px(402, 64, 12, 1, "#f0eee8")}
-      {px(402, 67, 8, 1, "#f0eee8")}
+      <Bevel
+        boxes={[[172, 114, 34, 22]]}
+        mat={{ hi: "#6b7c8c", base: "#5a6a7a", mid: "#526070", lo: "#475464", deep: "#333f4c" }}
+      />
+      {px(176, 110, 22, 6, "#4a5866")}
+      {px(178, 106, 14, 5, "#3f4b57")}
+      {px(174, 136, 9, 9, "#2e3033")}
+      {px(194, 136, 9, 9, "#2e3033")}
+      {px(176, 138, 5, 5, M.steel.base)}
+      {px(196, 138, 5, 5, M.steel.base)}
+      {/* the rain cover, bundled on top, never folded properly once */}
+      {px(180, 108, 12, 5, "#c9c5ba")}
+      {px(180, 108, 12, 1, M.linen.hi)}
+      {/* and the mud it brought back up four flights */}
+      {px(174, 146, 6, 2, "#6b5f4c")}
+      {px(196, 146, 5, 2, "#6b5f4c")}
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Pani Natalia
-// ---------------------------------------------------------------------------
-
-type Mode = "mop" | "rest" | "wring" | "away";
-
-function modeFor(ph: Ph): Mode {
-  if (ph === "dawn") return "mop";
-  if (ph === "day") return "rest";
-  if (ph === "dusk") return "wring";
-  return "away";
+/** Their shoes, the child's scooter, and the dog's bowl. All outside, always. */
+function ShoesCluster() {
+  return (
+    <g>
+      {px(163, 142, 9, 8, "#5d4a37")}
+      {px(163, 142, 9, 2, "#6d5842")}
+      {px(163, 148, 9, 2, "#3f3229")}
+      {px(162, 134, 8, 7, M.graphite.base)}
+      {px(162, 134, 8, 2, M.graphite.hi)}
+      {/* the scooter, folded flat and leaning where it always leans */}
+      {px(150, 120, 3, 28, "#c94040")}
+      {px(150, 120, 1, 28, "#e05a50")}
+      {px(148, 118, 8, 3, M.graphite.base)}
+      {px(148, 144, 6, 6, "#2e3033")}
+      {px(152, 132, 8, 2, "#c94040")}
+      {/* the bowl. Stainless, dented, licked clean. */}
+      {px(157, 145, 8, 5, M.tin.base)}
+      {px(157, 145, 8, 1, M.tin.hi)}
+      {px(158, 146, 6, 2, M.tin.deep)}
+    </g>
+  );
 }
 
-/** Her kit, which stays on the landing even when she doesn't. */
+/** The parcel on your mat, or the tape it left behind. */
+function ParcelCluster({ taken }: { taken: boolean }) {
+  if (taken) {
+    return (
+      <g>
+        {px(70, 149, 12, 2, M.linen.mid)}
+        {px(76, 148, 5, 3, K.brass)}
+        {/* and the courier's note, still stuck to your door */}
+        {px(60, 118, 9, 6, M.linen.base)}
+        {px(61, 120, 6, 1, "#8a8d92")}
+      </g>
+    );
+  }
+  return (
+    <g>
+      <Bevel boxes={[[66, 132, 22, 18]]} mat={M.brass} />
+      <rect x={66} y={132} width={22} height={18} fill="url(#px-grain)" />
+      {px(74, 132, 5, 18, M.brass.deep)}
+      {px(66, 138, 22, 1, M.brass.lo)}
+      {px(68, 140, 8, 6, M.linen.base)}
+      {px(69, 142, 6, 1, "#8a8d92")}
+      {px(82, 134, 4, 4, "#c94040")}
+    </g>
+  );
+}
+
+/* --- Pani Natalia ----------------------------------------------------- */
+
+/** Her kit, which stays on the landing even when she does not. */
 function CleaningKit({ parked }: { parked: boolean }) {
   const bx = parked ? 366 : 394;
   return (
     <g>
-      {/* bucket with the wringer basket clipped in */}
-      {px(bx, 132, 16, 18, "#e8c445")}
-      {px(bx - 1, 131, 18, 3, "#d4af38")}
-      {px(bx, 135, 2, 13, "#f0d060")}
-      {px(bx + 3, 135, 10, 3, "#8b8880")}
-      {px(bx + 4, 135, 4, 1, "#b5b2aa")}
-      {px(bx + 2, 128, 12, 4, "#c9c7bf")}
-      {px(bx - 1, 148, 18, 2, C.shadowSoft)}
-      {/* the water moves when she's just been at it */}
+      <Bevel boxes={[[bx, 132, 16, 18]]} mat={M.enamel} />
+      {px(bx - 1, 131, 18, 3, M.enamel.lo)}
+      {px(bx + 3, 135, 10, 3, M.concrete.lo)}
+      {px(bx + 4, 135, 4, 1, M.concrete.hi)}
+      {px(bx + 2, 128, 12, 4, M.tin.base)}
+      {/* the water still moving, when she has just been at it */}
       {!parked ? (
         <rect x={bx + 3} y={135} width={10} height={2} fill="#a8b0ae">
           <animate attributeName="y" values="135;136;135" dur="3.2s" repeatCount="indefinite" />
         </rect>
       ) : null}
+      {/* her radio, on the rim, three bars of something from home */}
+      {px(bx + 12, 122, 9, 7, M.graphite.base)}
+      {px(bx + 12, 122, 9, 1, M.graphite.hi)}
+      {px(bx + 20, 118, 1, 5, M.tin.base)}
+      <path
+        d={pxPath([
+          [bx + 14, 126, 1, 2],
+          [bx + 16, 125, 1, 3],
+          [bx + 18, 127, 1, 1],
+        ])}
+        fill={K.green}
+      >
+        <animate
+          attributeName="d"
+          calcMode="discrete"
+          values={[
+            pxPath([
+              [bx + 14, 126, 1, 2],
+              [bx + 16, 125, 1, 3],
+              [bx + 18, 127, 1, 1],
+            ]),
+            pxPath([
+              [bx + 14, 125, 1, 3],
+              [bx + 16, 127, 1, 1],
+              [bx + 18, 124, 1, 4],
+            ]),
+            pxPath([
+              [bx + 14, 127, 1, 1],
+              [bx + 16, 124, 1, 4],
+              [bx + 18, 126, 1, 2],
+            ]),
+          ].join(";")}
+          dur="0.9s"
+          repeatCount="indefinite"
+        />
+      </path>
       {parked ? (
         <g>
-          {/* mop stood in the bucket, handle against the wall */}
-          {px(bx + 6, 84, 3, 50, "#a8895e")}
-          {px(bx + 6, 84, 1, 50, "#c2a276")}
-          {px(bx + 2, 126, 11, 6, "#c9c5ba")}
+          {/* mop stood in the bucket, handle against the wall, clogs beside it */}
+          {px(bx + 6, 84, 3, 50, M.oak.base)}
+          {px(bx + 6, 84, 1, 50, M.oak.hi)}
+          {px(bx + 2, 126, 11, 6, M.linen.lo)}
+          {px(bx + 18, 144, 7, 6, "#3a7d84")}
+          {px(bx + 18, 144, 7, 1, "#459098")}
+          {px(bx + 26, 145, 7, 5, "#3a7d84")}
         </g>
       ) : null}
     </g>
@@ -890,12 +1345,10 @@ function CleaningKit({ parked }: { parked: boolean }) {
 function WetFloorSign({ x }: { x: number }) {
   return (
     <g>
-      {px(x, 128, 16, 22, "#e8c445")}
-      {px(x, 128, 16, 2, "#f2d86a")}
-      {px(x + 14, 130, 4, 20, "#c9a52e")}
+      <Bevel boxes={[[x, 128, 16, 22]]} mat={M.enamel} />
+      {px(x + 14, 130, 4, 20, M.enamel.lo)}
       {px(x + 5, 132, 5, 10, "#2e3033")}
       {px(x + 4, 144, 8, 2, "#2e3033")}
-      {px(x - 1, 149, 20, 2, C.shadowSoft)}
     </g>
   );
 }
@@ -904,153 +1357,212 @@ function Natalia({ x, mode }: { x: number; mode: Mode }) {
   if (mode === "away") return null;
   const bend = mode === "wring";
   const headY = bend ? 88 : 84;
+  const swing =
+    mode === "mop"
+      ? { v: "0;7;-6;0", dur: "3.4s" }
+      : mode === "wring"
+        ? { v: "14;18;12;14", dur: "2.2s" }
+        : { v: "-4;-3;-4", dur: "9s" };
   return (
     <g>
-      {/* contact shadows */}
-      {px(x + 2, 148, 24, 3, C.shadow)}
-      {px(x + 20, 149, 14, 2, "#00000028")}
       <g transform={bend ? `translate(0,4) rotate(6 ${x + 13} 148)` : undefined}>
         {/* kerchief, knotted at the nape */}
         {px(x + 7, headY, 12, 4, "#8cc0e0")}
         {px(x + 5, headY + 3, 16, 5, "#7ab0d4")}
         {px(x + 17, headY + 3, 4, 5, "#68a0c6")}
         {px(x + 20, headY + 8, 3, 3, "#68a0c6")}
-        {px(x + 6, headY + 2, 3, 2, "#c9c4b6")}
+        {px(x + 6, headY + 2, 3, 2, M.linen.lo)}
         {/* face */}
-        {px(x + 7, headY + 8, 12, 9, C.skin)}
-        {px(x + 7, headY + 14, 12, 3, C.skinShade)}
+        {px(x + 7, headY + 8, 12, 9, M.skin.base)}
+        {px(x + 7, headY + 14, 12, 3, M.skin.lo)}
         {px(x + 9, headY + 10, 2, 2, "#3d2a1a")}
         {px(x + 14, headY + 10, 2, 2, "#3d2a1a")}
         {px(x + 11, headY + 15, 4, 1, "#b08668")}
-        {px(x + 10, headY + 17, 6, 2, C.skinShade)}
-        {/* teal tunic and apron */}
-        {px(x + 4, 103, 18, 24, C.teal)}
-        {px(x + 4, 103, 18, 2, C.tealHi)}
-        {px(x + 17, 105, 5, 22, C.tealLo)}
-        {px(x + 8, 116, 8, 7, C.tealLo)}
-        {px(x + 8, 116, 8, 1, C.tealHi)}
-        {px(x + 4, 110, 18, 1, "#2b6067")}
+        {px(x + 10, headY + 17, 6, 2, M.skin.lo)}
+        {/* tunic and apron */}
+        {px(x + 4, 103, 18, 24, M.teal.base)}
+        {px(x + 4, 103, 18, 2, M.teal.hi)}
+        {px(x + 17, 105, 5, 22, M.teal.lo)}
+        {px(x + 8, 116, 8, 7, M.teal.lo)}
+        {px(x + 8, 116, 8, 1, M.teal.hi)}
+        {px(x + 4, 110, 18, 1, M.teal.deep)}
         {/* left arm */}
         {mode === "rest" ? (
           <g>
-            {px(x + 1, 105, 4, 12, C.teal)}
-            {px(x + 1, 115, 5, 4, C.skin)}
+            {px(x + 1, 105, 4, 12, M.teal.base)}
+            {px(x + 1, 115, 5, 4, M.skin.base)}
           </g>
         ) : (
           <g>
-            {px(x + 1, 105, 4, 15, C.teal)}
-            {px(x + 1, 118, 4, 5, C.skin)}
+            {px(x + 1, 105, 4, 15, M.teal.base)}
+            {px(x + 1, 118, 4, 5, M.skin.base)}
           </g>
         )}
         {/* skirt band, legs, boots */}
-        {px(x + 5, 127, 16, 6, C.graphite)}
-        {px(x + 7, 133, 5, 12, C.graphiteHi)}
-        {px(x + 14, 133, 5, 12, C.graphiteHi)}
-        {px(x + 7, 133, 12, 2, C.graphite)}
+        {px(x + 5, 127, 16, 6, M.graphite.base)}
+        {px(x + 7, 133, 5, 12, M.graphite.hi)}
+        {px(x + 14, 133, 5, 12, M.graphite.hi)}
+        {px(x + 7, 133, 12, 2, M.graphite.base)}
         {px(x + 5, 145, 8, 5, "#2e3033")}
         {px(x + 14, 145, 8, 5, "#2e3033")}
-        {px(x + 5, 145, 17, 1, "#3f434a")}
+        {px(x + 5, 145, 17, 1, M.graphite.lo)}
       </g>
       {/* the arm and the mop, which is the part that actually moves */}
       <g>
-        {px(x + 21, 105, 4, 11, C.tealLo)}
-        {px(x + 22, 114, 4, 5, C.skin)}
-        {px(x + 24, 80, 3, 66, "#a8895e")}
-        {px(x + 24, 80, 1, 66, "#c2a276")}
-        {px(x + 20, 146, 12, 4, "#c9c5ba")}
-        {px(x + 20, 148, 12, 2, "#aeaba0")}
-        {mode === "mop" ? (
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            values={`0 ${x + 24} 110;7 ${x + 24} 110;-6 ${x + 24} 110;0 ${x + 24} 110`}
-            dur="3.4s"
-            repeatCount="indefinite"
-          />
-        ) : null}
-        {mode === "wring" ? (
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            values={`14 ${x + 24} 110;18 ${x + 24} 110;12 ${x + 24} 110;14 ${x + 24} 110`}
-            dur="2.2s"
-            repeatCount="indefinite"
-          />
-        ) : null}
-        {mode === "rest" ? (
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            values={`-4 ${x + 24} 110;-3 ${x + 24} 110;-4 ${x + 24} 110`}
-            dur="9s"
-            repeatCount="indefinite"
-          />
-        ) : null}
+        {px(x + 21, 105, 4, 11, M.teal.lo)}
+        {px(x + 22, 114, 4, 5, M.skin.base)}
+        {px(x + 24, 80, 3, 66, M.oak.base)}
+        {px(x + 24, 80, 1, 66, M.oak.hi)}
+        {px(x + 20, 146, 12, 4, M.linen.lo)}
+        {px(x + 20, 148, 12, 2, M.linen.deep)}
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          values={swing.v
+            .split(";")
+            .map((a) => `${a} ${x + 24} 110`)
+            .join(";")}
+          dur={swing.dur}
+          repeatCount="indefinite"
+        />
       </g>
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// floor
-// ---------------------------------------------------------------------------
+/* --- floor ------------------------------------------------------------ */
 
 function Floor({ ph, mode }: { ph: Ph; mode: Mode }) {
+  const t = TILE[ph];
   const wet = mode === "mop" || mode === "wring";
   return (
     <g>
-      {px(0, 150, W, 30, C.tile)}
-      {px(0, 150, W, 2, "#00000026")}
-      {stripes(W, 150, 30, 70, C.tileLo, 35)}
-      {px(0, 165, W, 1, C.tileLo)}
-      {/* tile joints running across, so the format reads large */}
-      {px(0, 158, W, 1, "#94918a")}
-      {px(0, 174, W, 1, "#94918a")}
-      {/* the mopped arc, still drying */}
+      {px(0, FLOOR, W, H - FLOOR, t.base)}
+      <rect x={0} y={FLOOR} width={W} height={H - FLOOR} fill="url(#px-satin)" />
+      <rect x={0} y={FLOOR} width={W} height={H - FLOOR} fill="url(#px-agg)" />
+      <path d={TILE_JOINTS} fill={t.lo} />
+      {px(0, FLOOR, W, 2, t.deep)}
+      {px(0, FLOOR + 2, W, 1, t.mid)}
+      {/* the arc she has just done, still drying */}
       {wet ? (
         <g>
-          {px(330, 152, 110, 26, C.tileWet)}
-          <rect x={340} y={156} width={40} height={1} fill="#c9ccc8" opacity={0.7}>
+          {px(330, 152, 110, 26, t.hi)}
+          <rect x={340} y={156} width={40} height={1} fill="#c9ccc8" opacity={0.6}>
             <animate attributeName="x" values="336;396;336" dur="7s" repeatCount="indefinite" />
           </rect>
-          {px(346, 168, 60, 1, "#a8aca8")}
+          {px(346, 168, 60, 1, t.mid)}
         </g>
       ) : (
-        <g>
-          {px(60, 156, 90, 1, C.tileHi)}
-          {px(300, 160, 70, 1, C.tileHi)}
-        </g>
+        <path
+          d={pxPath([
+            [60, 156, 90, 1],
+            [300, 160, 70, 1],
+          ])}
+          fill={t.hi}
+        />
       )}
-      {/* the wheel tracks the pram leaves when it goes out */}
-      {ph === "day" ? (
-        <g>
-          {px(176, 154, 2, 18, "#8f8c85")}
-          {px(196, 154, 2, 18, "#8f8c85")}
-        </g>
-      ) : null}
-      {/* daylight, or the streetlamp, landing through the stairwell window */}
-      {ph === "night" ? (
-        px(486, 152, 60, 20, "#2b3a4a")
-      ) : (
-        <g>
-          {px(482, 152, 66, 22, ph === "dusk" ? "#b89474" : "#b0b6ba")}
-          {px(494, 152, 30, 22, ph === "dusk" ? "#c9a582" : "#bcc2c6")}
-        </g>
-      )}
-      {/* doormats: yours coarse, theirs newer */}
-      {px(26, 150, 40, 4, "#5a5d62")}
-      {px(26, 150, 40, 1, "#6b6e73")}
-      {[30, 36, 42, 48, 54, 60].map((x) => px(x, 151, 2, 3, "#4a4d52", `dm${x}`))}
-      {px(124, 150, 34, 3, "#6b6e73")}
-      {px(322, 150, 34, 3, "#6b6e73")}
-      {px(322, 150, 34, 1, "#7c7f84")}
+      {ph === "day" ? <path d={PRAM_TRACKS} fill={t.lo} opacity={0.7} /> : null}
+      <path d={FLOOR_GRIME} fill={K.gum} opacity={0.55} />
+      {/* somebody's child drew here in chalk and somebody's mother half removed it */}
+      {px(148, 176, 10, 1, K.chalk)}
+      {px(152, 174, 1, 4, K.chalk)}
+      {/* mats: yours coarse, theirs newer */}
+      <Bev set={MATS} mat={M.graphite} />
+      <path d={MAT_BRISTLES} fill={M.graphite.lo} />
+      <Contact set={CONTACTS} />
+      {/* the stair flight going down, behind the balustrade */}
+      {px(494, 104, 62, 46, "#26282c")}
+      <Bev set={TREADS} mat={M.concrete} />
+      <path d={NOSINGS} fill={M.graphite.lo} />
+      {/* a mitten that has been on the third step since February */}
+      {px(512, 132, 8, 5, "#c94040")}
+      {px(512, 132, 8, 1, "#e05a50")}
+      {px(519, 133, 3, 3, "#c94040")}
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// the scene
-// ---------------------------------------------------------------------------
+function Balustrade() {
+  return (
+    <g>
+      {px(492, 100, 3, 50, M.steel.base)}
+      {px(492, 100, 64, 2, M.steel.base)}
+      {px(492, 100, 64, 1, M.steel.hi)}
+      {px(495, 102, 58, 22, "#d8e4ec")}
+      <rect x={495} y={102} width={58} height={22} fill="#0d1016" opacity={0.55} />
+      {px(520, 102, 1, 22, "#d8e4ec")}
+      {/* the bracket, and the handrail where four hundred hands have been */}
+      {px(508, 118, 3, 4, M.steel.lo)}
+      {px(500, 100, 30, 1, M.steel.hi)}
+    </g>
+  );
+}
+
+/* ================================================================== *
+ * PLANE 4 — foreground: the near edge of the corridor
+ * ================================================================== */
+
+const NEAR_CORNER = bevelPaths([[0, 0, 7, H]]);
+
+function CorridorFront({ phase }: { world?: WorldState; phase?: string }) {
+  const ph = toPhase(phase);
+  const p = PLASTER[ph];
+  const t = TILE[ph];
+  return (
+    <svg
+      aria-hidden="true"
+      width="100%"
+      height="100%"
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0"
+    >
+      <g shapeRendering="crispEdges">
+        {/* the near corner of the landing — the wall you have just walked past */}
+        <Bev set={NEAR_CORNER} mat={p} />
+        {px(6, 0, 1, H, p.deep)}
+        {px(7, 0, 2, H, dth("n", "25"))}
+        {/* the underside of the ceiling, and the conduit they ran late */}
+        {px(0, 0, W, 5, p.deep)}
+        {px(0, 5, W, 2, dth("n", "50"))}
+        {px(0, 7, W, 1, dth("n", "25"))}
+        {px(60, 6, 200, 3, M.tin.lo)}
+        {px(60, 6, 200, 1, M.tin.base)}
+        {/* a sprinkler head, close enough to read as bigger than the ceiling ones */}
+        {px(118, 8, 10, 4, M.brass.base)}
+        {px(118, 8, 10, 1, M.brass.hi)}
+        {px(120, 12, 6, 3, M.brass.lo)}
+        {px(122, 15, 2, 3, M.tin.hi)}
+        {/* the spider that has been let alone because it is up there */}
+        <g>
+          {px(150, 8, 1, 14, "#5a5750")}
+          {px(148, 22, 4, 3, "#2e2c28")}
+          {px(147, 21, 1, 2, "#2e2c28")}
+          {px(152, 21, 1, 2, "#2e2c28")}
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0;0 0;0 9;0 4;0 0"
+            dur="34s"
+            repeatCount="indefinite"
+          />
+        </g>
+        {/* six pixels of tile at the very bottom, to sit the shot behind */}
+        {px(0, H - 6, W, 6, t.mid)}
+        {px(0, H - 6, W, 1, t.lo)}
+        {px(0, H - 3, W, 1, t.deep)}
+        {/* a receipt somebody dropped between the lift and their door */}
+        {px(36, H - 5, 11, 4, M.linen.hi)}
+        {px(38, H - 4, 6, 1, "#a8a49a")}
+        <Vignette set={VIG} strength={0.8} />
+      </g>
+    </svg>
+  );
+}
+
+/* ================================================================== *
+ * scene
+ * ================================================================== */
 
 function CorridorScene({ world, phase }: { world: WorldState; phase?: string }) {
   const c = world.corridor;
@@ -1059,99 +1571,69 @@ function CorridorScene({ world, phase }: { world: WorldState; phase?: string }) 
   const mode = modeFor(ph);
   return (
     <LayeredScene
-      parallax={{ middleBackground: 1 }}
+      /* the block opposite is thirty metres out; the lag should be felt, not seen */
+      parallax={{ middleBackground: 0.88 }}
       middleBackground={
         <g>
-          <Ceiling />
-          <Walls ph={ph} />
-          <StairWindow ph={ph} />
+          {/* mounted once for the whole document — see pixelKit.SharedDefs */}
+          <SharedDefs />
+          <OutsideView ph={ph} />
         </g>
       }
-      ground={<Floor ph={ph} mode={mode} />}
-      staticObjects={
+      ground={
         <g>
+          <Ceiling ph={ph} lit />
+          <Walls ph={ph} />
+          <NoticeBoard />
+          <StairWindow ph={ph} />
+          <Floor ph={ph} mode={mode} />
+          {c.liftOpen ? <LiftCar /> : null}
           <Intercom />
           <LightSwitch />
           <Riser open={x.riserOpen} />
           <FramedPrint />
-          <Monstera watered={c.plantWatered} />
           <ExtCabinet open={c.extOpen} />
           <LiftNotice />
+          {/* the two standby LEDs on this stretch of wall, one animation between them */}
+          <path d={STANDBY_LEDS} fill={K.green}>
+            <animate
+              attributeName="opacity"
+              calcMode="discrete"
+              values="1;0.3;1"
+              dur="3.4s"
+              repeatCount="indefinite"
+            />
+          </path>
+        </g>
+      }
+      staticObjects={
+        <g>
+          <Monstera watered={c.plantWatered} />
+          <PramCluster ph={ph} />
+          <ShoesCluster />
+          <ParcelCluster taken={c.parcelTaken} />
           <SillCat ph={ph} />
-          {/* the neighbours' pram — out with them during the day */}
-          {ph !== "day" ? (
-            <g>
-              {px(172, 114, 34, 22, "#5a6a7a")}
-              {px(172, 114, 34, 2, "#6b7c8c")}
-              {px(176, 110, 22, 6, "#4a5866")}
-              {px(178, 106, 14, 5, "#3f4b57")}
-              {px(174, 136, 9, 9, "#2e3033")}
-              {px(194, 136, 9, 9, "#2e3033")}
-              {px(176, 138, 5, 5, "#8a8d92")}
-              {px(196, 138, 5, 5, "#8a8d92")}
-              {px(170, 146, 38, 3, C.shadowSoft)}
-              {/* the rain cover, bundled on top */}
-              {px(180, 108, 12, 5, "#c9c5ba")}
-              {px(180, 108, 12, 1, "#d8d6d0")}
-            </g>
-          ) : null}
-          {/* their shoes, which live outside the door */}
-          {px(163, 142, 9, 8, "#5d4a37")}
-          {px(163, 142, 9, 2, "#6d5842")}
-          {px(163, 148, 9, 2, "#3f3229")}
-          {px(162, 134, 8, 7, "#4a4d52")}
-          {px(162, 134, 8, 2, "#5a5d62")}
           <Natalia x={362} mode={mode} />
           <CleaningKit parked={mode === "away"} />
           {mode === "mop" ? <WetFloorSign x={424} /> : null}
-          {/* the parcel on your mat — or the tape it left behind */}
-          {c.parcelTaken ? (
-            <g>
-              {px(70, 149, 12, 2, "#d8d6d0")}
-              {px(76, 148, 5, 3, "#c9a24b")}
-            </g>
-          ) : (
-            <g>
-              {px(66, 132, 22, 18, "#c9a24b")}
-              {px(66, 132, 22, 3, "#d9b45c")}
-              {px(74, 132, 5, 18, "#8a6d2f")}
-              {px(66, 138, 22, 1, "#b8913f")}
-              {px(68, 140, 8, 6, "#e8e6e0")}
-              {px(69, 142, 6, 1, "#8a8d92")}
-              {px(82, 134, 4, 4, "#c94040")}
-              {px(64, 148, 26, 2, C.shadowSoft)}
-            </g>
-          )}
         </g>
       }
       gameplayObjects={
         <g>
-          <FlatDoor ph={ph} />
+          <Door14 ph={ph} />
           <Door13 ph={ph} />
           <Door15 ph={ph} />
-          <Lift open={c.liftOpen} />
-          {/* stairs down behind the steel-and-glass balustrade */}
-          {px(494, 104, 62, 46, "#26282c")}
-          {px(494, 112, 52, 4, "#9d9a92")}
-          {px(494, 112, 52, 1, "#b5b2aa")}
-          {px(500, 124, 46, 4, "#8b8880")}
-          {px(500, 124, 46, 1, "#a5a29a")}
-          {px(506, 136, 40, 4, "#7a776f")}
-          {px(506, 136, 40, 1, "#948f88")}
-          {px(492, 100, 3, 50, C.steel)}
-          {px(492, 100, 64, 2, C.steel)}
-          {px(492, 100, 64, 1, C.steelHi)}
-          {px(495, 102, 58, 22, "#d8e4ec4d")}
-          {px(520, 102, 1, 22, "#d8e4ec66")}
-          {/* the handrail bracket and the anti-slip nosing */}
-          {px(508, 118, 3, 4, C.steelDark)}
-          {px(494, 115, 52, 1, "#5a5d62")}
-          {px(500, 127, 46, 1, "#5a5d62")}
+          <LiftFront open={c.liftOpen} />
+          <Balustrade />
         </g>
       }
     />
   );
 }
+
+/* ================================================================== *
+ * effects — the sensor, the window, and what the hour does to a landing
+ * ================================================================== */
 
 const NATALIA_MONOLOGUES = [
   "Ой, знову хтось наслідив... тільки ж помила.",
@@ -1162,11 +1644,14 @@ const NATALIA_MONOLOGUES = [
   "Тринадцята квартира знову без капців ходить. Ну добре.",
 ] as const;
 
-/**
- * Corridor lighting: modern blocks meter their light too. Idle, the LED
- * skirting strip and the exit sign hold the dark; move and the ceiling spots
- * cone down warm and polite, one after another, for twenty seconds.
- */
+/** How dark the landing gets, by phase, with the sensor on and off. */
+const SENSOR: Record<Ph, { lit: number; dark: number }> = {
+  dawn: { lit: 0.06, dark: 0.28 },
+  day: { lit: 0.03, dark: 0.16 },
+  dusk: { lit: 0.09, dark: 0.34 },
+  night: { lit: 0.13, dark: 0.46 },
+};
+
 function CorridorEffects({
   phase,
   moving,
@@ -1183,18 +1668,19 @@ function CorridorEffects({
 }) {
   const ph = toPhase(phase);
   const mode = modeFor(ph);
-  const [lit, setLit] = useState(true);
+  const [idle, setIdle] = useState(false);
   useEffect(() => {
     if (moving) {
-      setLit(true);
+      setIdle(false);
       return;
     }
-    const timer = window.setTimeout(() => setLit(false), 20_000);
+    const timer = window.setTimeout(() => setIdle(true), 20_000);
     return () => window.clearTimeout(timer);
   }, [moving]);
 
-  // with the blind up and the sun out, the landing never goes fully dark
-  const floorDark = ph === "night" ? (lit ? 0.3 : 0.66) : lit ? 0.2 : 0.46;
+  /* she counts as motion. It is never dark while she is working. */
+  const lit = !idle || mode === "mop" || mode === "wring";
+  const shaft = SHAFT[ph];
 
   return (
     <>
@@ -1212,116 +1698,98 @@ function CorridorEffects({
         aria-hidden="true"
         width="100%"
         height="100%"
-        viewBox={`0 0 ${W} 180`}
+        viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         className="pointer-events-none absolute inset-0"
       >
-        <defs>
-          <linearGradient id="spotcone" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fff3cf" stopOpacity="0.5" />
-            <stop offset="75%" stopColor="#ffecb0" stopOpacity="0.14" />
-            <stop offset="100%" stopColor="#ffe6a8" stopOpacity="0.04" />
-          </linearGradient>
-          <linearGradient id="daycone" x1="0.2" y1="0" x2="0.8" y2="1">
-            <stop offset="0%" stopColor="#eaf2f8" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#eaf2f8" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <rect
-          width={W}
-          height="180"
-          fill="#070a10"
-          opacity={floorDark}
-          style={{ transition: "opacity 800ms ease" }}
-        />
-        {/* the window keeps its own light regardless of the motion sensor */}
-        {ph !== "night" ? (
-          <polygon
-            points="496,48 552,48 566,180 466,180"
-            fill="url(#daycone)"
-            opacity={ph === "dusk" ? 0.7 : 1}
+        <g shapeRendering="crispEdges">
+          {/* the sensor's verdict. Flat, so it tints without smearing. */}
+          <rect
+            width={W}
+            height={H}
+            fill="#070a10"
+            opacity={lit ? SENSOR[ph].lit : SENSOR[ph].dark}
+            style={{ transition: STEP_FADE }}
           />
-        ) : null}
-        {/* the spots come up one after another, the way they always do */}
-        {CORRIDOR_SPOTS.map((x, i) => (
-          <g
-            key={x}
-            opacity={lit ? 1 : 0}
-            style={{ transition: `opacity ${420 + i * 130}ms ease` }}
-          >
-            <rect x={x - 5} y={40} width={10} height={3} fill="#fff8e0" opacity={0.95} />
-            <polygon
-              points={`${x - 7},43 ${x + 7},43 ${x + 44},150 ${x - 44},150`}
-              fill="url(#spotcone)"
-            />
-            <ellipse cx={x} cy={151} rx={46} ry={5} fill="#ffe6a8" opacity={0.1} />
-            {/* wet tiles throw it back up at you */}
-            {(mode === "mop" || mode === "wring") && x === 380 ? (
-              <ellipse cx={x} cy={158} rx={40} ry={7} fill="#fff0c8" opacity={0.14} />
-            ) : null}
-            {/* dust, turning over in the cone */}
-            {[0, 1, 2].map((k) => (
-              <rect
-                key={k}
-                x={x - 14 + k * 13}
-                y={70 + k * 18}
-                width={1}
-                height={1}
-                fill="#fff6da"
-                opacity={0.7}
-              >
-                <animate
-                  attributeName="y"
-                  values={`${70 + k * 18};${52 + k * 18};${70 + k * 18}`}
-                  dur={`${9 + k * 3}s`}
-                  repeatCount="indefinite"
-                />
-                <animate
-                  attributeName="opacity"
-                  values="0;0.8;0.2;0"
-                  dur={`${9 + k * 3}s`}
-                  repeatCount="indefinite"
-                />
-              </rect>
-            ))}
-          </g>
-        ))}
-        {/* the LED strip along the skirting is always on, quietly */}
-        <rect x={0} y={144} width={W} height={2} fill="#ffd98a" opacity={lit ? 0.35 : 0.22} />
-        {/* one fly, doing laps under the second spot, only when it's warm */}
-        {ph === "day" || ph === "dusk" ? (
-          <g>
-            <rect x={230} y={60} width={1} height={1} fill="#2e3033" opacity={0.8} />
-            <animateTransform
-              attributeName="transform"
-              type="translate"
-              values="0 0;18 12;-6 26;14 8;-14 18;0 0"
-              dur="7.5s"
-              repeatCount="indefinite"
-            />
-          </g>
-        ) : null}
-        {/* emergency wayfinding never sleeps */}
-        <rect x={486} y={38} width={26} height={8} fill="#0d3d24" opacity={0.95} />
-        <rect x={489} y={40} width={20} height={4} fill={C.green}>
-          <animate attributeName="opacity" values="1;1;0.75;1" dur="17s" repeatCount="indefinite" />
-        </rect>
+          {/* the window keeps its own light regardless of the sensor */}
+          {shaft ? <Light set={shaft} /> : <Light set={LAMP_WASH} />}
+          {/* the spots come up one after another, the way they always do */}
+          {LIVE_SPOTS.map((x, i) => (
+            <g
+              key={x}
+              opacity={lit ? 1 : 0}
+              style={{ transition: `opacity ${420 + i * 130}ms steps(3, end)` }}
+            >
+              <Light set={SPOT_CONES[i]} />
+              <Light set={SPOT_POOLS[i]} />
+            </g>
+          ))}
+          <path
+            d={SPOT_SOURCES}
+            fill="#fff8e0"
+            opacity={lit ? 0.95 : 0}
+            style={{ transition: STEP_FADE }}
+          />
+          {/* the LED skirting strip is always on, quietly */}
+          <rect x={0} y={SKIRT} width={W} height={2} fill={K.warm} opacity={lit ? 0.35 : 0.22} />
+          <rect x={0} y={SKIRT - 2} width={W} height={2} fill={dth("w", "25")} opacity={0.4} />
+          {/* dust, turning over in the middle cone — one path, one animation */}
+          {lit ? (
+            <g>
+              <path d={MOTES} fill="#fff6da" opacity={0.7} />
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                values="0 0;6 -14;-4 -26;3 -8;0 0"
+                dur="17s"
+                repeatCount="indefinite"
+              />
+            </g>
+          ) : null}
+          {/* one fly, doing laps, only when it is warm enough to bother */}
+          {ph === "day" || ph === "dusk" ? (
+            <g>
+              <rect x={230} y={60} width={1} height={1} fill="#2e3033" opacity={0.85} />
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                values="0 0;18 12;-6 26;14 8;-14 18;0 0"
+                dur="7.5s"
+                repeatCount="indefinite"
+              />
+            </g>
+          ) : null}
+          {/* emergency wayfinding never sleeps, and a moth has noticed */}
+          <rect x={486} y={38} width={26} height={8} fill="#0d3d24" opacity={0.95} />
+          <rect x={489} y={40} width={20} height={4} fill={K.green} />
+          <path d={EXIT_GLOW.halo} fill={dth("w", "12")} opacity={0.35} />
+          {ph === "night" ? (
+            <g>
+              <rect x={514} y={40} width={2} height={2} fill="#e8dfc0" opacity={0.8} />
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                values="0 0;7 -4;-3 5;4 3;0 0"
+                dur="4.3s"
+                repeatCount="indefinite"
+              />
+            </g>
+          ) : null}
+        </g>
       </svg>
     </>
   );
 }
 
+/* ================================================================== *
+ * definition — hitbox x and range unchanged from the first pass
+ * ================================================================== */
+
 export const CORRIDOR_SCENE: SceneDef<WorldState> = {
   id: "corridor",
   width: W,
   objects: [
-    {
-      id: "door-flat",
-      kind: "creakdoor",
-      x: 45,
-      range: 22,
-      to: { scene: "studio", spawnX: 40 },
-    },
+    { id: "door-flat", kind: "creakdoor", x: 45, range: 22, to: { scene: "studio", spawnX: 40 } },
     { id: "parcel", kind: "parcel", x: 77, range: 12 },
     { id: "intercom", kind: "flavor", x: 97, range: 10 },
     { id: "switch", kind: "flavor", x: 113, range: 7 },
@@ -1332,12 +1800,13 @@ export const CORRIDOR_SCENE: SceneDef<WorldState> = {
     { id: "print", kind: "flavor", x: 253, range: 14 },
     { id: "plant", kind: "plant", x: 290, range: 16 },
     { id: "neighbor-b", kind: "flavor", x: 339, range: 14 },
-    { id: "pani-natalia", kind: "npc", x: 375, range: 18 },
+    { id: "pani-natalia", kind: "npc", priority: 2, x: 375, range: 18 },
     { id: "ext-cabinet", kind: "extcabinet", x: 403, range: 14 },
     { id: "notice", kind: "flavor", x: 421, range: 7 },
     {
       id: "lift-doors",
       kind: "liftdoors",
+      priority: 1,
       x: 454,
       range: 22,
       to: { scene: "elevator", spawnX: 100 },
@@ -1346,12 +1815,16 @@ export const CORRIDOR_SCENE: SceneDef<WorldState> = {
     {
       id: "stairs-down",
       kind: "stairs",
+      priority: 1,
       x: 532,
       range: 16,
-      to: { scene: "outside", spawnX: 110 },
+      to: { scene: "outside", spawnX: 196 },
     },
   ],
   Component: ({ world, phase }) => <CorridorScene world={world} phase={phase} />,
+  /* the sensor and the palette do the darkening; nothing left for the engine */
   darkness: () => 0,
+  Foreground: (p) => <CorridorFront {...p} />,
   Effects: CorridorEffects,
+  idleLean: true,
 };

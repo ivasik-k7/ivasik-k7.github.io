@@ -3,14 +3,12 @@
 export const profile = {
   name: "Ivan Kovtun",
   title: "Solution Architect",
-  location: "Ukraine",
+  location: "Gdansk, Poland",
   summary:
-    "Solution architect who likes small rooms and large systems. " +
-    "I design cloud platforms, untangle legacy estates, and keep teams shipping. " +
-    "Off the clock: sambo, weightlifting, kettlebell sport — and a dog that sleeps through all of it.",
+    "Privet, I'm Ivan, a solution architect and software engineer with a passion for building reliable, scalable systems. I enjoy mentoring engineers, leading architecture reviews, and driving cloud migrations and platform modernization.",
   email: "ivan.kovtun@dataart.com",
   github: "https://github.com/ivasik-k7",
-  linkedin: "https://www.linkedin.com/in/ivan-kovtun/",
+  linkedin: "https://www.linkedin.com/in/ivankovtun7/",
 };
 
 export interface ExperienceEntry {
@@ -79,10 +77,6 @@ export const skills: SkillBook[] = [
   {
     title: "People",
     items: ["Technical leadership", "Mentoring", "Pre-sales & discovery", "Workshops"],
-  },
-  {
-    title: "Training",
-    items: ["Sambo", "Weightlifting", "Kettlebell sport"],
   },
 ];
 

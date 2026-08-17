@@ -27,6 +27,17 @@ export interface WorldState {
   washerOn: boolean;
   dogPets: number;
 
+  // Who you look like today (option ids per wardrobe slot)
+  appearance: {
+    skin: string;
+    hair: string;
+    beard: string;
+    hat: string;
+    shirt: string;
+    trousers: string;
+    shoes: string;
+  };
+
   // The Golf, level -1
   golfLocked: boolean;
 
@@ -51,6 +62,13 @@ export interface WorldState {
   };
 }
 
+/** What the things in the pocket call themselves (HUD, status menu). */
+export const ITEM_LABEL: Record<string, string> = {
+  cigarettes: "REDS",
+  lighter: "LIGHTER",
+  parcel: "PARCEL",
+};
+
 export const initialWorld: WorldState = {
   money: 50,
   inventory: [],
@@ -68,6 +86,15 @@ export const initialWorld: WorldState = {
   wardrobeOpen: false,
   washerOn: false,
   dogPets: 0,
+  appearance: {
+    skin: "default",
+    hair: "default",
+    beard: "default",
+    hat: "none",
+    shirt: "default",
+    trousers: "default",
+    shoes: "default",
+  },
   golfLocked: true,
   corridor: { parcelTaken: false, plantWatered: false, extOpen: false, liftOpen: false },
   street: { binOpen: false, paczkomatUsed: false },

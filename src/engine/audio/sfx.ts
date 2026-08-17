@@ -29,7 +29,11 @@ export type SfxName =
   | "cardoor" // solid German thunk
   | "engine" // starter + low burble
   | "coins" // change jingling
-  | "liftding"; // arrival chime + doors rumbling open
+  | "liftding" // arrival chime + doors rumbling open
+  | "guitar" // one strum of an old acoustic — walks an Am–F–C–G loop
+  | "guitarEnd" // the last chord, louder and left to ring
+  | "trickle" // a quiet, polite, unmistakable stream
+  | "flush"; // the cistern lets go, then refills through the whole riser
 
 interface Voice {
   ctx: AudioContext;
@@ -124,6 +128,34 @@ function blip(
   g.connect(out);
   osc.start(at);
   osc.stop(at + opts.len + 0.05);
+}
+
+// an old acoustic in a small room: every "guitar" call is one strum, walking a
+// familiar Am–F–C–G loop, chord changing every second stroke; down- and
+// up-strokes rake the strings in opposite directions
+const GUITAR_CHORDS: readonly (readonly number[])[] = [
+  [110, 164.81, 220, 261.63, 329.63], // Am
+  [87.31, 174.61, 220, 261.63, 349.23], // F
+  [130.81, 164.81, 196, 261.63, 329.63], // C
+  [98, 146.83, 196, 246.94, 293.66], // G
+];
+let strumBeat = 0;
+
+/** One raked strum: staggered plucks, an octave shimmer, a whisper of pick. */
+function strumChord(
+  v: Voice,
+  chord: readonly number[],
+  upstroke: boolean,
+  len: number,
+  peak: number,
+) {
+  const notes = upstroke ? [...chord].reverse() : chord;
+  whoosh(v, { len: 0.03, type: "highpass", freq: 4500, peak: 0.02, attack: 0.002 });
+  notes.forEach((f, i) => {
+    const at = i * 0.024;
+    blip(v, { at, type: "triangle", from: f, len: len - i * 0.05, peak: peak * (1 - i * 0.07) });
+    blip(v, { at, type: "sine", from: f * 2, len: (len - i * 0.05) * 0.45, peak: peak * 0.22 });
+  });
 }
 
 export function playSfx(name: SfxName) {
@@ -258,6 +290,30 @@ export function playSfx(name: SfxName) {
           peak: 0.05,
         });
       }
+      break;
+
+    case "guitar": {
+      const chord = GUITAR_CHORDS[Math.floor(strumBeat / 2) % GUITAR_CHORDS.length];
+      const upstroke = strumBeat % 2 === 1;
+      strumBeat += 1;
+      strumChord(v, chord, upstroke, 1.05, 0.045);
+      break;
+    }
+
+    case "guitarEnd":
+      strumBeat = 0; // next performance starts back on Am
+      strumChord(v, GUITAR_CHORDS[0], false, 2.3, 0.06);
+      break;
+
+    case "trickle":
+      whoosh(v, { len: 2.2, type: "bandpass", freq: 2300, q: 2.2, peak: 0.035, attack: 0.3 });
+      whoosh(v, { at: 0.4, len: 1.6, type: "bandpass", freq: 1500, q: 3, peak: 0.02, attack: 0.4 });
+      break;
+
+    case "flush":
+      whoosh(v, { len: 1.3, type: "bandpass", freq: 520, q: 1.1, peak: 0.22, attack: 0.06 });
+      whoosh(v, { at: 0.15, len: 1.1, type: "lowpass", freq: 320, peak: 0.12, attack: 0.1 });
+      whoosh(v, { at: 1.1, len: 1.8, type: "highpass", freq: 2800, peak: 0.03, attack: 0.5 });
       break;
   }
 }
