@@ -1,15 +1,25 @@
 import { AnimatePresence, motion } from "motion/react";
 import { MARKER_Y } from "../core/constants";
 import type { SceneObject } from "../core/types";
+import { PixelFrame, PixelLabel } from "./PixelFrame";
 
 /**
- * InteractPrompt — the gamified "what will [E] do" chip, bottom-right.
+ * InteractPrompt — what [E] will do, bottom-right, in the game's own chrome.
  *
- * Anatomy: a physical-looking keycap, the verb in small caps above the
- * object's name, and — when several things are in reach — a dim stack of
- * the alternatives, each clickable, switchable with ▲▼. The whole chip is
- * a button too, so on touch it doubles as the interact control.
+ * Built from the same parts as every other plate: a riveted PixelFrame, type
+ * set in the 3x5 glyphs the street signs use, and a keycap that is itself a
+ * small frame. Nothing here is browser type or a CSS border, so the prompt
+ * reads as a thing the game is holding up rather than an overlay.
+ *
+ *   · the keycap presses on every dispatched interaction (`pulse`)
+ *   · the verb sits above the object's name, in signal yellow
+ *   · when more than one thing is in reach, the alternatives stack above as
+ *     smaller plates — clickable, and switchable with ▲▼
  */
+
+const PARCHMENT = "#e3d9c2";
+const SIGNAL = "#fcee0a";
+
 export function InteractPrompt({
   targets,
   activeId,
@@ -36,71 +46,84 @@ export function InteractPrompt({
     <div className="pointer-events-none absolute right-4 bottom-5 z-30 flex flex-col items-end gap-1.5 [@media(pointer:coarse)]:bottom-24">
       <AnimatePresence>
         {others.map((o) => (
-          <motion.button
+          <motion.div
             key={o.id}
-            type="button"
-            className="pointer-events-auto border border-parchment/15 bg-black/60 px-2 py-0.5 font-mono text-[10px] text-parchment/45 tracking-[0.18em] hover:border-parchment/40 hover:text-parchment/85"
+            className="pointer-events-auto"
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
             transition={{ duration: 0.14 }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => onSelect(o.id)}
           >
-            ◦ {label(o)}
-          </motion.button>
+            <PixelFrame
+              u={2}
+              tone="inset"
+              rivets={false}
+              scan={false}
+              onClick={() => onSelect(o.id)}
+              ariaLabel={label(o)}
+            >
+              <span className="block" style={{ padding: "3px 6px" }}>
+                <PixelLabel text={label(o)} px={2} fill={PARCHMENT} opacity={0.5} />
+              </span>
+            </PixelFrame>
+          </motion.div>
         ))}
+
         {targets.length > 1 ? (
-          <motion.p
+          <motion.div
             key="switch-hint"
-            className="font-mono text-[9px] text-parchment/30 tracking-[0.25em]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            ▲▼ SWITCH
-          </motion.p>
+            <PixelLabel text="UP/DOWN SWITCH" px={2} fill={PARCHMENT} opacity={0.3} />
+          </motion.div>
         ) : null}
+
         {active ? (
-          <motion.button
+          <motion.div
             key="chip"
-            type="button"
-            aria-label={label(active)}
-            className="pointer-events-auto flex items-center gap-2.5 border border-parchment/30 bg-black/80 py-1.5 pr-3 pl-1.5 shadow-[0_3px_0_rgba(0,0,0,0.55)]"
+            className="pointer-events-auto"
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 16 }}
             transition={{ duration: 0.16 }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={onInteract}
           >
-            <motion.span
-              key={pulse}
-              aria-hidden="true"
-              className="flex h-7 w-7 items-center justify-center border border-signal/70 bg-[#141410] font-mono text-signal text-sm shadow-[inset_0_-3px_0_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.12)]"
-              initial={pulse > 0 ? { y: 2, scaleY: 0.88 } : false}
-              animate={{ y: 0, scaleY: 1 }}
-              transition={{ duration: 0.18 }}
-            >
-              E
-            </motion.span>
-            <motion.span
-              key={active.id}
-              className="flex flex-col items-start gap-0.5 leading-none"
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.14 }}
-            >
-              {verbText ? (
-                <span className="font-mono text-[8px] text-signal/75 tracking-[0.32em]">
-                  {verbText}
-                </span>
-              ) : null}
-              <span className="font-mono text-parchment text-xs tracking-[0.2em]">
-                {label(active)}
+            <PixelFrame u={3} tone="plate" onClick={onInteract} ariaLabel={label(active)}>
+              <span className="flex items-center gap-2.5" style={{ padding: "6px 10px 6px 6px" }}>
+                {/* the keycap: its own little frame, pressed on every use */}
+                <motion.span
+                  key={pulse}
+                  className="flex items-center justify-center"
+                  style={{
+                    width: 26,
+                    height: 26,
+                    background: "#141410",
+                    boxShadow:
+                      "inset 0 0 0 2px rgba(252,238,10,0.7), inset 0 -4px 0 rgba(0,0,0,0.7), inset 0 2px 0 rgba(255,255,255,0.1)",
+                  }}
+                  initial={pulse > 0 ? { y: 2, scaleY: 0.86 } : false}
+                  animate={{ y: 0, scaleY: 1 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <PixelLabel text="E" px={4} fill={SIGNAL} />
+                </motion.span>
+
+                <motion.span
+                  key={active.id}
+                  className="flex flex-col items-start gap-1"
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.14 }}
+                >
+                  {verbText ? (
+                    <PixelLabel text={verbText} px={2} fill={SIGNAL} opacity={0.8} />
+                  ) : null}
+                  <PixelLabel text={label(active)} px={3} fill={PARCHMENT} />
+                </motion.span>
               </span>
-            </motion.span>
-          </motion.button>
+            </PixelFrame>
+          </motion.div>
         ) : null}
       </AnimatePresence>
     </div>

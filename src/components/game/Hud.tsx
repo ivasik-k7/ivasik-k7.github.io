@@ -1,585 +1,395 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { lofiPlayer } from "@/engine";
+import { lofiPlayer, PixelFrame, PixelLabel } from "@/engine";
 import type { RoomId } from "@/lib/apartment";
 import type { DayPhase } from "@/lib/worldState";
 
 /**
- * HUD — one component, one mount, two rails.
+ * HUD — two plates and a deck, all set in the game's own typeface.
  *
- * Left says *when* and *where*: clock, weekday, room, and the deck under it.
- * Right says *how far in*: the day's arc, the building with your cell lit, how
- * much of the flat you've touched, and what's worth opening.
+ * The rule comes from Ringo Ishikawa and Fading Afternoon: while you are
+ * walking, the screen belongs to the street. Nothing overlays the world except
+ * what a person actually keeps track of — the hour, what is in the pocket, and
+ * whether the music is on. Everything else lives behind TAB, in the menu.
  *
- * Rules this file holds to:
+ * Every character up here is drawn with the same 3x5 glyphs as the ŻABKA
+ * fascia and the lift display, so the interface reads as part of the world
+ * rather than as a browser sitting in front of it. Web type appears nowhere.
  *
- *   Nothing on screen is decoration. Every panel is driven by state the game
- *   actually owns, and anything the caller can't supply is not rendered — no
- *   zeroed meters, no language switcher with one language in it, no keyboard
- *   hints on a touch device, no progress bar unless there's progress to show.
- *
- *   Five panels, not eight. Plan and progress share a frame; the panel links
- *   and the language switch share a frame. Fewer boxes reads as more solid.
- *
- *   It gets out of the way. Both rails sit at 80% and come to full on hover or
- *   focus, and wake to full for two seconds when the room changes so the new
- *   label registers. Nothing pulses if the player asked for reduced motion.
- *
- *   It never eats input. The root is inset-0 / pointer-events-none; each panel
- *   re-enables them for itself, so the space between panels stays walkable and
- *   every control stops pointerdown before it reaches the scene.
+ *   clock    hour, weekday, phase, room. Press it to open the menu.
+ *   pocket   money, and a count of what is carried. Only when there is a pocket.
+ *   deck     collapsed it is a speaker and a level; expanded it is the whole
+ *            transport — previous, play, next, four tracks, eight volume cells.
  */
 
 export type PanelId = "about" | "skills" | "links";
-
-export interface PlanCell {
-  /** must match the RoomId the game reports */
-  id: string;
-  col: number;
-  row: number;
-  /** width in cells, default 1 */
-  w?: number;
-}
 
 export interface HudProps {
   room: RoomId;
   /** omit to derive from the wall clock */
   phase?: DayPhase;
-  /** both numbers or nothing — the meter will not render half-known */
-  progress?: { found: number; total: number };
-  /** rooms the player has set foot in; unvisited cells draw as outlines */
   visited?: readonly string[];
-  /** rendered only when onOpenPanel is supplied */
-  panels?: readonly PanelId[];
-  onOpenPanel?: (id: PanelId) => void;
-  /** defaults to i18n's configured languages; hidden when there's only one */
-  languages?: readonly string[];
-  /** pass your real bindings, or false to hide; auto-hidden on touch */
-  controls?: readonly { keys: string; label: string }[] | false;
-  showAudio?: boolean;
-  /** money line + carried item labels; the panel renders only when supplied */
+  /** money line + carried item labels; the plate renders only when supplied */
   pocket?: { money: string; items: readonly string[] };
-  plan?: readonly PlanCell[];
+  /** opens the menu book — the clock plate is its door */
+  onOpenMenu?: () => void;
+  showAudio?: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// environment
+const U = 3;
+const PARCHMENT = "#e3d9c2";
+const SIGNAL = "#fcee0a";
+const EMBER = "#ffb454";
+
 // ---------------------------------------------------------------------------
 
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
+function useReducedMotion() {
+  const [still, setStill] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia(query);
-    setMatches(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setStill(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setStill(e.matches);
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
-  }, [query]);
-  return matches;
+  }, []);
+  return still;
 }
 
-// ---------------------------------------------------------------------------
-// chrome
-// ---------------------------------------------------------------------------
-
-const FRAME =
-  "pointer-events-auto relative border border-parchment/25 bg-black/60 px-2 py-1 font-mono text-[11px] uppercase leading-none tracking-[0.18em] text-parchment/70 shadow-[inset_0_1px_0_rgba(232,230,224,0.07),0_1px_0_rgba(0,0,0,0.55)]";
-
-/** Four 3px brackets — the difference between a div and a game frame. */
-function Corners() {
-  return (
-    <>
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-px -left-px size-[3px] border-parchment/70 border-t border-l"
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-px -right-px size-[3px] border-parchment/70 border-t border-r"
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-px -left-px size-[3px] border-parchment/70 border-b border-l"
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-px -right-px size-[3px] border-parchment/70 border-b border-r"
-      />
-    </>
-  );
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 20_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
 }
 
-function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`${FRAME} ${className}`} onPointerDown={(e) => e.stopPropagation()}>
-      {children}
-      <Corners />
-    </div>
-  );
-}
-
-function Glyph({
-  label,
-  active,
-  onClick,
-  className = "",
-  children,
-}: {
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active === undefined ? undefined : active}
-      className={`rounded-none transition-colors hover:text-signal focus-visible:text-signal focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal/60 ${active ? "text-signal" : "text-parchment/60"} ${className}`}
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Rule({ vertical = false }: { vertical?: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={vertical ? "h-3 w-px bg-parchment/20" : "my-1 h-px w-full bg-parchment/15"}
-    />
-  );
-}
-
-function Meter({ value, max, cells = 10 }: { value: number; max: number; cells?: number }) {
-  const filled = max <= 0 ? 0 : Math.min(cells, Math.max(0, Math.round((value / max) * cells)));
-  return (
-    <span aria-hidden="true" className="tracking-normal text-parchment/40">
-      <span className="text-signal/85">{"▮".repeat(filled)}</span>
-      {"▯".repeat(cells - filled)}
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// the day's arc
-// ---------------------------------------------------------------------------
-
-function phaseFromHour(h: number): DayPhase {
-  if (h < 6 || h >= 22) return "night" as DayPhase;
-  if (h < 9) return "dawn" as DayPhase;
-  if (h < 18) return "day" as DayPhase;
-  return "dusk" as DayPhase;
-}
-
-const DIAL: Record<string, { x: number; y: number; night: boolean; tint: string }> = {
-  dawn: { x: 11, y: 12, night: false, tint: "#e8a86a" },
-  morning: { x: 11, y: 12, night: false, tint: "#e8a86a" },
-  day: { x: 27, y: 5, night: false, tint: "#ffd98a" },
-  dusk: { x: 43, y: 12, night: false, tint: "#d9773f" },
-  night: { x: 27, y: 8, night: true, tint: "#9fc7d6" },
-};
-
-/** 54×26: a dotted track, a ticked horizon, and the sun riding it. */
-function PhaseDial({ phase, still }: { phase: DayPhase; still: boolean }) {
-  const d = DIAL[phase as string] ?? DIAL.day;
-  return (
-    <svg
-      aria-hidden="true"
-      width="54"
-      height="26"
-      viewBox="0 0 54 26"
-      shapeRendering="crispEdges"
-      className="shrink-0"
-    >
-      {[6, 12, 18, 24, 30, 36, 42, 48].map((x, i) => {
-        const y = 20 - Math.round(Math.sin((i + 0.5) * (Math.PI / 8)) * 13);
-        return <rect key={x} x={x} y={y} width="1" height="1" fill="currentColor" opacity={0.2} />;
-      })}
-      <rect x="0" y="20" width="54" height="1" fill="currentColor" opacity={0.35} />
-      {[2, 10, 18, 26, 34, 42, 50].map((x) => (
-        <rect key={`t${x}`} x={x} y="21" width="1" height="2" fill="currentColor" opacity={0.16} />
-      ))}
-      {d.night ? (
-        <g>
-          <rect x={d.x - 4} y={d.y - 3} width="8" height="8" fill={d.tint} />
-          <rect x={d.x - 5} y={d.y - 1} width="1" height="4" fill={d.tint} />
-          <rect x={d.x + 4} y={d.y - 1} width="1" height="4" fill={d.tint} />
-          <rect x={d.x - 1} y={d.y - 4} width="4" height="4" fill="#000" opacity={0.88} />
-          <rect x={d.x + 1} y={d.y - 2} width="4" height="6" fill="#000" opacity={0.88} />
-          <rect x="9" y="4" width="1" height="1" fill={d.tint} opacity={0.8} />
-          <rect x="44" y="8" width="1" height="1" fill={d.tint} opacity={0.55} />
-          <rect x="38" y="3" width="1" height="1" fill={d.tint} opacity={0.45} />
-        </g>
-      ) : (
-        <g>
-          <rect x={d.x - 3} y={d.y - 3} width="6" height="6" fill={d.tint} />
-          <rect x={d.x - 4} y={d.y - 2} width="1" height="4" fill={d.tint} />
-          <rect x={d.x + 3} y={d.y - 2} width="1" height="4" fill={d.tint} />
-          <rect x={d.x - 2} y={d.y - 4} width="4" height="1" fill={d.tint} />
-          <rect x={d.x - 2} y={d.y + 3} width="4" height="1" fill={d.tint} />
-          <rect x={d.x - 3} y={d.y - 3} width="6" height="6" fill={d.tint} opacity={0.3}>
-            {still ? null : (
-              <animate
-                attributeName="opacity"
-                values="0.3;0.12;0.3"
-                dur="6s"
-                repeatCount="indefinite"
-              />
-            )}
-          </rect>
-        </g>
-      )}
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// the plan
-// ---------------------------------------------------------------------------
-
-/** Słoneczna 14 in nine cells: the flat, the ground, the level below. */
-const DEFAULT_PLAN: readonly PlanCell[] = [
-  { id: "balcony", col: 0, row: 0 },
-  { id: "bath", col: 1, row: 0 },
-  { id: "study", col: 2, row: 0 },
-  { id: "studio", col: 3, row: 0, w: 2 },
-  { id: "corridor", col: 5, row: 0 },
-  { id: "elevator", col: 6, row: 0 },
-  { id: "zabka", col: 1, row: 1, w: 2 },
-  { id: "outside", col: 3, row: 1, w: 3 },
-  { id: "parking", col: 2, row: 2, w: 4 },
-];
-
-const CELL = 9;
-const GAP = 2;
-
-function PlanMap({
-  room,
-  visited,
-  plan,
-  still,
-}: {
-  room: RoomId;
-  visited: readonly string[];
-  plan: readonly PlanCell[];
-  still: boolean;
-}) {
-  const seen = new Set<string>([...visited, room as string]);
-  const cols = plan.reduce((m, c) => Math.max(m, c.col + (c.w ?? 1)), 0);
-  const rows = plan.reduce((m, c) => Math.max(m, c.row + 1), 0);
-  const w = cols * (CELL + GAP) - GAP;
-  const h = rows * (CELL + GAP) - GAP + 3;
-  const shaft = plan.find((c) => c.id === "elevator");
-  return (
-    <svg
-      aria-hidden="true"
-      width={w}
-      height={h}
-      viewBox={`0 0 ${w} ${h}`}
-      shapeRendering="crispEdges"
-      className="shrink-0"
-    >
-      {Array.from({ length: rows }, (_, r) => r * (CELL + GAP) + CELL + 1).map((slabY) => (
-        <rect
-          key={`sl${slabY}`}
-          x="0"
-          y={slabY}
-          width={w}
-          height="1"
-          fill="currentColor"
-          opacity={0.16}
-        />
-      ))}
-      {shaft ? (
-        <rect
-          x={shaft.col * (CELL + GAP)}
-          y="0"
-          width={CELL}
-          height={rows * (CELL + GAP) - GAP}
-          fill="currentColor"
-          opacity={0.07}
-        />
-      ) : null}
-      {plan.map((c) => {
-        const cw = (c.w ?? 1) * CELL + ((c.w ?? 1) - 1) * GAP;
-        const cx = c.col * (CELL + GAP);
-        const cy = c.row * (CELL + GAP);
-        const here = c.id === (room as string);
-        const been = seen.has(c.id);
-        return (
-          <g key={c.id} className={here ? "text-signal" : undefined}>
-            <rect
-              x={cx}
-              y={cy}
-              width={cw}
-              height={CELL}
-              fill="currentColor"
-              opacity={here ? 0.9 : been ? 0.24 : 0.09}
-            />
-            {here && !still ? (
-              <rect x={cx} y={cy} width={cw} height={CELL} fill="currentColor" opacity={0.35}>
-                <animate
-                  attributeName="opacity"
-                  values="0.35;0.08;0.35"
-                  dur="2.4s"
-                  repeatCount="indefinite"
-                />
-              </rect>
-            ) : null}
-            {!been ? (
-              <rect
-                x={cx}
-                y={cy}
-                width={cw}
-                height={CELL}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1"
-                opacity={0.2}
-              />
-            ) : null}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
+const phaseOf = (h: number): DayPhase =>
+  h < 6 ? "night" : h < 11 ? "morning" : h < 17 ? "day" : h < 21 ? "dusk" : "night";
 
 // ---------------------------------------------------------------------------
 // the deck
 // ---------------------------------------------------------------------------
 
-const subscribe = (fn: () => void) => lofiPlayer.subscribe(fn);
-const snapshot = () => `${lofiPlayer.playing}:${lofiPlayer.track?.name ?? ""}:${lofiPlayer.volume}`;
+const audioSubscribe = (fn: () => void) => lofiPlayer.subscribe(fn);
+const audioSnapshot = () => `${lofiPlayer.playing}:${lofiPlayer.track?.name}:${lofiPlayer.volume}`;
 
-function AudioDeck() {
-  const state = useSyncExternalStore(subscribe, snapshot, snapshot);
-  void state;
-  const track = lofiPlayer.track?.name;
-  if (!track) return null;
-  const bars = Math.max(0, Math.min(5, Math.round(lofiPlayer.volume * 5)));
+/** Transport glyphs, drawn rather than typed — the font has no triangles. */
+function Transport({
+  kind,
+  fill,
+  px = 3,
+}: {
+  kind: "prev" | "play" | "pause" | "next" | "note" | "mute";
+  fill: string;
+  px?: number;
+}) {
+  const shapes: Record<string, [number, number, number, number][]> = {
+    // a triangle as four stepped columns, because that is how a pixel plays
+    play: [
+      [1, 0, 1, 7],
+      [2, 1, 1, 5],
+      [3, 2, 1, 3],
+      [4, 3, 1, 1],
+    ],
+    pause: [
+      [1, 0, 2, 7],
+      [4, 0, 2, 7],
+    ],
+    next: [
+      [0, 0, 1, 7],
+      [1, 1, 1, 5],
+      [2, 2, 1, 3],
+      [3, 3, 1, 1],
+      [5, 0, 1, 7],
+    ],
+    prev: [
+      [6, 0, 1, 7],
+      [5, 1, 1, 5],
+      [4, 2, 1, 3],
+      [3, 3, 1, 1],
+      [1, 0, 1, 7],
+    ],
+    // a quaver: stem, flag, and the head that makes it read as music
+    note: [
+      [3, 0, 3, 1],
+      [5, 1, 1, 2],
+      [3, 1, 1, 4],
+      [1, 4, 3, 3],
+    ],
+    mute: [
+      [1, 2, 3, 3],
+      [4, 1, 2, 5],
+    ],
+  };
+  return (
+    <svg
+      aria-hidden="true"
+      width={7 * px}
+      height={7 * px}
+      viewBox="0 0 7 7"
+      shapeRendering="crispEdges"
+      style={{ display: "block" }}
+    >
+      {shapes[kind].map(([x, y, w, h]) => (
+        <rect key={`${x}:${y}`} x={x} y={y} width={w} height={h} fill={fill} />
+      ))}
+    </svg>
+  );
+}
+
+function DeckButton({
+  onClick,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <PixelFrame u={2} tone="plate" rivets={false} scan={false} onClick={onClick} ariaLabel={label}>
+      <span className="flex items-center justify-center" style={{ padding: 4 }}>
+        {children}
+      </span>
+    </PixelFrame>
+  );
+}
+
+function Deck() {
+  useSyncExternalStore(audioSubscribe, audioSnapshot, audioSnapshot);
+  const [open, setOpen] = useState(false);
+  const on = lofiPlayer.playing;
+  const vol = lofiPlayer.volume;
+  const cells = 8;
+  const filled = Math.round(vol * cells);
+  const track = lofiPlayer.track;
+
+  if (!open) {
+    return (
+      <PixelFrame
+        u={U}
+        tone="plate"
+        rivets={false}
+        onClick={() => setOpen(true)}
+        ariaLabel="Open the music deck"
+      >
+        <span className="flex items-end gap-[3px]" style={{ padding: `${U * 2}px ${U * 2.5}px` }}>
+          <span style={{ opacity: on ? 1 : 0.45, marginRight: 2 }}>
+            <Transport kind={on ? "note" : "mute"} fill={on ? SIGNAL : PARCHMENT} px={2} />
+          </span>
+          {Array.from({ length: 4 }, (_, i) => (
+            <span
+              // biome-ignore lint/suspicious/noArrayIndexKey: four fixed level bars
+              key={`bar${i * 1}`}
+              className={on ? "deck-eq" : undefined}
+              style={{
+                width: U,
+                height: U * (i + 1),
+                background: on && i < Math.round(vol * 4) ? SIGNAL : "rgba(227,217,194,0.16)",
+                animationDelay: `${i * 0.13}s`,
+              }}
+            />
+          ))}
+        </span>
+      </PixelFrame>
+    );
+  }
 
   return (
-    <Panel className="flex items-center gap-2 tracking-[0.14em]">
-      <span aria-hidden="true" className={lofiPlayer.playing ? "text-signal" : "text-parchment/35"}>
-        ♪
-      </span>
-      <Glyph
-        label={lofiPlayer.playing ? "Pause music" : "Play music"}
-        onClick={() => lofiPlayer.toggle()}
+    <PixelFrame u={U} tone="panel" title="MUSIC" badge={on ? "ON AIR" : "PAUSED"}>
+      <div
+        className="flex flex-col gap-2"
+        style={{ padding: `${U * 4}px ${U * 3}px ${U * 3}px`, minWidth: 190 }}
       >
-        {lofiPlayer.playing ? "❚❚" : "▶"}
-      </Glyph>
-      <Glyph label="Next track" onClick={() => lofiPlayer.next()}>
-        ⏭
-      </Glyph>
-      <span className="w-[8rem] truncate text-parchment/55 normal-case tracking-normal">
-        {track}
-      </span>
-      <Rule vertical />
-      <Glyph label="Volume down" onClick={() => lofiPlayer.setVolume(lofiPlayer.volume - 0.2)}>
-        −
-      </Glyph>
-      <span aria-hidden="true" className="tracking-normal text-parchment/40">
-        <span className="text-signal/85">{"▮".repeat(bars)}</span>
-        {"▯".repeat(5 - bars)}
-      </span>
-      <Glyph label="Volume up" onClick={() => lofiPlayer.setVolume(lofiPlayer.volume + 0.2)}>
-        +
-      </Glyph>
-    </Panel>
+        {/* what is playing, and where in the stack it sits */}
+        <div className="flex items-center justify-between gap-3">
+          <PixelLabel text={track?.name ?? "SILENCE"} px={2} fill={on ? SIGNAL : PARCHMENT} />
+          <PixelLabel
+            text={`${(lofiPlayer.trackIndex ?? 0) + 1}/${lofiPlayer.trackCount ?? 4}`}
+            px={2}
+            fill={PARCHMENT}
+            opacity={0.4}
+          />
+        </div>
+
+        {/* transport */}
+        <div className="flex items-center gap-1.5">
+          <DeckButton onClick={() => lofiPlayer.next(-1)} label="Previous track">
+            <Transport kind="prev" fill={PARCHMENT} />
+          </DeckButton>
+          <DeckButton onClick={() => lofiPlayer.toggle()} label={on ? "Pause" : "Play"}>
+            <Transport kind={on ? "pause" : "play"} fill={SIGNAL} />
+          </DeckButton>
+          <DeckButton onClick={() => lofiPlayer.next(1)} label="Next track">
+            <Transport kind="next" fill={PARCHMENT} />
+          </DeckButton>
+          <span className="grow" />
+          {/* the level meter dances only while something is coming out of it */}
+          <span className="flex items-end gap-[2px]" style={{ height: U * 5 }}>
+            {Array.from({ length: 5 }, (_, i) => (
+              <span
+                // biome-ignore lint/suspicious/noArrayIndexKey: five fixed meter bars
+                key={`eq${i * 1}`}
+                className={on ? "deck-eq" : undefined}
+                style={{
+                  width: 2,
+                  height: on ? U * (1 + (i % 3)) : 2,
+                  background: on ? SIGNAL : "rgba(227,217,194,0.2)",
+                  animationDelay: `${i * 0.11}s`,
+                }}
+              />
+            ))}
+          </span>
+        </div>
+
+        {/* volume: eight cells, and clicking one is how you set it */}
+        <div className="flex items-center gap-2">
+          <PixelLabel text="VOL" px={2} fill={PARCHMENT} opacity={0.45} />
+          <span className="flex items-center gap-[3px]">
+            {Array.from({ length: cells }, (_, i) => (
+              <button
+                // biome-ignore lint/suspicious/noArrayIndexKey: eight fixed volume cells
+                key={`vol${i * 1}`}
+                type="button"
+                aria-label={`Volume ${i + 1} of ${cells}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => lofiPlayer.setVolume((i + 1) / cells)}
+                style={{
+                  width: U * 2,
+                  height: U * 3,
+                  background: i < filled ? SIGNAL : "rgba(227,217,194,0.14)",
+                  boxShadow: i < filled ? "inset 0 -3px 0 rgba(0,0,0,0.35)" : undefined,
+                }}
+              />
+            ))}
+          </span>
+        </div>
+
+        {/* the tracks, by name, because four names fit and a dropdown does not */}
+        <div className="flex flex-wrap gap-1">
+          {(lofiPlayer.trackNames ?? []).map((name, i) => (
+            <PixelFrame
+              key={name}
+              u={2}
+              tone={name === track?.name ? "active" : "inset"}
+              rivets={false}
+              scan={false}
+              onClick={() => lofiPlayer.next(i - (lofiPlayer.trackIndex ?? 0))}
+              ariaLabel={`Play ${name}`}
+            >
+              <span className="block" style={{ padding: "3px 5px" }}>
+                <PixelLabel
+                  text={name}
+                  px={2}
+                  fill={name === track?.name ? SIGNAL : PARCHMENT}
+                  opacity={name === track?.name ? 1 : 0.55}
+                />
+              </span>
+            </PixelFrame>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className="self-start"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setOpen(false)}
+        >
+          <PixelLabel text="- CLOSE" px={2} fill={PARCHMENT} opacity={0.4} />
+        </button>
+      </div>
+    </PixelFrame>
   );
 }
 
 // ---------------------------------------------------------------------------
-// the HUD
-// ---------------------------------------------------------------------------
 
-const DEFAULT_CONTROLS = [
-  { keys: "←→", label: "MOVE" },
-  { keys: "E", label: "USE" },
-  { keys: "ESC", label: "CLOSE" },
-] as const;
-
-export function HUD({
-  room,
-  phase,
-  progress,
-  visited = [],
-  panels = ["about", "skills", "links"],
-  onOpenPanel,
-  languages,
-  controls,
-  showAudio = true,
-  pocket,
-  plan = DEFAULT_PLAN,
-}: HudProps) {
-  const { t, i18n } = useTranslation();
-  const still = useMediaQuery("(prefers-reduced-motion: reduce)");
-  const touch = useMediaQuery("(pointer: coarse)");
-
-  const [now, setNow] = useState(() => new Date());
-  const [open, setOpen] = useState(true);
-  const [wake, setWake] = useState(true);
-  const first = useRef(true);
+export function HUD({ room, phase, pocket, onOpenMenu, showAudio = true }: HudProps) {
+  const { t } = useTranslation();
+  const now = useClock();
+  const still = useReducedMotion();
+  const [awake, setAwake] = useState(true);
+  const lastRoom = useRef(room);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
+    if (lastRoom.current === room) return;
+    lastRoom.current = room;
+    if (still) return;
+    setAwake(true);
+    const timer = window.setTimeout(() => setAwake(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [room, still]);
 
-  // the right rail starts closed on a phone, where the art matters more
   useEffect(() => {
-    if (touch) setOpen(false);
-  }, [touch]);
-
-  // come to full opacity for two seconds when the room changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `room` is the trigger; the timers close over nothing else
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      const t0 = window.setTimeout(() => setWake(false), 2000);
-      return () => window.clearTimeout(t0);
-    }
-    setWake(true);
-    const t1 = window.setTimeout(() => setWake(false), 2000);
-    return () => window.clearTimeout(t1);
-  }, [room]);
+    if (still) return;
+    const timer = window.setTimeout(() => setAwake(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [still]);
 
   const hh = String(now.getHours()).padStart(2, "0");
   const mm = String(now.getMinutes()).padStart(2, "0");
-  const weekday = new Intl.DateTimeFormat(i18n.resolvedLanguage ?? "en", {
-    weekday: "short",
-  }).format(now);
-
-  const activePhase = phase ?? phaseFromHour(now.getHours());
-  const phaseLabel = t(`hud.phase.${activePhase}`, {
-    defaultValue: String(activePhase),
-  }).toUpperCase();
-  const roomLabel = t(`hud.${room}`, { defaultValue: String(room) });
-
-  // only offer a switcher when there is something to switch between
-  const configured = (i18n.options?.supportedLngs || []).filter(
-    (l): l is string => typeof l === "string" && l !== "cimode",
-  );
-  const langs = (languages ?? configured).map((l) => l.slice(0, 2));
-  const uniqueLangs = [...new Set(langs)];
-  const current = (i18n.resolvedLanguage ?? "").slice(0, 2);
-
-  const keyHints = controls === false ? [] : touch ? [] : (controls ?? DEFAULT_CONTROLS);
-  const showPanels = Boolean(onOpenPanel) && panels.length > 0;
-  const showLangs = uniqueLangs.length > 1;
-  const rail = `flex flex-col gap-1.5 transition-opacity duration-500 ${wake ? "opacity-100" : "opacity-80"} hover:opacity-100 focus-within:opacity-100`;
+  const weekday = now.toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase();
+  const activePhase = phase ?? phaseOf(now.getHours());
+  const phaseLabel = t(`hud.phase.${activePhase}`, { defaultValue: activePhase.toUpperCase() });
+  const roomLabel = t(`hud.${room}`, { defaultValue: String(room).toUpperCase() });
+  const carried = pocket?.items.length ?? 0;
 
   return (
-    <div className="pointer-events-none absolute inset-0 select-none pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
-      {/* ------------------------- left: when / where ---------------------- */}
-      <div className={`absolute top-3 left-3 items-start ${rail}`}>
-        <Panel className="flex items-center gap-2">
-          <time dateTime={`${hh}:${mm}`} className="tabular-nums text-parchment/85">
-            {hh}
-            <span className={`text-parchment/45 ${still ? "" : "animate-pulse"}`}>:</span>
-            {mm}
-          </time>
-          <span className="text-parchment/45">{weekday.toUpperCase()}</span>
-          <Rule vertical />
-          <span className="text-parchment/75">{roomLabel}</span>
-        </Panel>
-        {pocket ? (
-          <Panel className="flex items-center gap-2">
-            <span className="text-signal/90">{pocket.money}</span>
-            {pocket.items.map((item) => (
-              <span key={item} className="flex items-center gap-2 text-parchment/55">
-                <Rule vertical />
-                {item}
-              </span>
-            ))}
-          </Panel>
-        ) : null}
-        {showAudio ? <AudioDeck /> : null}
-      </div>
-
-      {/* ------------------------- right: how far in ----------------------- */}
-      <div className={`absolute top-3 right-3 items-end ${rail}`}>
-        <Panel className="flex items-center gap-2">
-          <span className="text-parchment/60">{phaseLabel}</span>
-          <PhaseDial phase={activePhase} still={still} />
-          <Glyph
-            label={open ? "Collapse details" : "Expand details"}
-            onClick={() => setOpen((v) => !v)}
-            className="text-parchment/40"
+    <div className="pointer-events-none absolute inset-0">
+      {/* --- when, where, and the way into the menu.
+             These two fade back while you walk; the deck below never does,
+             because a control you cannot read is not a control. --- */}
+      <div
+        className="pointer-events-auto absolute top-3 left-3 flex flex-col items-start gap-2 transition-opacity duration-500"
+        style={{ opacity: awake ? 1 : 0.8 }}
+        onPointerEnter={() => setAwake(true)}
+      >
+        <PixelFrame u={U} tone="plate" onClick={onOpenMenu} ariaLabel="Open the menu">
+          <span
+            className="flex flex-col gap-1"
+            style={{ padding: `${U * 2}px ${U * 3}px ${U * 2}px` }}
           >
-            {open ? "▴" : "▾"}
-          </Glyph>
-        </Panel>
+            <span className="flex items-baseline gap-2">
+              <PixelLabel text={`${hh}:${mm}`} px={4} fill={PARCHMENT} title={`${hh}:${mm}`} />
+              <PixelLabel text={weekday} px={2} fill={PARCHMENT} opacity={0.45} />
+              <PixelLabel text={phaseLabel} px={2} fill={EMBER} opacity={0.75} />
+            </span>
+            <PixelLabel text={roomLabel} px={3} fill={SIGNAL} opacity={0.9} />
+            <PixelLabel text="TAB - MENU" px={2} fill={PARCHMENT} opacity={0.28} />
+          </span>
+        </PixelFrame>
 
-        {open ? (
-          <>
-            <Panel className="flex flex-col items-end">
-              <PlanMap room={room} visited={visited} plan={plan} still={still} />
-              {progress && progress.total > 0 ? (
-                <>
-                  <Rule />
-                  <span className="flex w-full items-center justify-between gap-2">
-                    <span className="text-parchment/40">
-                      {t("hud.found", { defaultValue: "SEEN" })}
-                    </span>
-                    <Meter value={progress.found} max={progress.total} />
-                    <span className="tabular-nums text-parchment/65">
-                      {String(progress.found).padStart(2, "0")}/{progress.total}
-                    </span>
-                  </span>
-                </>
+        {/* --- the pocket --- */}
+        {pocket ? (
+          <PixelFrame u={U} tone="plate" rivets={false} onClick={onOpenMenu} ariaLabel="Pocket">
+            <span
+              className="flex items-center gap-2"
+              style={{ padding: `${U * 1.5}px ${U * 3}px` }}
+            >
+              <PixelLabel text={pocket.money} px={3} fill={SIGNAL} />
+              {carried > 0 ? (
+                <PixelLabel
+                  text={`+${carried} ${carried === 1 ? "THING" : "THINGS"}`}
+                  px={2}
+                  fill={PARCHMENT}
+                  opacity={0.5}
+                />
               ) : null}
-            </Panel>
-
-            {showPanels || showLangs ? (
-              <Panel className="flex items-center gap-3">
-                {showPanels
-                  ? panels.map((id) => (
-                      <Glyph key={id} label={`Open ${id}`} onClick={() => onOpenPanel?.(id)}>
-                        {t(`hud.panel.${id}`, { defaultValue: id }).toUpperCase()}
-                      </Glyph>
-                    ))
-                  : null}
-                {showPanels && showLangs ? <Rule vertical /> : null}
-                {showLangs
-                  ? uniqueLangs.map((l) => (
-                      <Glyph
-                        key={l}
-                        label={`Switch language to ${l}`}
-                        active={current === l}
-                        onClick={() => void i18n.changeLanguage(l)}
-                      >
-                        {l.toUpperCase()}
-                      </Glyph>
-                    ))
-                  : null}
-              </Panel>
-            ) : null}
-
-            {keyHints.length > 0 ? (
-              <Panel className="flex items-center gap-2 text-parchment/35">
-                {keyHints.map((c, i) => (
-                  <span key={c.keys} className="flex items-center gap-2">
-                    {i > 0 ? <Rule vertical /> : null}
-                    <span className="text-parchment/65">{c.keys}</span>
-                    <span>{c.label}</span>
-                  </span>
-                ))}
-              </Panel>
-            ) : null}
-          </>
+            </span>
+          </PixelFrame>
         ) : null}
       </div>
+
+      {/* --- the deck --- */}
+      {showAudio ? (
+        <div className="pointer-events-auto absolute bottom-3 left-3 [@media(pointer:coarse)]:bottom-24">
+          <Deck />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-/** Back-compat: the old call site was `<Hud room={room} />`. */
-export const Hud = HUD;
+export { HUD as Hud };

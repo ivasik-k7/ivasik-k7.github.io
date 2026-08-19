@@ -14,6 +14,7 @@ import {
   Light,
   M,
   type Mat,
+  NpcActor,
   type Ph,
   PhaseSky,
   PixelText,
@@ -39,6 +40,7 @@ import {
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 import { NpcMonologue } from "./NpcMonologue";
+import { NPCS } from "./npcs";
 
 // --- ULICA SŁONECZNA / the street, and the scene the whole game hangs off -----------
 
@@ -5900,7 +5902,10 @@ function StreetFurniture({ ph, s }: { ph: Ph; s: StreetState }) {
  * ================================================================== */
 
 /** The smoker. Hood up when it is cold, phone out when it is not. */
-function Smoker({ ph, s }: { ph: Ph; s: StreetState }) {
+// The hand-drawn Smoker, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Smoker({ ph, s }: { ph: Ph; s: StreetState }) {
   const x = 244;
   const cold = isCold(s, ph);
   const phone = s.smoker === "phone";
@@ -6006,7 +6011,10 @@ function Smoker({ ph, s }: { ph: Ph; s: StreetState }) {
 }
 
 /** Babcia Krysia. Feeds the birds by day, buttons up at dusk, indoors by night. */
-function Babcia({ ph: _ph, s }: { ph: Ph; s: StreetState }) {
+// The hand-drawn Babcia, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Babcia({ ph: _ph, s }: { ph: Ph; s: StreetState }) {
   const x = 790;
   const feeding = s.babcia === "feeding";
   return (
@@ -6119,7 +6127,10 @@ function Babcia({ ph: _ph, s }: { ph: Ph; s: StreetState }) {
 }
 
 /** Pan Heniek, waiting. Leans out to look down the road; steps up when it comes. */
-function Heniek({ ph, s }: { ph: Ph; s: StreetState }) {
+// The hand-drawn Pan Heniek, kept for one release while the built one proves
+// itself across every bus state. Delete once he has.
+// @ts-expect-error TS6133
+function _Heniek({ ph, s }: { ph: Ph; s: StreetState }) {
   const x = 488;
   const night = ph === "night";
   const coming = s.bus === "arriving";
@@ -6351,14 +6362,13 @@ function Pigeon({
   );
 }
 
-function People({ ph, s }: { ph: Ph; s: StreetState }) {
+function People({ ph: _ph, s }: { ph: Ph; s: StreetState }) {
   /** When the bus is pulling in, the flock leaves. That is the payoff. */
   const flock = s.bus !== "arriving";
   return (
     <g>
-      {s.smoker !== "away" ? <Smoker ph={ph} s={s} /> : null}
-      {s.babcia !== "away" ? <Babcia ph={ph} s={s} /> : null}
-      {s.heniek ? <Heniek ph={ph} s={s} /> : null}
+      {/* the smoker and the babcia are NpcActors in the Effects plane now */}
+      {/* Pan Heniek is an NpcActor in the Effects plane now */}
       {s.cat !== "away" ? <Cat s={s} /> : null}
       {flock ? (
         <g>
@@ -6849,7 +6859,9 @@ const FG_CYCLIST = {
  * component
  * -------------------------------------------------------------------- */
 
-function StreetFront({ world, phase }: { world?: WorldState; phase?: string }) {
+// The street's Foreground, wired out while the parapet art is reworked.
+// @ts-expect-error TS6133
+function _StreetFront({ world, phase }: { world?: WorldState; phase?: string }) {
   const ph = toPhase(phase);
   const s = world ? state(world, ph) : null;
   const snow = s ? isSnow(s) : false;
@@ -7331,27 +7343,34 @@ function StreetFront({ world, phase }: { world?: WorldState; phase?: string }) {
  * ================================================================== */
 
 const SMOKER_LINES = [
-  "Rzucam od poniedziałku. Serio mówię.",
-  "Kurwa, zimno. Ale w domu palić nie wolno...",
-  "Jedna i wracam. No, może dwie.",
-  "Widziałeś, jak podrożyły? Paczka jak obiad.",
-  "Ta Żabka świeci mi w okno całą noc.",
+  "Tu człowiek mieszka całe życie, a nowych mord co chwilę przybywa.",
+  "Kurwa, paczka kosztuje teraz jak porządny obiad.",
+  "Dobra, stoję pięć minut i idę. Nie mam dziś czasu.",
+  "Znowu coś wiercą od rana. Co oni tam budują?",
+  "Wszyscy mnie znają, a jak trzeba coś załatwić, to nagle nikt nie zna.",
+  "Spokojnie, ja tu tylko stoję i palę. Nic się nie dzieje.",
 ] as const;
 
 const BABCIA_LINES = [
-  "Za moich czasów masło tyle nie kosztowało...",
-  "Autobus znowu nie przyjechał. Siedzę, czekam.",
-  "Wnuczek dzwonił! Raz na miesiąc, ale dzwonił.",
-  "Ta Żabka to wygoda, ale ceny, panie...",
-  "Gołębie mnie znają. Ludzie już mniej.",
-  "Kotek to jedyny, co tu nikomu nie przeszkadza.",
+  "Gołębie mnie już poznają. Ten szary przychodzi codziennie.",
+  "Kotek to przynajmniej człowieka wysłucha. Nie tak jak ludzie.",
+  "Ja tu mieszkam trzydzieści lat. Ja wiem, co się tutaj dzieje.",
+  "W nocy znowu ktoś chodził po klatce. Słyszałam. O drugiej siedemnaście.",
+  "Ta pani z trzeciego piętra znowu wyrzuciła śmieci nie do tego kontenera.",
+  "Nie patrz tak na mnie, ja tylko pytam. Z ciekawości.",
 ] as const;
 
 const HENIEK_LINES = [
-  "Tablica pisze pięć minut. Pisze tak od dziesięciu.",
-  "Kiedyś jeździł co kwadrans. Kiedyś.",
-  "Jak nie przyjedzie, to pójdę. Piechotą zdrowiej.",
-  "O, jedzie. No proszę. Cud na Słonecznej.",
+  "No kurwa, ile można czekać na ten autobus?!",
+  "Pięć minut. Jasne. Tablica kłamie już od dwudziestu.",
+  "Kiedyś jeździł normalnie. Teraz człowiek nie wie, czy w ogóle przyjedzie.",
+  "Jak ten autobus zaraz nie przyjedzie, to mnie szlag trafi.",
+  "No oczywiście. Jak mam być punktualnie, to akurat dzisiaj go nie ma.",
+  "Kurwa, zimno, wieje, a oni sobie chyba jaja robią.",
+  "O, jedzie! No łaskawca się znalazł.",
+  "To jest jakiś żart. Co miesiąc drożej, a autobusów coraz mniej.",
+  "Jeszcze pięć minut i idę pieszo. Mam dosyć tego czekania.",
+  "No wreszcie, kurwa. Ile można?!",
 ] as const;
 
 /** The hour, as a colour over everything. Outdoors this is most of the model. */
@@ -7424,6 +7443,48 @@ function StreetEffects({
   const open = s.zabka !== "closed";
   return (
     <>
+      {/* the pavement's regulars, built from the NPC rig */}
+      <svg
+        aria-hidden="true"
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${STREET_W} ${H}`}
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0"
+      >
+        {s.smoker !== "away" ? (
+          <NpcActor
+            npc={NPCS.smoker}
+            x={254}
+            facing={1}
+            action={dialogueOpen ? NPCS.smoker.reactions.onTalk : undefined}
+          />
+        ) : null}
+        {s.babcia !== "away" ? (
+          <NpcActor
+            npc={NPCS.babcia}
+            x={800}
+            facing={1}
+            shadow={false}
+            action={dialogueOpen ? NPCS.babcia.reactions.onTalk : undefined}
+          />
+        ) : null}
+        {s.heniek ? (
+          <NpcActor
+            npc={NPCS.waiting}
+            /* he steps to the kerb when the bus is finally coming */
+            x={s.bus === "arriving" ? 502 : 496}
+            facing={1}
+            action={
+              dialogueOpen
+                ? NPCS.waiting.reactions.onTalk
+                : s.bus === "arriving"
+                  ? "notice"
+                  : undefined
+            }
+          />
+        ) : null}
+      </svg>
       {s.smoker !== "away" ? (
         <NpcMonologue
           x={254}
@@ -7761,7 +7822,7 @@ export const STREET_SCENE: RuntimeSceneDef<WorldState> = {
   ],
   Component: ({ world, phase }) => <StreetScene world={world} phase={phase} />,
   darkness: (phase) => (phase === "night" ? 0.32 : phase === "dusk" ? 0.16 : 0),
-  Foreground: (p) => <StreetFront {...p} />,
+  // Foreground: (p) => <StreetFront {...p} />,
   Effects: StreetEffects,
   idleLean: true,
 };

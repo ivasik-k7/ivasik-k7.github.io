@@ -1,0 +1,320 @@
+We need to bring `characterBuilder` to the same quality level as the existing system, but make it significantly more configurable, polished, interactive, and visually rich.
+
+## 1. Independent quality audit
+
+Before implementing the final version, run an **independent sub-agent review specifically focused on `characterBuilder`**.
+
+The sub-agent must investigate:
+
+* current architecture and implementation;
+* UX/UI quality;
+* customization capabilities;
+* character configuration limitations;
+* interaction model;
+* animation system and animation transitions;
+* animation consistency and naturalness;
+* graphic quality and visual polish;
+* performance and rendering;
+* state management;
+* extensibility;
+* developer/debugging capabilities;
+* inconsistencies with the existing `?npcs` experience;
+* opportunities for features that would make `characterBuilder` feel substantially more advanced rather than simply equivalent.
+
+The review must identify concrete problems, not just provide generic recommendations.
+
+The sub-agent should produce an actionable improvement plan with priorities.
+
+## 2. Iterative improvement loop
+
+Do not treat the first plan as final.
+
+After implementing the initial improvement plan:
+
+1. Re-run the review from an independent perspective.
+2. Inspect the intermediate implementation.
+3. Identify remaining weaknesses, inconsistencies, regressions, and missed opportunities.
+4. Produce an additional set of improvements.
+5. Implement those improvements.
+6. Repeat until the implementation reaches a genuinely polished state.
+
+The goal is not merely to complete a checklist. Each iteration should actively look for ways to make the result **better than the previous iteration**.
+
+Pay particular attention to things that are easy to overlook during implementation:
+
+* subtle UI inconsistencies;
+* awkward interaction states;
+* transitions that feel unnatural;
+* animation interruptions;
+* visual popping;
+* inconsistent timing;
+* characters appearing mechanically animated;
+* configuration combinations that produce poor results;
+* dead/unused configuration options;
+* poor feedback when changing parameters;
+* excessive UI complexity;
+* performance degradation from highly configurable characters.
+
+## 3. Character customization
+
+`characterBuilder` should become a **deep and highly configurable character creation system**.
+
+Where supported by the current architecture, provide rich configuration for:
+
+* appearance;
+* body proportions;
+* clothing;
+* accessories;
+* colors/materials;
+* facial features;
+* hair;
+* character-specific visual properties;
+* animation-related properties;
+* idle behavior;
+* personality/behavior parameters;
+* interaction behavior;
+* location/context-dependent behavior.
+
+Configuration should feel coherent rather than like a collection of disconnected sliders.
+
+The UI should make it easy to understand how configuration changes affect the character immediately.
+
+Aim for:
+
+* intuitive controls;
+* sensible grouping;
+* clear defaults;
+* useful presets;
+* advanced controls where appropriate;
+* live preview;
+* smooth transitions when changing parameters;
+* no unnecessary configuration duplication.
+
+## 4. Natural character animation audit
+
+Perform a dedicated review of **all character animations**.
+
+Look specifically for:
+
+* unnatural idle poses;
+* robotic movement;
+* abrupt transitions;
+* animation snapping;
+* foot sliding;
+* unnatural acceleration/deceleration;
+* incorrect looping;
+* bad animation blending;
+* transitions between incompatible poses;
+* animation interruptions;
+* characters freezing between states;
+* inconsistent timing;
+* exaggerated or repetitive movement;
+* animations that don't match the character's current state;
+* interactions that visually conflict with locomotion;
+* animations that look acceptable individually but poor when chained together.
+
+Fix the identified problems rather than merely documenting them.
+
+The final system should use animation blending/state transitions intelligently so the character feels continuously alive.
+
+Idle behavior should have variation rather than endlessly repeating one identical animation.
+
+## 5. Rich animation system
+
+The final implementation should expose a **wide and rich set of character animations and behaviors**, appropriate to what the underlying character system supports.
+
+Examples include:
+
+* multiple idle variations;
+* breathing;
+* subtle weight shifting;
+* looking around;
+* head movement;
+* eye/facial reactions where supported;
+* walking;
+* running;
+* turning;
+* stopping;
+* sitting;
+* standing;
+* interacting with objects;
+* reacting to the environment;
+* greeting;
+* conversational gestures;
+* emotional reactions;
+* contextual animations;
+* transition animations.
+
+Animations should be selected contextually rather than randomly in a way that looks artificial.
+
+Use animation priorities/layers where necessary so high-priority actions can temporarily override lower-priority idle behavior without breaking the animation state.
+
+## 6. Interaction model
+
+Make characters substantially more interactive.
+
+The system should support, where technically appropriate:
+
+* selecting a character;
+* inspecting a character;
+* interacting with a character;
+* triggering contextual actions;
+* triggering specific animations;
+* changing character state;
+* changing configuration live;
+* observing immediate visual feedback;
+* switching between locations/scenes;
+* testing different character behaviors.
+
+Interactions should have clear visual feedback and polished transitions.
+
+Avoid modal UI where a contextual interaction would be more natural.
+
+## 7. Visual/graphic quality
+
+Perform a dedicated visual polish pass.
+
+Improve:
+
+* spacing;
+* typography;
+* hierarchy;
+* controls;
+* panels;
+* buttons;
+* hover/active states;
+* transitions;
+* character presentation;
+* backgrounds;
+* lighting/presentation where applicable;
+* visual feedback;
+* loading states;
+* empty states;
+* error states.
+
+The result should feel like a deliberate, production-quality tool rather than an internal prototype.
+
+Do not blindly add visual effects. Every effect should reinforce hierarchy, interaction, or character presentation.
+
+## 8. Developer Mode
+
+Add a dedicated **Developer Mode** for working with the user's own character.
+
+It should be conceptually similar to the existing `?npcs` developer experience, but specifically focused on the current character.
+
+Developer Mode should provide tools such as:
+
+* inspect current character;
+* manipulate character configuration;
+* trigger animations manually;
+* test animation transitions;
+* change character state;
+* teleport/fast travel between locations;
+* select locations;
+* spawn/test contextual interactions where supported;
+* inspect relevant runtime state;
+* quickly reset character state;
+* toggle debug behaviors;
+* test animation combinations;
+* test different configurations without leaving the developer interface.
+
+Add useful developer diagnostics, including:
+
+* FPS counter;
+* frame/render performance information where available;
+* current location;
+* current character state;
+* current animation;
+* animation/state transition information where useful;
+* relevant debug information;
+* performance warnings if appropriate.
+
+Developer Mode should be optimized for **rapid iteration and testing**, not just observation.
+
+## 9. Developer Mode visual design
+
+Developer Mode must use the same visual language as `?npcs` so the two experiences feel like parts of the same developer ecosystem.
+
+However, unlike a constrained panel, Developer Mode should occupy:
+
+* `100vw`
+* `100vh`
+
+Do **not** require the user to expand the screen or open a larger external interface.
+
+Everything should fit naturally within the viewport.
+
+If content exceeds the viewport, scrolling is acceptable, but scrolling must be highly styled and consistent with the existing visual language.
+
+Avoid default browser-looking scrollbars.
+
+Use a polished custom scrollbar with appropriate:
+
+* sizing;
+* hover behavior;
+* track/thumb styling;
+* transitions;
+* dark/light visual integration where applicable.
+
+The interface should remain usable at different viewport sizes.
+
+## 10. Developer workflow
+
+Optimize Developer Mode around this workflow:
+
+1. Open Developer Mode.
+2. See the current character immediately.
+3. Inspect the current state.
+4. Change configuration.
+5. Trigger an animation.
+6. Test interaction.
+7. Fast-travel to another location.
+8. Test the character there.
+9. Inspect performance.
+10. Quickly reset or modify the character.
+11. Repeat without unnecessary navigation.
+
+Minimize friction between experimentation cycles.
+
+## 11. Performance
+
+Because the character system is becoming significantly more configurable and animation-heavy, explicitly review performance.
+
+Look for:
+
+* unnecessary re-renders;
+* expensive animation updates;
+* redundant state updates;
+* excessive DOM/render-tree complexity;
+* unnecessary asset loading;
+* animation-related performance problems;
+* memory leaks;
+* performance degradation when Developer Mode is active.
+
+Developer diagnostics must not significantly distort the performance they are intended to measure.
+
+## 12. Final validation
+
+Before considering the work complete, perform a final independent review.
+
+Verify:
+
+* customization works across supported combinations;
+* animations remain natural;
+* transitions are consistent;
+* interactions work reliably;
+* Developer Mode is fully functional;
+* fast travel works;
+* diagnostics work;
+* FPS information works;
+* UI fits within `100vw × 100vh`;
+* scrolling is polished;
+* no important functionality requires unnecessary screen expansion;
+* no obvious regressions were introduced;
+* performance remains acceptable;
+* the result is visually consistent with `?npcs`;
+* the final experience feels meaningfully more advanced than the original `characterBuilder`.
+
+Do not stop after satisfying the explicitly listed requirements. During the final review, identify and implement additional improvements that materially increase quality, configurability, interaction, animation quality, or usability.
+
+The desired outcome is a **production-quality, highly configurable, highly interactive character system with a sophisticated developer workflow**, not simply an expanded version of the current implementation.

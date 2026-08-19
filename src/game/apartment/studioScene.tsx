@@ -1,14 +1,9 @@
 import { AnimatePresence, motion } from "motion/react";
-import {
-  DOG_PALETTE,
-  DOG_SLEEPING,
-  HEART,
-  HEART_PALETTE,
-  PixelMap,
-} from "@/components/game/sprites";
-import { LayeredScene, px, type SceneDef, stripes } from "@/engine";
+import { HEART, HEART_PALETTE, PixelMap } from "@/components/game/sprites";
+import { AnimalActor, LayeredScene, px, type SceneDef, stripes } from "@/engine";
 import type { DayPhase, WorldState } from "@/lib/worldState";
 import { roomDarkness } from "@/lib/worldState";
+import { ANIMALS } from "./animals";
 
 /**
  * The flat, v4 — the light pass.
@@ -2351,18 +2346,6 @@ function StudioScene({ world, phase }: { world: WorldState; phase: string }) {
       gameplayObjects={
         <g>
           <Television world={world} ph={ph} />
-          <g transform="translate(626 122)">
-            <g>
-              <PixelMap map={DOG_SLEEPING} palette={DOG_PALETTE} cell={2} />
-              <animateTransform
-                attributeName="transform"
-                type="translate"
-                values="0 0;0 -1.2;0 0"
-                dur="2.8s"
-                repeatCount="indefinite"
-              />
-            </g>
-          </g>
           {[0, 1.3, 2.6].map((d, i) => (
             <g key={d} opacity={0}>
               {px(652 + i * 2, 116, 5 + i, 1.5, M.white.base)}
@@ -2436,8 +2419,33 @@ function StudioEffects({
   const darkness = roomDarkness(phase as DayPhase, world.lights.studio);
   const lightOn = world.lights.studio;
   const gain = lightOn ? amb.lampGain : 0;
+  /**
+   * What Gross is doing about you. He lives in this plane rather than in the
+   * artwork because this is the only one that knows what the player is up to —
+   * a dog that carries on sleeping through being scratched behind the ear is
+   * the one thing that would give the whole rig away.
+   */
+  const gross =
+    actionUi === "pet"
+      ? ANIMALS.gross.reactions.onPet
+      : actionUi
+        ? ANIMALS.gross.reactions.onNotice
+        : undefined;
   return (
     <>
+      <svg
+        aria-hidden="true"
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${W} 180`}
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0"
+      >
+        {/* built rather than drawn: the rig breathes on its own, so the old
+            translate hack that nudged the whole sprite up and down is gone
+            with it — his ribs move and the dog stays on his bed */}
+        <AnimalActor animal={ANIMALS.gross} x={644} y={140} shadow={false} action={gross} />
+      </svg>
       <AnimatePresence>
         {fx
           .filter((f) => f.kind === "heart")

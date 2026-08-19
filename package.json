@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build && tsx scripts/prerender.ts",
+    "dev": "NODE_OPTIONS=--max-old-space-size=1024 vite",
+    "build": "NODE_OPTIONS=--max-old-space-size=2048 tsc -b && NODE_OPTIONS=--max-old-space-size=2048 vite build && tsx scripts/prerender.ts",
     "prerender": "tsx scripts/prerender.ts",
     "preview": "vite preview",
     "test": "vitest run",

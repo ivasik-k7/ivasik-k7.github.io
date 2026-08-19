@@ -13,6 +13,7 @@ import {
   type LightTier,
   M,
   type Mat,
+  NpcActor,
   type Ph,
   PixelText,
   px,
@@ -35,6 +36,7 @@ import {
 } from "@/engine";
 import type { DayPhase, WorldState } from "@/lib/worldState";
 import { NpcMonologue } from "./NpcMonologue";
+import { NPCS } from "./npcs";
 
 // --- ZDROFIT ALCHEMIA / the gym on the first floor of an office park ----------------
 
@@ -462,6 +464,8 @@ const TREADMILL_SHAPE = {
 };
 const TREAD_X = 424;
 const TREAD_PITCH = 56;
+/** The running surface — where a runner's feet actually are. */
+const TREAD_BELT = 130;
 const TREADMILLS = {
   deck: bevelPaths(
     bank(TREADMILL_SHAPE.deck, 4, TREAD_PITCH).map((r) => shift([r], TREAD_X, 0)[0]),
@@ -1741,7 +1745,10 @@ function Weights({ s }: { s: GymState }) {
  * per person. Nobody gets two animations. The heads are at different heights on
  * purpose — a gym is the one room where everybody is a different size.
  */
-function Kasia({ s }: { s: GymState }) {
+// The hand-drawn Kasia, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Kasia({ s }: { s: GymState }) {
   const busy = s.reception === "busy";
   return (
     <g>
@@ -1783,7 +1790,10 @@ function Kasia({ s }: { s: GymState }) {
 }
 
 /** On treadmill two, at 12.0, and he has been there twenty minutes. */
-function Runner() {
+// The hand-drawn Runner, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Runner() {
   const x = TREAD_X + TREAD_PITCH + 12;
   return (
     <g>
@@ -1837,7 +1847,10 @@ function Runner() {
 }
 
 /** Under the near rack, and he is on his last set, which is why it is slow. */
-function Lifter() {
+// The hand-drawn Lifter, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Lifter() {
   const x = 792;
   return (
     <g>
@@ -1988,9 +2001,7 @@ function People({ s }: { s: GymState }) {
   const who = whoIsHere(s);
   return (
     <g>
-      {who.kasia ? <Kasia s={s} /> : null}
-      {who.runner ? <Runner /> : null}
-      {who.lifter ? <Lifter /> : null}
+      {/* Kasia, the runner and the lifter are NpcActors in Effects now */}
       {who.benchPair ? <BenchPair /> : null}
       {who.curler ? <Curler /> : null}
     </g>
@@ -2129,6 +2140,37 @@ function GymEffects({
   const wash = DAY_WASH[ph];
   return (
     <>
+      {/* reception, the treadmill and the rack — all built people now */}
+      <svg
+        aria-hidden="true"
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0"
+      >
+        {who.kasia ? (
+          <NpcActor
+            npc={NPCS.kasia}
+            x={302}
+            facing={1}
+            /* the reception top is at y=100; nothing below it is visible */
+            cropBelow={102}
+            action={dialogueOpen ? NPCS.kasia.reactions.onTalk : undefined}
+          />
+        ) : null}
+        {who.runner ? (
+          /* treadmill two — his feet are on the belt, not on the floor */
+          <NpcActor
+            npc={NPCS.runner}
+            x={TREAD_X + TREAD_PITCH + 23}
+            y={TREAD_BELT}
+            facing={1}
+            shadow={false}
+          />
+        ) : null}
+        {who.lifter ? <NpcActor npc={NPCS.lifter} x={802} facing={-1} /> : null}
+      </svg>
       {who.kasia ? (
         <NpcMonologue
           x={306}

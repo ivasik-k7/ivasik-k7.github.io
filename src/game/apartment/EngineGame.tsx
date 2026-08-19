@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { HUD } from "@/components/game/Hud";
-import { Panel } from "@/components/game/Panel";
-import { StatusMenu } from "@/components/game/StatusMenu";
+import { MenuScreen, type MenuTab, PANEL_TAB } from "@/components/game/MenuScreen";
 import { Terminal } from "@/components/game/Terminal";
 import {
   type AmbienceName,
@@ -12,6 +11,7 @@ import {
   lofiPlayer,
   type RuntimeApi,
   type RuntimeConfig,
+  type RuntimeSceneDef,
 } from "@/engine";
 import type { PanelId, RoomId } from "@/lib/apartment";
 import {
@@ -24,6 +24,7 @@ import {
 import { paletteForAppearanceCached } from "./appearance";
 import { CharacterMonologue } from "./CharacterMonologue";
 import { APARTMENT_HANDLERS } from "./handlers";
+import { NpcStudio } from "./NpcStudio";
 import { OUTSIDE_SCENES } from "./outsideScenes";
 import { PLAYER } from "./player";
 import { APARTMENT_SCENES } from "./scenes";
@@ -35,7 +36,28 @@ type Overlay =
   | { type: "menu" }
   | { type: "wardrobe" };
 
-const SCENES = { ...APARTMENT_SCENES, ...OUTSIDE_SCENES };
+/**
+ * You should be able to start a conversation from conversational distance —
+ * standing far enough apart to see each other, the way people actually talk on
+ * a landing. Scene files size their hitboxes for objects you reach out and
+ * touch; for people that reads as having to stand on their toes, so every NPC
+ * gets a wider range here rather than in a dozen scene files that get rewritten.
+ */
+/** 64 game px is about 1.7 m at this scale: close enough to talk, far enough to see. */
+const TALKING_DISTANCE = 64;
+
+function widenPeople(scenes: Record<string, RuntimeSceneDef<WorldState>>) {
+  for (const scene of Object.values(scenes)) {
+    for (const obj of scene.objects) {
+      if (obj.kind === "npc" || obj.kind === "cashier") {
+        obj.range = Math.max(obj.range ?? 0, TALKING_DISTANCE);
+      }
+    }
+  }
+  return scenes;
+}
+
+const SCENES = widenPeople({ ...APARTMENT_SCENES, ...OUTSIDE_SCENES });
 
 /** What pressing E actually does, by object kind — shown on the interact chip. */
 const VERB: Record<string, string> = {
@@ -105,12 +127,14 @@ function exposeGameApi(api: RuntimeApi<WorldState>) {
 export function EngineGame() {
   const { t } = useTranslation();
   const [visited, setVisited] = useState<string[]>([]);
+  const [here, setHere] = useState<string>("studio");
   // dev/test convenience: ?nointro drops straight in, ?scene=zabka spawns there
   const params = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null;
   const skipIntro = true;
   // const skipIntro = Boolean(params?.has("nointro"));
   const showFps = Boolean(params?.has("fps"));
   const showDebug = Boolean(params?.has("debug"));
+  const [studio, setStudio] = useState(Boolean(params?.has("npcs")));
   const devScene = params?.get("scene");
   const devX = Number(params?.get("x"));
   const devWorld = params
@@ -145,7 +169,7 @@ export function EngineGame() {
         room={scene as RoomId}
         phase={phase as DayPhase}
         visited={visited}
-        onOpenPanel={(id) => openOverlay({ type: "panel", id })}
+        onOpenMenu={() => openOverlay({ type: "menu" })}
         pocket={{
           money: `${world.money} zł`,
           items: world.inventory.map((item) => {
@@ -159,29 +183,40 @@ export function EngineGame() {
     renderMonologue: (toast, scale) => <CharacterMonologue toast={toast} scale={scale} />,
     renderOverlay: (overlay, close, world, updateWorld) => {
       const o = overlay as Overlay;
-      if (o.type === "panel") return <Panel key="panel" id={o.id} onClose={close} />;
       if (o.type === "terminal") return <Terminal key="terminal" onClose={close} />;
       if (o.type === "wardrobe")
         return (
           <WardrobePanel key="wardrobe" world={world} updateWorld={updateWorld} onClose={close} />
         );
+      // panels and the menu are the same book — the object just picks the page
+      const tab: MenuTab = o.type === "panel" ? (PANEL_TAB[o.id] ?? "profile") : "profile";
       return (
-        <StatusMenu
+        <MenuScreen
           key="menu"
           world={world}
           visited={visited}
-          scenes={Object.keys(SCENES)}
+          current={here}
+          initialTab={tab}
           onClose={close}
         />
       );
     },
-    renderExtras: showFps ? () => <FpsMeter /> : undefined,
+    renderExtras:
+      showFps || studio
+        ? () => (
+            <>
+              {showFps ? <FpsMeter /> : null}
+              {studio ? <NpcStudio onClose={() => setStudio(false)} /> : null}
+            </>
+          )
+        : undefined,
     debug: showDebug,
     // dev/test hook: lets CDP scripts and Playwright drive the game directly
     onReady: import.meta.env.DEV ? exposeGameApi : undefined,
     menuOverlay: { type: "menu" },
     onSceneChange: (scene) => {
       ambience.set(AMBIENCE[scene] ?? "room");
+      setHere(scene);
       setVisited((v) => (v.includes(scene) ? v : [...v, scene]));
     },
     onFirstGesture: () => {

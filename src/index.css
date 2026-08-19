@@ -193,6 +193,58 @@
   }
 }
 
+/* a scrollbar that belongs to the machine, not to the browser */
+/*
+ * Chromium discards every ::-webkit-scrollbar rule on an element that also
+ * sets scrollbar-width or scrollbar-color, and silently falls back to the OS
+ * bar — arrows, rounded thumb and all. The standard pair therefore only gets
+ * to apply where the webkit selector does not exist at all, which in practice
+ * means Firefox.
+ */
+@supports not selector(::-webkit-scrollbar) {
+  .pixel-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(227, 217, 194, 0.28) transparent;
+  }
+}
+
+.pixel-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pixel-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.pixel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(227, 217, 194, 0.28);
+}
+
+.pixel-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(252, 238, 10, 0.5);
+}
+
+/* the deck's level bars: stepped, never smooth — it is a meter, not a wave */
+.deck-eq {
+  animation: deck-eq 0.9s steps(3, end) infinite alternate;
+  transform-origin: bottom;
+}
+
+@keyframes deck-eq {
+  0% {
+    transform: scaleY(0.45);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-eq {
+    animation: none;
+  }
+}
+
 .engine-marker-bob {
   animation: marker-bob 1.15s ease-in-out infinite;
 }

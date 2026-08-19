@@ -352,13 +352,13 @@ export class LofiPlayer {
   private crackleGain: GainNode | null = null;
   private voice: TrackVoice | null = null;
 
-  private trackIndex: number;
+  private trackIndex_: number;
   private _volume: number;
   private _playing = false;
   private listeners = new Set<() => void>();
 
   constructor() {
-    this.trackIndex = Number(localStorage.getItem("lofi.track") ?? 0) % LOFI_TRACKS.length;
+    this.trackIndex_ = Number(localStorage.getItem("lofi.track") ?? 0) % LOFI_TRACKS.length;
     const stored = Number(localStorage.getItem("lofi.volume"));
     this._volume = Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.5;
   }
@@ -378,8 +378,21 @@ export class LofiPlayer {
   get volume() {
     return this._volume;
   }
+  /** Which slot is playing, so a deck can show 2/4 and highlight the right name. */
+  get trackIndex(): number {
+    return this.trackIndex_;
+  }
+
+  get trackCount(): number {
+    return LOFI_TRACKS.length;
+  }
+
+  get trackNames(): string[] {
+    return LOFI_TRACKS.map((t) => t.name);
+  }
+
   get track(): LofiTrack {
-    return LOFI_TRACKS[this.trackIndex];
+    return LOFI_TRACKS[this.trackIndex_];
   }
 
   /** Shared audio graph for sibling services (ambience, sfx). Unlock first. */
@@ -434,8 +447,8 @@ export class LofiPlayer {
   }
 
   next(step = 1) {
-    this.trackIndex = (this.trackIndex + step + LOFI_TRACKS.length) % LOFI_TRACKS.length;
-    localStorage.setItem("lofi.track", String(this.trackIndex));
+    this.trackIndex_ = (this.trackIndex_ + step + LOFI_TRACKS.length) % LOFI_TRACKS.length;
+    localStorage.setItem("lofi.track", String(this.trackIndex_));
     if (this._playing && this.ctx && this.master && this.reverb) {
       // crossfade: old voice ramps down while the new one ramps up
       this.voice?.fadeOutAndStop();

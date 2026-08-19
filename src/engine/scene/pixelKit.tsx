@@ -612,6 +612,13 @@ const GLYPHS: Record<string, string[]> = {
   Y: ["101", "101", "010", "010", "010"],
   Z: ["111", "001", "010", "100", "111"],
   "-": ["000", "000", "111", "000", "000"],
+  "'": ["1", "1", "0", "0", "0"],
+  "×": ["000", "101", "010", "101", "000"],
+  "(": ["01", "10", "10", "10", "01"],
+  ">": ["100", "010", "001", "010", "100"],
+  "<": ["001", "010", "100", "010", "001"],
+  "*": ["101", "010", "111", "010", "101"],
+  ")": ["10", "01", "01", "01", "10"],
   "+": ["000", "010", "111", "010", "000"],
   "!": ["1", "1", "1", "0", "1"],
   "?": ["111", "001", "011", "000", "010"],
@@ -636,6 +643,7 @@ const GLYPHS: Record<string, string[]> = {
 const ACCENTS: Record<string, { base: string; mark: "above" | "acute" | "below" }> = {
   Ą: { base: "A", mark: "below" },
   Ć: { base: "C", mark: "acute" },
+  É: { base: "E", mark: "acute" },
   Ę: { base: "E", mark: "below" },
   Ń: { base: "N", mark: "acute" },
   Ó: { base: "O", mark: "acute" },
@@ -645,10 +653,14 @@ const ACCENTS: Record<string, { base: string; mark: "above" | "acute" | "below" 
 };
 
 /** Lit pixels, run-length merged along each row. Accented letters add one rect. */
+/** Characters the font spells differently from the string that arrives. */
+const FOLD: Record<string, string> = { "−": "-", "–": "-", "—": "-", "’": "'", "·": ".", "•": "." };
+
 export function textRects(text: string, x: number, y: number, gap = 1): Rect[] {
   const out: Rect[] = [];
   let cx = x;
-  for (const raw of text) {
+  for (const ch0 of text.toUpperCase()) {
+    const raw = FOLD[ch0] ?? ch0;
     const acc = ACCENTS[raw];
     const ch = acc ? acc.base : raw;
     const rows = GLYPHS[ch] ?? GLYPHS[" "];
@@ -672,6 +684,18 @@ export function textRects(text: string, x: number, y: number, gap = 1): Rect[] {
     cx += w + gap;
   }
   return out;
+}
+
+/** Advance width of a string in font units — what a DOM label needs to size itself. */
+export function textWidth(text: string, gap = 1): number {
+  let w = 0;
+  for (const ch0 of text.toUpperCase()) {
+    const raw = FOLD[ch0] ?? ch0;
+    const acc = ACCENTS[raw];
+    const rows = GLYPHS[acc ? acc.base : raw] ?? GLYPHS[" "];
+    w += rows[0].length + gap;
+  }
+  return Math.max(0, w - gap);
 }
 
 export function textPath(text: string, x: number, y: number, gap = 1): string {

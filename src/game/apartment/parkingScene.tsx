@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ElevatorDoors, LayeredScene, px, type SceneDef, stripes } from "@/engine";
+import { ElevatorDoors, LayeredScene, NpcActor, px, type SceneDef, stripes } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 import { NpcMonologue } from "./NpcMonologue";
+import { NPCS } from "./npcs";
 
 // --- ПАРКІНГ / underground parking, level -1 ---------------------------------------
 //
@@ -537,7 +538,10 @@ function marekMode(ph: Ph): MarekMode {
   return "polish";
 }
 
-function PanMarek({ x, mode }: { x: number; mode: MarekMode }) {
+// The hand-drawn PanMarek, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _PanMarek({ x, mode }: { x: number; mode: MarekMode }) {
   if (mode === "away") return null;
   const lean = mode === "bonnet";
   return (
@@ -1311,7 +1315,7 @@ function ParkingScene({ world, phase }: { world: WorldState; phase?: string }) {
           ) : null}
           {/* the aisle, in front of the row */}
           <AisleProps ph={ph} fed={x.catFed} />
-          <PanMarek x={1000} mode={mode} />
+          {/* Pan Marek is an NpcActor in the Effects plane now */}
           {/* columns on the bay lines, hazard-striped at the base */}
           {COLUMNS.map((mid) => {
             const colX = mid - 9;
@@ -1352,12 +1356,16 @@ const DYING_LAMP = 717;
 const GOLF_CX = 1109;
 
 const MAREK_MONOLOGUES = [
-  "Kurwa, znowu ktoś drzwiami mi w bok stuknął...",
-  "Wosk, polerka, wosk. I tak rdza kiedyś wygra.",
-  "W niedzielę pojedziemy nad jezioro. Może.",
-  "Kurwa, paliwo znowu podrożało. Będę chodził pieszo. Nie będę.",
-  "Ta nowa winda hałasuje. Mówiłem na zebraniu. Nikt nie słucha.",
-  "Kot znowu spał mi na masce. Ale go nie przegonię.",
+  "Kurwa, znowu ktoś mi drzwiami przywalił...",
+  "Jeszcze tylko przetrę maskę i będzie dobrze.",
+  "Coś ten silnik dzisiaj nierówno chodzi. Muszę sprawdzić.",
+  "Wosk, polerka... człowiek więcej czasu spędza przy aucie niż w domu.",
+  "Kurwa, paliwo znowu podrożało. No nic, trzeba będzie mniej jeździć. Chociaż nie.",
+  "Ta rysa była wczoraj? Nie, kurwa, na pewno jej nie było.",
+  "W niedzielę nad jezioro. Jak będzie pogoda. Jak mi się będzie chciało.",
+  "Kot znowu siedział na masce... No dobra, niech siedzi.",
+  "Jeszcze tylko umyć felgi i można jechać.",
+  "Dobra... wygląda dobrze. Teraz tylko niech nikt tego nie dotyka.",
 ] as const;
 
 function ParkingEffects({
@@ -1392,6 +1400,26 @@ function ParkingEffects({
 
   return (
     <>
+      {/* Pan Marek, built rather than drawn — he stops smoking to talk */}
+      {mode !== "away" ? (
+        <svg
+          aria-hidden="true"
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${W} 180`}
+          preserveAspectRatio="none"
+          className="pointer-events-none absolute inset-0"
+        >
+          <NpcActor
+            npc={NPCS.marek}
+            x={1009}
+            facing={-1}
+            action={
+              dialogueOpen ? NPCS.marek.reactions.onTalk : mode === "bonnet" ? "lean" : undefined
+            }
+          />
+        </svg>
+      ) : null}
       {mode !== "away" ? (
         <NpcMonologue
           x={1006}

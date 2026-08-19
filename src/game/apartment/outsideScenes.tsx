@@ -1,4 +1,4 @@
-import type { SceneDef } from "@/engine";
+import type { RuntimeSceneDef } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 import { CORRIDOR_SCENE } from "./corridorScene";
 import { DISTRICT_SCENE } from "./districtScene";
@@ -12,7 +12,7 @@ import { ZABKA_SCENE } from "./zabkaScene";
  * The world beyond the front door, one scene per file:
  * corridor (the landing), the lift, the street, parking level −1, Żabka.
  */
-export const OUTSIDE_SCENES: Record<string, SceneDef<WorldState>> = {
+export const OUTSIDE_SCENES: Record<string, RuntimeSceneDef<WorldState>> = {
   district: DISTRICT_SCENE,
   gym: GYM_SCENE,
   corridor: CORRIDOR_SCENE,

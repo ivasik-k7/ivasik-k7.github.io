@@ -12,6 +12,7 @@ import {
   type LightTier,
   M,
   type Mat,
+  NpcActor,
   type Ph,
   PixelText,
   px,
@@ -30,6 +31,7 @@ import {
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 import { NpcMonologue } from "./NpcMonologue";
+import { NPCS } from "./npcs";
 
 // --- ŻABKA / the 24h shop on the ground floor ---------------------------------------
 
@@ -594,7 +596,9 @@ const BAKERY_SET = bevelPaths([
 ]);
 const MULTIDECK_SET = bevelPaths([[462, FIX, 72, 90]]);
 const FREEZER_SET = bevelPaths([[424, 116, 32, 34]]);
-const GONDOLA_SET = bevelPaths([[354, 104, 64, 46]]);
+/** The island's top edge — anyone on the far side is cut off here. */
+const GONDOLA_TOP = 104;
+const GONDOLA_SET = bevelPaths([[354, GONDOLA_TOP, 64, 46]]);
 const KIOSK_SET = bevelPaths([[536, 76, 26, 74]]);
 const COUNTER_SET = bevelPaths([
   [564, TILL, 54, 4],
@@ -1726,7 +1730,10 @@ function Counter({ s }: { s: ZabkaState }) {
 }
 
 /** The clerk. Behind the till, restocking the fridge, or on a break out back. */
-function Clerk({ s }: { s: ZabkaState }) {
+// The hand-drawn Clerk, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Clerk({ s }: { s: ZabkaState }) {
   if (s.clerk === "away") return null;
   const atCounter = s.clerk === "counter";
   const x = atCounter ? 596 : 492;
@@ -1773,7 +1780,10 @@ function Clerk({ s }: { s: ZabkaState }) {
 }
 
 /** One customer: at the gondola deciding, or at the till already committed. */
-function Customer({ s }: { s: ZabkaState }) {
+// The hand-drawn Customer, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Customer({ s }: { s: ZabkaState }) {
   if (s.customer === "none") return null;
   const paying = s.customer === "paying";
   /* paying stands in FRONT of the counter, so this draws over it */
@@ -1848,8 +1858,7 @@ function ZabkaScene({ world, phase }: { world: WorldState; phase: string }) {
           <Multideck />
           <Kiosk s={s} />
           <Counter s={s} />
-          <Clerk s={s} />
-          <Customer s={s} />
+          {/* Clerk and Customer are NpcActors in the Effects plane now */}
         </g>
       }
       gameplayObjects={<g>{/* hitboxes only */}</g>}
@@ -1977,6 +1986,34 @@ function ZabkaEffects({
   const night = ph === "night" || ph === "dusk";
   return (
     <>
+      {/* counter staff and whoever is in front of you, cropped at the till */}
+      <svg
+        aria-hidden="true"
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0"
+      >
+        {s.clerk === "counter" ? (
+          <NpcActor
+            npc={NPCS.clerk}
+            x={590}
+            facing={-1}
+            cropBelow={TILL + 2}
+            action={dialogueOpen ? NPCS.clerk.reactions.onTalk : undefined}
+          />
+        ) : null}
+        {s.customer === "paying" ? (
+          /* at the till, in front of the counter, waiting for the terminal */
+          <NpcActor npc={NPCS.shopper} x={558} facing={1} />
+        ) : null}
+        {s.customer === "browsing" ? (
+          /* on the far side of the gondola island, cropped at its top edge so
+             he reads as standing behind it rather than on top of the crates */
+          <NpcActor npc={NPCS.shopper} x={382} facing={-1} cropBelow={GONDOLA_TOP} />
+        ) : null}
+      </svg>
       {/* the clerk says the four things a clerk says */}
       {s.clerk === "counter" ? (
         <NpcMonologue

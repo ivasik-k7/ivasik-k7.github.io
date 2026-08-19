@@ -65,7 +65,27 @@ export {
   TierLight,
 } from "./scene/pixelLight";
 export * from "./scene/props";
-// sprites & characters
+export {
+  ANIMAL_FURS,
+  ANIMAL_TRIM,
+  type AnimalCoat,
+  type AnimalConfig,
+  type AnimalDoing,
+  type AnimalEars,
+  type AnimalLook,
+  type AnimalMuzzle,
+  type AnimalPattern,
+  type AnimalReactions,
+  type AnimalSize,
+  type AnimalSpec,
+  type AnimalSpecies,
+  type AnimalTail,
+  type AnimalZone,
+  animalPalette,
+  createAnimal,
+  type FurName,
+  type TrimName,
+} from "./sprite/animalBuilder";
 export {
   CharacterBuilder,
   createCharacter,
@@ -77,13 +97,55 @@ export {
   shiftDown,
   stackMaps,
 } from "./sprite/characterBuilder";
+// sprites & characters
+export {
+  createNpc,
+  type FabricName,
+  type HairName,
+  NPC_FABRICS,
+  NPC_HAIRS,
+  NPC_SKINS,
+  type NpcAccent,
+  type NpcBottom,
+  type NpcBrow,
+  type NpcBuild,
+  type NpcConfig,
+  type NpcEars,
+  type NpcEyeShape,
+  type NpcFace,
+  type NpcHairStyle,
+  type NpcHat,
+  type NpcHeadShape,
+  type NpcHeight,
+  type NpcLook,
+  type NpcMouth,
+  type NpcNose,
+  type NpcProp,
+  type NpcShoes,
+  type NpcSpec,
+  type NpcTexture,
+  type NpcTop,
+  npcPalette,
+  type SkinName,
+} from "./sprite/npcBuilder";
 // systems
 export * from "./systems/dialogue";
 export * from "./systems/inventory";
 export * from "./systems/save";
+export { AnimalActor, useAnimalFrame } from "./ui/AnimalActor";
 // ui
 export { AudioHud } from "./ui/AudioHud";
 export { DialogueBox } from "./ui/DialogueBox";
 export { FpsMeter } from "./ui/FpsMeter";
 export { InteractPrompt, TargetMarker } from "./ui/InteractPrompt";
+export { NpcActor, npcToActor, useNpcFrame } from "./ui/NpcActor";
+export {
+  CRISP,
+  chamferClip,
+  type FrameTone,
+  PixelFrame,
+  PixelLabel,
+  PixelMeter,
+  scanlines,
+} from "./ui/PixelFrame";
 export { PixelSprite } from "./ui/PixelSprite";

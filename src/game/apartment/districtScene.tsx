@@ -13,13 +13,15 @@ import {
   Light,
   M,
   type Mat,
+  NpcActor,
+  npcToActor,
   type Ph,
   PixelText,
   px,
   pxPath,
   type Rect,
+  type RuntimeSceneDef,
   repeat,
-  type SceneDef,
   SharedDefs,
   STEP_FADE,
   STEP_SLIDE,
@@ -34,6 +36,7 @@ import {
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 import { NpcMonologue } from "./NpcMonologue";
+import { NPCS } from "./npcs";
 
 // --- GDAŃSK OLIWA / the Alchemia district, at street level --------------------------
 
@@ -3225,7 +3228,10 @@ function Bins({ ph, level }: { ph: Ph; level: 0 | 1 | 2 }) {
  * ================================================================== */
 
 /** Behind the counter, so she is cut off at 1.05 m like everyone behind a counter. */
-function Barista({ ph: _ph }: { ph: Ph }) {
+// The hand-drawn Barista, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Barista({ ph: _ph }: { ph: Ph }) {
   const x = 316;
   const head = GROUND - m(1.72);
   return (
@@ -3261,7 +3267,10 @@ function Barista({ ph: _ph }: { ph: Ph }) {
 }
 
 /** By the stub bin outside the office, in a coat, because it is October. */
-function Smoker({ ph: _ph }: { ph: Ph }) {
+// The hand-drawn Smoker, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Smoker({ ph: _ph }: { ph: Ph }) {
   const x = 586;
   const head = GROUND - m(1.75);
   return (
@@ -3304,7 +3313,10 @@ function Smoker({ ph: _ph }: { ph: Ph }) {
 }
 
 /** The courier, at the café door, in the shell jacket, on his phone. */
-function Courier() {
+// The hand-drawn Courier, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Courier() {
   const x = 502;
   const head = GROUND - m(1.72);
   return (
@@ -3345,7 +3357,10 @@ function Courier() {
 }
 
 /** Walking past with a cup, which is the single most Alchemia thing there is. */
-function Walker({ ph: _ph }: { ph: Ph }) {
+// The hand-drawn Walker, kept for one release while the built NPC proves
+// itself in every phase and state. Delete once it has.
+// @ts-expect-error TS6133
+function _Walker({ ph: _ph }: { ph: Ph }) {
   const x = 1130;
   const head = GROUND - m(1.68);
   return (
@@ -3389,16 +3404,9 @@ function Walker({ ph: _ph }: { ph: Ph }) {
   );
 }
 
-function People({ ph, s }: { ph: Ph; s: DistrictState }) {
-  const who = whoIsHere(s);
-  return (
-    <g>
-      {who.barista ? <Barista ph={ph} /> : null}
-      {who.smoker ? <Smoker ph={ph} /> : null}
-      {who.courier ? <Courier /> : null}
-      {who.walker ? <Walker ph={ph} /> : null}
-    </g>
-  );
+/** The square's cast is drawn as NpcActors in the Effects plane now. */
+function People(_props: { ph: Ph; s: DistrictState }) {
+  return null;
 }
 
 /* ================================================================== *
@@ -3507,10 +3515,16 @@ const BARISTA_LINES = [
 ] as const;
 
 const SMOKER_LINES = [
+  "Jeszcze jeden i wracam na górę. Serio.",
   "Piętnaście minut. Tak mówiłem godzinę temu.",
-  "Wrócę na spotkanie, jak się skończy spotkanie o spotkaniu.",
-  "Zapisałem się do tego Zdrofitu w styczniu. Byłem dwa razy.",
-  "Mewy tu są większe niż u nas na Zaspie.",
+  "Kurwa, znowu zapalniczka nie działa.",
+  "Nie palę dużo. Tylko jak wychodzę. I jak wracam.",
+  "Wrócę za chwilę. Co może pójść nie tak?",
+  "Znowu ktoś zostawił śmieci pod klatką. Ludzie to jednak mają talent.",
+  "Dobra, ostatni. Naprawdę ostatni.",
+  "Szef dzwoni? Nie widziałem telefonu.",
+  "Miałem dzisiaj nic nie pić. Na szczęście jeszcze jest rano.",
+  "Mewy tu są większe niż na Zaspie. I bardziej bezczelne.",
 ] as const;
 
 /** The hour, as a colour over everything. Outdoors this is the whole model. */
@@ -3560,6 +3574,24 @@ function DistrictEffects({
   const night = ph === "night";
   return (
     <>
+      {/* the square's people, built from the rig */}
+      <svg
+        aria-hidden="true"
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0"
+      >
+        {who.barista ? (
+          /* behind the hatch he serves from, cut off at the stallriser */
+          <NpcActor npc={NPCS.barista} x={428} facing={1} cropBelow={SILL} shadow={false} />
+        ) : null}
+        {who.smoker ? <NpcActor npc={NPCS.smoker} x={593} facing={-1} /> : null}
+        {who.smoker ? <NpcActor npc={NPCS.caller} x={934} facing={-1} /> : null}
+        {who.courier ? <NpcActor npc={NPCS.courier} x={509} facing={1} /> : null}
+        {/* the walker is a runtime actor: he actually crosses the square */}
+      </svg>
       {who.barista ? (
         <NpcMonologue
           x={322}
@@ -3752,9 +3784,23 @@ export function districtArtKey(world: WorldState, phase: string): string {
   ].join("|");
 }
 
-export const DISTRICT_SCENE: SceneDef<WorldState> = {
+export const DISTRICT_SCENE: RuntimeSceneDef<WorldState> = {
   id: "district",
   width: W,
+  /**
+   * Somebody actually walking across the square, stepped in the game loop
+   * rather than in React: a patrol between the kiosk and the crossing, with a
+   * pause at each end for the traffic. A square with nobody crossing it is a
+   * photograph, not a place.
+   */
+  actors: [
+    npcToActor(NPCS.walker, {
+      x: 1180,
+      patrol: { from: 1020, to: 1340, speed: 15, pauseMs: 2800 },
+      visible: (world) => whoIsHere(state(world)).walker,
+      z: 6,
+    }),
+  ],
   objects: [
     /* --- the stop end: this is how you get to the rest of the city --- */
     {
