@@ -1,3 +1,4 @@
+import { motionPref, qualityPin, subscribePrefs } from "./prefs";
 import type { InputAction, QualityTier } from "./runtime-types";
 
 /**
@@ -228,6 +229,18 @@ export class QualityGovernor {
   }
 
   sample(frameMs: number, now: number): void {
+    // A player who has chosen a tier has taken the decision off us. Pinning
+    // LOW on a fast machine is a real request — it is usually a battery — so
+    // this is a floor as well as a ceiling, and the ema stops mattering.
+    const pin = qualityPin();
+    if (pin) {
+      if (this.tier !== pin) {
+        this.tier = pin;
+        this.onChange?.(pin);
+      }
+      this.mark = now;
+      return;
+    }
     // ignore tab-switch spikes; they say nothing about steady-state cost
     if (!(frameMs > 0) || frameMs > 400) {
       this.mark = now;
@@ -546,17 +559,32 @@ export function pickObject<T extends { id: string; x: number }>(
 
 /* ---------------------------------------------------------- reduced motion */
 
+/**
+ * Whether to hold everything still.
+ *
+ * Two sources, either of which is enough: the operating system's own
+ * preference, and the game's MOTION setting. The setting can only ever add
+ * stillness — there is no value of it that overrides an OS-level request to
+ * stop moving things, because that request is usually made for a medical
+ * reason and a game menu does not get to outvote it.
+ */
 export function prefersReducedMotion(): boolean {
+  if (motionPref() === "reduce") return true;
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/** Notifies on either source changing, so every consumer sees both. */
 export function subscribeReducedMotion(fn: (on: boolean) => void): () => void {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+  const emit = () => fn(prefersReducedMotion());
+  const offPrefs = subscribePrefs(emit);
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return offPrefs;
   const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const handler = () => fn(mq.matches);
-  mq.addEventListener("change", handler);
-  return () => mq.removeEventListener("change", handler);
+  mq.addEventListener("change", emit);
+  return () => {
+    offPrefs();
+    mq.removeEventListener("change", emit);
+  };
 }
 
 /* -------------------------------------------------------------- misc utils */

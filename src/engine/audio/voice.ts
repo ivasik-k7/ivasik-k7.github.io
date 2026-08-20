@@ -1,3 +1,4 @@
+import { voiceEnabled } from "../core/prefs";
 import { lofiPlayer } from "./lofi";
 
 /**
@@ -45,9 +46,11 @@ function nearestDegree(semis: number): number {
  * (or a question rise) at the end.
  */
 export function mumble(text: string, profile: VoiceProfile) {
+  if (!voiceEnabled()) return;
   const graph = lofiPlayer.graph;
   if (!graph) return;
-  const { ctx, master } = graph;
+  // mumble is a sound effect, so it rides the SOUND slider
+  const { ctx, sfx: master } = graph;
 
   const syllables = Math.max(3, Math.min(16, Math.round(text.length / 4)));
   const step = 1 / profile.rate;

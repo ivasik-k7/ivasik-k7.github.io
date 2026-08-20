@@ -1,366 +1,108 @@
 /**
- * Procedural lofi engine — cozy, warm, monotonic, immersive.
+ * Music, and the mixer everything else hangs off.
  *
- * Everything is synthesized in WebAudio, so the game ships no audio files:
- *  - a slow pad: detuned triangle oscillators through a gentle lowpass,
- *    long attack/release so chords melt into each other, panned slightly
- *    left/right for width;
- *  - a soft sine bass following the chord root;
- *  - a sparse pentatonic melody that wanders in occasionally, with a
- *    feedback-delay echo;
- *  - tape wobble: a slow LFO bends the pad filter like a worn cassette;
- *  - a generated-impulse reverb for room warmth;
- *  - vinyl crackle: filtered noise with sparse pops, very quiet;
- *  - optional percussion: a felt-soft kick and a paper-thin rim, swung.
+ * ## The mixer
  *
- * Tracks are just configs (key, tempo, chord loop, tone). Switching tracks
- * crossfades over ~2.5s so nothing ever cuts.
+ * There are three buses under the master, and each one is owned by exactly one
+ * slider in the settings screen:
+ *
+ *     destination ── master ─┬─ music     the soundtrack
+ *                            ├─ ambience  the per-location bed
+ *                            └─ sfx       one-shots, and dialogue mumble
+ *
+ * This is the whole reason the file is shaped this way. Everything used to
+ * connect straight to `master`, which meant the music slider was in fact a
+ * master volume: turning the soundtrack down also took the kettle, the tram and
+ * the rain with it, and the ambience and sound sliders had nothing of their own
+ * to move. Three buses, three sliders, and each one moves only what it names.
+ *
+ * ## The music
+ *
+ * Eight recorded tracks, served as Ogg Vorbis from `public/music` and played
+ * through `<audio>` elements routed into the music bus. They replace the
+ * procedural lofi synth that used to live here — a pad, a bass, a wandering
+ * pentatonic melody and vinyl crackle, all generated per frame in WebAudio. It
+ * was a fair imitation of a tired radio, and it is no longer needed now that
+ * there is actual music to play.
+ *
+ * Each track gets one element and one gain node, cached and reused, because a
+ * MediaElementAudioSourceNode can only be created once per element. Switching
+ * tracks crossfades over ~2.4 s, so the deck never cuts.
  */
 
-export interface LofiTrack {
+const FADE_S = 2.4;
+
+export interface MusicTrack {
+  /** as it appears on the deck, in the pixel font */
   name: string;
-  bpm: number;
-  /** Chords as MIDI note arrays; each chord holds for `beatsPerChord`. */
-  chords: number[][];
-  beatsPerChord: number;
-  /** Pad lowpass cutoff — lower = darker, warmer. */
-  cutoff: number;
-  percussion: boolean;
-  /** Extra vinyl crackle gain multiplier. */
-  crackle: number;
-  /** 0..1 — how often a melody phrase wanders in per chord. */
-  melody: number;
+  /** file under `public/music`, without the directory or the extension */
+  file: string;
+  /** one line for the credits and the now-playing line */
+  mood: string;
 }
 
-export const LOFI_TRACKS: LofiTrack[] = [
+export const MUSIC_TRACKS: MusicTrack[] = [
+  { name: "LATE AFTERNOON", file: "late-afternoon-in-the", mood: "the light going amber" },
+  { name: "BLUE HOUR AT STOCZNIA", file: "blue-hour-at-stocznia", mood: "the shipyard after work" },
   {
-    name: "KITCHEN RADIO",
-    bpm: 68,
-    // Fmaj7 → Em7 → Dm7 → Cmaj7 — a tired, warm descent
-    chords: [
-      [53, 57, 60, 64],
-      [52, 55, 59, 62],
-      [50, 53, 57, 60],
-      [48, 52, 55, 59],
-    ],
-    beatsPerChord: 8,
-    cutoff: 900,
-    percussion: true,
-    crackle: 1,
-    melody: 0.45,
+    name: "STREETLIGHTS IN GDAŃSK",
+    file: "streetlights-in-gdansk",
+    mood: "walking home the long way",
   },
+  { name: "THROUGH THE WINDOW", file: "through-the-window", mood: "rain you are not out in" },
+  { name: "EMPTY HALLWAY", file: "empty-hallway-loop", mood: "the stairwell at midnight" },
   {
-    name: "RAINY BALCONY",
-    bpm: 58,
-    // Am7 → Fmaj7 → Cmaj7 → G7
-    chords: [
-      [45, 48, 52, 55],
-      [41, 45, 48, 52],
-      [48, 52, 55, 59],
-      [43, 47, 50, 53],
-    ],
-    beatsPerChord: 8,
-    cutoff: 700,
-    percussion: false,
-    crackle: 1.8,
-    melody: 0.3,
+    name: "CONCRETE BETWEEN PLACES",
+    file: "concrete-between-places",
+    mood: "the yard between blocks",
   },
-  {
-    name: "NIGHT TRAM",
-    bpm: 62,
-    // Dm7 → G7 → Cmaj7 → Am7
-    chords: [
-      [50, 53, 57, 60],
-      [43, 47, 50, 53],
-      [48, 52, 55, 59],
-      [45, 48, 52, 55],
-    ],
-    beatsPerChord: 8,
-    cutoff: 850,
-    percussion: true,
-    crackle: 1.2,
-    melody: 0.5,
-  },
-  {
-    name: "WARM MILK",
-    bpm: 54,
-    // Cmaj7 → Am7 → Fmaj7 → G7, very slow, darkest tone
-    chords: [
-      [48, 52, 55, 59],
-      [45, 48, 52, 55],
-      [41, 45, 48, 52],
-      [43, 47, 50, 53],
-    ],
-    beatsPerChord: 12,
-    cutoff: 620,
-    percussion: false,
-    crackle: 1.4,
-    melody: 0.2,
-  },
+  { name: "GDAŃSK STATION", file: "gdansk-station-loop", mood: "waiting for something later" },
+  { name: "DISTANT HOME", file: "distant-home", mood: "somewhere you used to live" },
 ];
 
-const midiHz = (m: number) => 440 * 2 ** ((m - 69) / 12);
+/** The old name for a track, kept so nothing downstream had to be rewritten. */
+export type LofiTrack = MusicTrack;
+export const LOFI_TRACKS = MUSIC_TRACKS;
 
-const CROSSFADE_S = 2.5;
-const LOOKAHEAD_S = 0.6;
-const TICK_MS = 180;
-
-/** Exponentially decaying noise burst — a warm little room, generated. */
-function buildReverbImpulse(ctx: AudioContext, seconds = 1.8, decay = 3.2): AudioBuffer {
-  const rate = ctx.sampleRate;
-  const len = Math.floor(rate * seconds);
-  const buf = ctx.createBuffer(2, len, rate);
-  for (let ch = 0; ch < 2; ch++) {
-    const data = buf.getChannelData(ch);
-    for (let i = 0; i < len; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** decay;
-    }
-  }
-  return buf;
+/** Where the files are, honouring the deployed base path. */
+function srcFor(track: MusicTrack): string {
+  const base = import.meta.env.BASE_URL ?? "/";
+  return `${base.endsWith("/") ? base : `${base}/`}music/${track.file}.ogg`;
 }
 
-/** One playing track: its own gain bus + a lookahead scheduler. */
-class TrackVoice {
-  private ctx: AudioContext;
-  private track: LofiTrack;
-  readonly bus: GainNode;
-  private filter: BiquadFilterNode;
-  private wobble: OscillatorNode;
-  private delay: DelayNode;
-  private timer: number | null = null;
-  private nextChordTime = 0;
-  private nextBeatTime = 0;
-  private chordIndex = 0;
-  private beatIndex = 0;
-  private stopped = false;
-
-  constructor(ctx: AudioContext, track: LofiTrack, destination: AudioNode, reverb: AudioNode) {
-    this.ctx = ctx;
-    this.track = track;
-    this.bus = ctx.createGain();
-    this.bus.gain.value = 0;
-
-    this.filter = ctx.createBiquadFilter();
-    this.filter.type = "lowpass";
-    this.filter.frequency.value = track.cutoff;
-    this.filter.Q.value = 0.4;
-    this.filter.connect(this.bus);
-
-    // tape wobble: slow LFO bends the filter ±35 cents like a worn cassette
-    this.wobble = ctx.createOscillator();
-    this.wobble.frequency.value = 0.31;
-    const wobbleGain = ctx.createGain();
-    wobbleGain.gain.value = 35;
-    this.wobble.connect(wobbleGain);
-    wobbleGain.connect(this.filter.detune);
-    this.wobble.start();
-
-    // melody echo: feedback delay, dotted-eighth feel
-    this.delay = ctx.createDelay(2);
-    this.delay.delayTime.value = (60 / track.bpm) * 0.75;
-    const fb = ctx.createGain();
-    fb.gain.value = 0.38;
-    this.delay.connect(fb);
-    fb.connect(this.delay);
-    this.delay.connect(this.bus);
-
-    this.bus.connect(destination);
-    // send a copy of everything to the shared reverb for room warmth
-    const send = ctx.createGain();
-    send.gain.value = 0.4;
-    this.bus.connect(send);
-    send.connect(reverb);
-  }
-
-  start() {
-    const now = this.ctx.currentTime;
-    this.nextChordTime = now + 0.1;
-    this.nextBeatTime = now + 0.1;
-    this.timer = window.setInterval(() => this.schedule(), TICK_MS);
-    this.schedule();
-  }
-
-  fadeIn() {
-    const g = this.bus.gain;
-    const now = this.ctx.currentTime;
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(1, now + CROSSFADE_S);
-  }
-
-  /** Fade out, then tear down. */
-  fadeOutAndStop() {
-    const g = this.bus.gain;
-    const now = this.ctx.currentTime;
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(0, now + CROSSFADE_S);
-    window.setTimeout(() => this.stop(), (CROSSFADE_S + 0.2) * 1000);
-  }
-
-  stop() {
-    this.stopped = true;
-    if (this.timer !== null) window.clearInterval(this.timer);
-    this.timer = null;
-    window.setTimeout(() => {
-      this.wobble.stop();
-      this.filter.disconnect();
-      this.delay.disconnect();
-      this.bus.disconnect();
-    }, 100);
-  }
-
-  private schedule() {
-    if (this.stopped) return;
-    const ctx = this.ctx;
-    const track = this.track;
-    const beatS = 60 / track.bpm;
-    const chordS = beatS * track.beatsPerChord;
-    const horizon = ctx.currentTime + LOOKAHEAD_S;
-
-    while (this.nextChordTime < horizon) {
-      const chord = track.chords[this.chordIndex % track.chords.length];
-      this.playChord(chord, this.nextChordTime, chordS);
-      if (Math.random() < track.melody) {
-        this.playPhrase(chord, this.nextChordTime + chordS * (0.25 + Math.random() * 0.35), beatS);
-      }
-      this.chordIndex += 1;
-      this.nextChordTime += chordS;
-    }
-
-    if (track.percussion) {
-      while (this.nextBeatTime < horizon) {
-        const beatInBar = this.beatIndex % 4;
-        // felt kick on 1, ghost kick on the swung "and" of 2, rim on 3
-        if (beatInBar === 0) this.kick(this.nextBeatTime, 1);
-        if (beatInBar === 1) this.kick(this.nextBeatTime + beatS * 0.62, 0.4);
-        if (beatInBar === 2) this.rim(this.nextBeatTime);
-        this.beatIndex += 1;
-        this.nextBeatTime += beatS;
-      }
-    }
-  }
-
-  private playChord(midis: number[], at: number, holdS: number) {
-    const { ctx } = this;
-    const attack = Math.min(1.6, holdS * 0.25);
-    const release = Math.min(2.2, holdS * 0.35);
-
-    // pad voices: two detuned triangles per note, panned for width
-    midis.forEach((m, i) => {
-      for (const detune of [-5, 5]) {
-        const osc = ctx.createOscillator();
-        osc.type = "triangle";
-        osc.frequency.value = midiHz(m);
-        osc.detune.value = detune;
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0, at);
-        g.gain.linearRampToValueAtTime(0.045, at + attack);
-        g.gain.setValueAtTime(0.045, at + holdS - release);
-        g.gain.linearRampToValueAtTime(0, at + holdS + 0.3);
-        const pan = ctx.createStereoPanner();
-        pan.pan.value = (i % 2 === 0 ? -1 : 1) * (0.12 + 0.1 * (detune > 0 ? 1 : 0));
-        osc.connect(g);
-        g.connect(pan);
-        pan.connect(this.filter);
-        osc.start(at);
-        osc.stop(at + holdS + 0.5);
-      }
-    });
-
-    // soft bass an octave under the root
-    const bass = ctx.createOscillator();
-    bass.type = "sine";
-    bass.frequency.value = midiHz(midis[0] - 12);
-    const bg = ctx.createGain();
-    bg.gain.setValueAtTime(0, at);
-    bg.gain.linearRampToValueAtTime(0.11, at + attack * 0.7);
-    bg.gain.setValueAtTime(0.11, at + holdS - release);
-    bg.gain.linearRampToValueAtTime(0, at + holdS + 0.2);
-    bass.connect(bg);
-    bg.connect(this.filter);
-    bass.start(at);
-    bass.stop(at + holdS + 0.4);
-  }
-
-  /** A tiny wandering phrase — 2–3 soft sines from the chord, echoed. */
-  private playPhrase(chord: number[], at: number, beatS: number) {
-    const { ctx } = this;
-    const notes = 2 + Math.floor(Math.random() * 2);
-    let t = at;
-    for (let i = 0; i < notes; i++) {
-      const m = chord[Math.floor(Math.random() * chord.length)] + 12;
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = midiHz(m);
-      osc.detune.value = Math.random() * 8 - 4;
-      const g = ctx.createGain();
-      const len = beatS * (0.8 + Math.random() * 0.6);
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.05, t + 0.05);
-      g.gain.exponentialRampToValueAtTime(0.0008, t + len);
-      osc.connect(g);
-      g.connect(this.filter);
-      g.connect(this.delay);
-      osc.start(t);
-      osc.stop(t + len + 0.1);
-      t += beatS * (0.75 + (Math.random() < 0.4 ? 0.75 : 0));
-    }
-  }
-
-  private kick(at: number, strength: number) {
-    const { ctx } = this;
-    const osc = ctx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(95, at);
-    osc.frequency.exponentialRampToValueAtTime(42, at + 0.09);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.16 * strength, at);
-    g.gain.exponentialRampToValueAtTime(0.001, at + 0.22);
-    osc.connect(g);
-    g.connect(this.bus);
-    osc.start(at);
-    osc.stop(at + 0.25);
-  }
-
-  private rim(at: number) {
-    const { ctx } = this;
-    const len = 0.03;
-    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * len), ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const hp = ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 3200;
-    const g = ctx.createGain();
-    g.gain.value = 0.05;
-    src.connect(hp);
-    hp.connect(g);
-    g.connect(this.bus);
-    src.start(at);
-  }
+export interface AudioGraph {
+  ctx: AudioContext;
+  /** everything, after the three buses — for anything that wants the sum */
+  master: GainNode;
+  music: GainNode;
+  ambience: GainNode;
+  sfx: GainNode;
 }
+
+type Deck = { el: HTMLAudioElement; gain: GainNode };
 
 export class LofiPlayer {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private reverb: ConvolverNode | null = null;
-  private crackleGain: GainNode | null = null;
-  private voice: TrackVoice | null = null;
+  private musicBus: GainNode | null = null;
+  private ambienceBus: GainNode | null = null;
+  private sfxBus: GainNode | null = null;
+  private decks = new Map<number, Deck>();
+  private live: number | null = null;
 
   private trackIndex_: number;
   private _volume: number;
+  private _master: number;
   private _playing = false;
   private listeners = new Set<() => void>();
 
   constructor() {
-    this.trackIndex_ = Number(localStorage.getItem("lofi.track") ?? 0) % LOFI_TRACKS.length;
+    this.trackIndex_ = Number(localStorage.getItem("lofi.track") ?? 0) % MUSIC_TRACKS.length;
+    if (!Number.isFinite(this.trackIndex_) || this.trackIndex_ < 0) this.trackIndex_ = 0;
     const stored = Number(localStorage.getItem("lofi.volume"));
     this._volume = Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.5;
+    const m = Number(localStorage.getItem("audio.master"));
+    this._master = Number.isFinite(m) && m >= 0 && m <= 1 ? m : 0.8;
   }
 
   // --- observable state ------------------------------------------------------
@@ -378,26 +120,35 @@ export class LofiPlayer {
   get volume() {
     return this._volume;
   }
-  /** Which slot is playing, so a deck can show 2/4 and highlight the right name. */
+  /** Everything, after the three channel buses. */
+  get masterVolume() {
+    return this._master;
+  }
+  /** Which slot is playing, so a deck can show 2/8 and highlight the right name. */
   get trackIndex(): number {
     return this.trackIndex_;
   }
-
   get trackCount(): number {
-    return LOFI_TRACKS.length;
+    return MUSIC_TRACKS.length;
   }
-
   get trackNames(): string[] {
-    return LOFI_TRACKS.map((t) => t.name);
+    return MUSIC_TRACKS.map((t) => t.name);
+  }
+  get track(): MusicTrack {
+    return MUSIC_TRACKS[this.trackIndex_];
   }
 
-  get track(): LofiTrack {
-    return LOFI_TRACKS[this.trackIndex_];
-  }
-
-  /** Shared audio graph for sibling services (ambience, sfx). Unlock first. */
-  get graph(): { ctx: AudioContext; master: GainNode } | null {
-    return this.ctx && this.master ? { ctx: this.ctx, master: this.master } : null;
+  /** Shared audio graph for sibling services (ambience, sfx, voice). Unlock first. */
+  get graph(): AudioGraph | null {
+    return this.ctx && this.master && this.musicBus && this.ambienceBus && this.sfxBus
+      ? {
+          ctx: this.ctx,
+          master: this.master,
+          music: this.musicBus,
+          ambience: this.ambienceBus,
+          sfx: this.sfxBus,
+        }
+      : null;
   }
 
   // --- lifecycle ----------------------------------------------------------------
@@ -406,38 +157,86 @@ export class LofiPlayer {
     if (!this.ctx) {
       this.ctx = new AudioContext();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this._volume;
+      this.master.gain.value = this._master;
       this.master.connect(this.ctx.destination);
-      // shared room reverb: everything musical sends a little into it
-      this.reverb = this.ctx.createConvolver();
-      this.reverb.buffer = buildReverbImpulse(this.ctx);
-      const wet = this.ctx.createGain();
-      wet.gain.value = 0.32;
-      this.reverb.connect(wet);
-      wet.connect(this.master);
-      this.startCrackle();
+      const bus = () => {
+        const g = this.ctx?.createGain();
+        if (g && this.master) g.connect(this.master);
+        return g ?? null;
+      };
+      this.musicBus = bus();
+      this.ambienceBus = bus();
+      this.sfxBus = bus();
+      if (this.musicBus) this.musicBus.gain.value = this._volume;
       this.emit();
     }
     if (this.ctx.state === "suspended") void this.ctx.resume();
   }
 
+  /**
+   * The element and gain for one track, built on first use.
+   *
+   * `createMediaElementSource` may be called only once for a given element, so
+   * both live here together and are never rebuilt. The element loops itself;
+   * these are two- and three-minute pieces written to go round.
+   */
+  private deck(index: number): Deck | null {
+    if (!this.ctx || !this.musicBus) return null;
+    const found = this.decks.get(index);
+    if (found) return found;
+    const el = new Audio(srcFor(MUSIC_TRACKS[index]));
+    el.loop = true;
+    el.preload = "auto";
+    el.crossOrigin = "anonymous";
+    el.addEventListener("error", () => {
+      console.warn(`[music] could not load ${MUSIC_TRACKS[index].name}`);
+    });
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0;
+    this.ctx.createMediaElementSource(el).connect(gain);
+    gain.connect(this.musicBus);
+    const deck: Deck = { el, gain };
+    this.decks.set(index, deck);
+    return deck;
+  }
+
+  private fade(deck: Deck, to: number, seconds = FADE_S) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const g = deck.gain.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(to, now + seconds);
+  }
+
   play() {
     this.unlock();
-    if (this._playing || !this.ctx || !this.master || !this.reverb) return;
+    if (this._playing) return;
+    const deck = this.deck(this.trackIndex_);
+    if (!deck) return;
     this._playing = true;
-    this.voice = new TrackVoice(this.ctx, this.track, this.master, this.reverb);
-    this.voice.start();
-    this.voice.fadeIn();
-    this.setCrackle(this.track.crackle);
+    this.live = this.trackIndex_;
+    void deck.el.play().catch(() => {
+      // a browser that refused the gesture; the deck stays armed for the next one
+      this._playing = false;
+      this.emit();
+    });
+    this.fade(deck, 1);
     this.emit();
   }
 
   pause() {
     if (!this._playing) return;
     this._playing = false;
-    this.voice?.fadeOutAndStop();
-    this.voice = null;
-    this.setCrackle(0);
+    const deck = this.live === null ? null : this.decks.get(this.live);
+    if (deck) {
+      this.fade(deck, 0, 0.6);
+      const el = deck.el;
+      window.setTimeout(() => {
+        // only actually stop it if nothing started it again in the meantime
+        if (!this._playing) el.pause();
+      }, 700);
+    }
     this.emit();
   }
 
@@ -447,70 +246,62 @@ export class LofiPlayer {
   }
 
   next(step = 1) {
-    this.trackIndex_ = (this.trackIndex_ + step + LOFI_TRACKS.length) % LOFI_TRACKS.length;
+    const from = this.live;
+    this.trackIndex_ = (this.trackIndex_ + step + MUSIC_TRACKS.length) % MUSIC_TRACKS.length;
     localStorage.setItem("lofi.track", String(this.trackIndex_));
-    if (this._playing && this.ctx && this.master && this.reverb) {
-      // crossfade: old voice ramps down while the new one ramps up
-      this.voice?.fadeOutAndStop();
-      this.voice = new TrackVoice(this.ctx, this.track, this.master, this.reverb);
-      this.voice.start();
-      this.voice.fadeIn();
-      this.setCrackle(this.track.crackle);
+    if (this._playing) {
+      const old = from === null ? null : this.decks.get(from);
+      if (old && from !== this.trackIndex_) {
+        this.fade(old, 0);
+        const el = old.el;
+        window.setTimeout(
+          () => {
+            el.pause();
+            el.currentTime = 0;
+          },
+          (FADE_S + 0.2) * 1000,
+        );
+      }
+      const deck = this.deck(this.trackIndex_);
+      if (deck) {
+        this.live = this.trackIndex_;
+        void deck.el.play().catch(() => {});
+        this.fade(deck, 1);
+      }
     }
     this.emit();
   }
 
-  setVolume(v: number) {
-    this._volume = Math.max(0, Math.min(1, v));
-    localStorage.setItem("lofi.volume", String(this._volume));
+  /**
+   * The overall level. This is the one control that does move everything —
+   * which is exactly why the three below it had to stop doing so.
+   */
+  setMasterVolume(v: number) {
+    this._master = Math.max(0, Math.min(1, v));
+    localStorage.setItem("audio.master", String(this._master));
     if (this.master && this.ctx) {
       const g = this.master.gain;
       const now = this.ctx.currentTime;
       g.cancelScheduledValues(now);
       g.setValueAtTime(g.value, now);
-      g.linearRampToValueAtTime(this._volume, now + 0.15);
+      g.linearRampToValueAtTime(this._master, now + 0.12);
     }
     this.emit();
   }
 
-  // --- vinyl bed --------------------------------------------------------------------
-  private startCrackle() {
-    if (!this.ctx || !this.master) return;
-    const ctx = this.ctx;
-    const seconds = 3;
-    const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) {
-      // quiet hiss + sparse pops
-      data[i] = (Math.random() * 2 - 1) * 0.012;
-      if (Math.random() < 0.00004) {
-        data[i] = (Math.random() * 2 - 1) * 0.6;
-      }
+  /** The music channel, and only the music channel. */
+  setVolume(v: number) {
+    this._volume = Math.max(0, Math.min(1, v));
+    localStorage.setItem("lofi.volume", String(this._volume));
+    if (this.musicBus && this.ctx) {
+      const g = this.musicBus.gain;
+      const now = this.ctx.currentTime;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(this._volume, now + 0.12);
     }
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
-    const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 3400;
-    bp.Q.value = 0.5;
-    this.crackleGain = ctx.createGain();
-    this.crackleGain.gain.value = 0;
-    src.connect(bp);
-    bp.connect(this.crackleGain);
-    this.crackleGain.connect(this.master);
-    src.start();
-  }
-
-  private setCrackle(mult: number) {
-    if (!this.crackleGain || !this.ctx) return;
-    const g = this.crackleGain.gain;
-    const now = this.ctx.currentTime;
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(0.5 * mult, now + CROSSFADE_S);
+    this.emit();
   }
 }
 
-/** Singleton — one player per app. */
 export const lofiPlayer = new LofiPlayer();

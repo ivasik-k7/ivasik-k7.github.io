@@ -1,0 +1,209 @@
+Verdict
+It reads as a developer-built menu with an unusually good background. The stage is genuinely the work of someone who can make a game look like a game — it's the real street scene, at dusk, drifting, with the smoker and the babcia in it, and for about one second it does land the mood. But everything laid on top of that picture is unresolved, and the giveaways are structural rather than cosmetic. The frame has no composition, only pinning: the wordmark is stuck to the top-left corner and the options to the bottom-left corner with 287px (40% of the viewport at 1280×800, 43% at 1080p) of dead sky between them and nothing organising the relationship. The selection marker reads as a leading underscore character rather than a cursor. The label column ragged-lefts by 22px as the cursor moves. Four elements in the same corner sit on four different left edges (90 / 94 / 112 / 134 / 149px). The build stamp is at a 17px margin while everything else is at 90px. There is a hard, dead-straight, 46-luminance-unit seam running across the full width of every screenshot at exactly y=54%. Three of the seven settings rows are wired to nothing. And the file that contains those three dead rows opens with a comment saying that dead controls "would be the clearest possible signal that the menu is a mock-up." The code comments are better art direction than the screen is; the reasoning was written down but the result was never printed out and looked at as a picture.
+
+On the Fading Afternoon question specifically: it does not copy, and that's real credit. But it doesn't achieve the restraint either — it achieves dimness, which is a different thing. yeo's restraint is confident placement of very few elements on a strong axis. This is a lot of small, faint, unaligned elements scattered on a dark field, which reads as timid, not restrained.
+
+Findings, most important first
+1. Three of the seven Settings rows do nothing
+src/game/menu/settings.ts:70-78, src/game/menu/SettingsScreen.tsx:64-88
+
+QUALITY is persisted to localStorage and rendered, and nothing anywhere reads settings.quality. src/engine/core/runtime-perf.ts:205 has its own governor with no input from the menu. Dead.
+TEXT SPEED writes document.documentElement.dataset.textSpeed (settings.ts:75). Nothing in the codebase reads dataset.textSpeed or [data-text-speed]. TEXT_MS (settings.ts:59) is exported and imported by zero files. Dead.
+MOTION writes dataset.reducedMotion (settings.ts:76). Every actual consumer — runtime-perf.ts:551, NpcMonologue.tsx:57, CharacterMonologue.tsx:20, Hud.tsx:50, index.css:244 — reads matchMedia("(prefers-reduced-motion: reduce)"), i.e. the OS setting. Setting MOTION to REDUCE affects only still inside MainMenu. The row's own note promises "reduce stills the camera drift, the idle bob and the typing" — the bob and the typing are in-game and are unaffected.
+Why it matters: this is the exact failure SettingsScreen.tsx:9-13 says it is avoiding. It's also the one finding here that a player can catch.
+Fix: either wire them (applySettings should call into the perf governor and a TEXT_MS consumer, and every matchMedia call site should become reducedMotion() || dataset.reducedMotion === "reduce"), or delete QUALITY and TEXT SPEED and reduce MOTION to a menu-only "CAMERA DRIFT — ON/OFF". A four-row settings screen that all works beats a seven-row one where three lie.
+
+2. The selection marker reads as an underscore glyph, not a cursor
+src/game/menu/MainMenu.tsx:315 (items-center) + :321-329 (the rule span)
+
+PixelLabel draws an SVG of height 8 * px with the glyph occupying rows 2–7 (PixelFrame.tsx:300-306, viewBox="0 -2 w 8"). At px=3 that's a 24px box with the caps at y 6–21. The button uses items-center against a flex column of label + note (24 + 4 + ~13 = 41px), so the 2px rule lands at y≈20 — flush with the bottom of the cap height. Look at crop-nav.png: _ SETTINGS and _ CREDITS read as a typed underscore before the word. The selected row reads as a doubled underscore, __ NEW GAME.
+
+Why it matters: this is the single element in the frame whose whole job is to say "you are here", and it looks like a stray character. It's also the first thing anyone will read as unfinished.
+Fix: don't centre the rule against the column. Align it to the label's optical centre: put the rule and the label in their own items-center row and let the note hang below that row, or offset the rule by marginBottom: scale.item * 4 to hit the cap midline. Then make it a mark rather than a line — a filled 3×3-cell chevron or square in the pixel font's own grid would sit in the same visual language as the HUD's rivets and read instantly as a cursor.
+
+3. The menu's left edge moves 22px when the cursor moves
+src/game/menu/MainMenu.tsx:317 (translateX(6px)) + :324 (rule width 10 → 26) + :315 (gap-3)
+
+Measured in m-title.png: inactive labels start at x=112; the selected NEW GAME starts at x=134, and its note at x=135. Inactive dash at x=90, active rule at x=96. So arrowing down the list slides the entire type column left and right by 22px, four times.
+
+Why it matters: a menu that reflows while you read it is exactly the tell the code comment at MainMenu.tsx:111-115 was trying to avoid on the vertical axis — the same mistake is present on the horizontal axis and unnoticed.
+Fix: reserve the marker's maximum width. Give the marker span a fixed width: 26 (or a fixed-width grid column) and animate its contents, not its box; drop translateX entirely. The labels then hold one left edge in every state.
+
+4. There is no composition — five left edges and three different margins
+MainMenu.tsx:229 (top-[9%] left-[7%]), :233-235, :240 (bottom-[12%] left-[7%]), :272 (right-4 bottom-4), :384 (top-[25vh] … bottom-[7vh])
+
+Measured left edges in the same corner of m-title.png: wordmark 90, subtitle rule 94 (pl-1), inactive label 112, active label 134, subtitle text 149. Five. Measured margins: top 64px (9%), left 90px (7%), nav bottom 86px (12%), build stamp right 17px and bottom 20px.
+
+Why it matters: nothing in the frame agrees with anything else. This is the definition of "stuff in corners" — every element was positioned independently with whatever number looked right at 1280×800, and no axis or measure was ever established. The 17px build-stamp margin against a 90px everything-else margin is the most obviously accidental thing on screen.
+
+Fix: pick one measure — say --gutter: 7% — and put the wordmark, the labels (not the markers), the subtitle text, the sub-screen headings, and the build stamp all on it. Hang the markers and the subtitle rule into the gutter to the left of that axis, which is what a designed layout does with them. Use the same gutter for the bottom and right margins.
+
+5. A hard rectangular seam runs across the full frame at y=54%
+src/game/menu/MenuStage.tsx:154-157 (band height: "46%") and :181-189 (the haze meant to hide it)
+
+Measured row-to-row luminance step at the scene band's top edge:
+
+screenshot	seam y	step at x=700	step at x=1000
+m-title (1280×713)	384	48.1 (74→122)	47.6 (74→122)
+1920×1080 (993)	535	29.4	44.1 (74→119)
+820×520 (433)	233	44.7 @x=400	13.4
+The haze at :186-188 is rgba(148,97,79,…) — the same colour as the sky gradient's bottom stop #94614f (:104). Over the sky it is a no-op; over the roofs it only lightens. It cannot close a step whose cause is that the beige roofline is brighter than the sky. The comment at :174-180 correctly diagnoses the problem and the implementation doesn't solve it.
+
+Why it matters: this is the thing that makes it read as "background image behind UI" rather than a shot. It is visible in every single screenshot, at every size, across the whole width.
+Fix: the seam is the roofline, so the fix belongs above it, not on it. Add a silhouette band — a far-distance skyline of block roofs, aerials and a chimney, drawn in the sky's own colour a shade darker, sitting on the seam and breaking it into an irregular profile. That's one small SVG and it removes the straight line permanently. As a stopgap, make the haze a dark gradient the colour of the roofs' shadow rather than the sky's colour, and extend it 3× taller so the step is spread over 100px instead of 1.
+
+6. The same sentence appears twice in the frame
+MainMenu.tsx:235 ("A WEDNESDAY IN OCTOBER") and MainMenu.tsx:108 ("a Wednesday in October")
+
+On a first-ever launch the cursor defaults to NEW GAME (:134), so the player's very first screen shows the subtitle in pixel caps at the top-left and the identical phrase in mono sentence-case 350px below it.
+
+Why it matters: it makes the subtitle look like a caption for New Game, and it's the kind of duplication that only survives because nobody stepped back and read the screen as prose.
+Fix: the subtitle is doing the atmospheric job; the note should do a different one. Make NEW GAME's note concrete and local — "block 14, the first evening" — or drop it and use the reserved-height trick with an empty string.
+
+7. Prose type has three different specs for one role
+MainMenu.tsx:337-350, SettingsScreen.tsx:113-121, CreditsScreen.tsx:286-293
+
+where	size	tracking	opacity
+menu note	scale.note (10px)	0.08em	0.38
+settings note	scale.note - 1 (9px)	0.06em	0.30
+credits name	scale.note + 2 (12px)	0.06em	0.82
+Three components each derived their own number off the same base. That's why the mono/pixel mix reads accidental rather than deliberate: there is no prose style, only three ad-hoc ones.
+
+Compounding it: the settings notes at 9px / 0.06em / 30% opacity are past legible. I had to magnify crop-settings.png 2× to read "reduce stills the camera drift, the idle bob and the typing". And the note sits under the label on the far left while the control it describes is 386px away on the right.
+
+Fix: define exactly two prose styles next to MenuScale — prose (the readable one: scale.note, 0.06em, 0.55 opacity) and proseQuiet (scale.note, 0.06em, 0.40) — and let all three sites use only those. Raise the settings notes to 0.45+ minimum, and move them under the control, right-aligned to the same edge as the steppers, so a note is beside the thing it explains.
+
+Separately: Geist Mono is bundled and deterministic, which is good, but it is a 2023 developer-brand typeface. Against a 3×5 pixel font and a Polish osiedle at dusk it reads "npm install", not "Warsaw, October". Since textRects uppercases everything (pixelKit.tsx:662), you can't set lowercase prose in the pixel font today. Adding a lowercase set to the 3×5 font is the change that would actually make the type layer feel native — and it's the single highest-leverage art change available here.
+
+8. The disabled row is dimmer than its own caption
+MainMenu.tsx:334-335 (label opacity 0.26 when disabled) vs :344 (note opacity 1 when disabled, colour at 0.38 alpha)
+
+Measured peak luminance in m-title.png: CONTINUE 81, empty sky 69. The word CONTINUE is 12 luminance units brighter than blank sky. Its caption "nothing saved yet" is brighter than it is. In crop-nav.png you read the caption first and have to hunt for the word it belongs to.
+
+Also: the whole nav column's mean luminance is 37.8, below the empty sky's 45.1. The interactive region is the darkest part of the frame.
+
+Fix: disabled label to 0.38 and its note to 0.28 — invert the current relationship. And lift the unselected items from 0.66 to ~0.78; at present only the one yellow word is visible at a glance and the other three read as texture.
+
+9. Settings: two ragged rhythms and a misaligned stepper column
+SettingsScreen.tsx:59 (max-w-xl), :94 (Gap = 10px), :107 (py-1), :160-170 vs :195
+
+Measured in m-settings.png / crop-settings.png:
+
+The left < steppers do not line up. Volume rows put < at x≈531; choice rows at x≈520 — an 11px stagger, clearly visible in the 2× crop. Cause: the group is right-aligned via justify-between, and the meter block (10×7 + 9×3 = 97px) is a different width from the Choice slot (width: 108, :195). The > column aligns; the < column doesn't.
+Two vertical rhythms: volume rows at a 28px pitch, choice rows at 42–44px. No reason is apparent to the reader.
+The <Gap/> before FULLSCREEN adds 14px, which produces the same 42px pitch as the note-bearing rows above it — so the intended grouping is invisible.
+Only 2 of 5 choice rows carry notes, so the list reads half-documented.
+max-w-xl (576px) was supposed to prevent "two unrelated columns" (:57-58), but MUSIC ends at x≈145 and its < begins at x≈531. 386px of void between a label and its control. The stated fix did not work.
+Fix: set the meter block to exactly 108px wide (10 cells of 8px + 9 gaps of 3px = 107, or 9 cells × 9 + 8×3 = 105 — pick integers that land on 108) so both row types share one control width and one < column. Halve the measure to ~340px so label and control are readable as one row. Use a single row pitch and express grouping with a rule or a 24px break, not a 10px one. Give every row a note or none.
+
+10. Settings is mouse-only — keyboard and gamepad players are stranded
+SettingsScreen.tsx (no keydown handler anywhere) + MainMenu.tsx:176 (gamepad poll returns early when screen !== "title")
+
+You arrow down the title screen with the keyboard, press Enter on SETTINGS, and there is no cursor, no focus ring, no arrow-key row selection and no left/right value stepping. m-settings.png shows zero selection state because there is none. A gamepad player can enter Settings and only ESC out — they cannot change a single value.
+
+This is a real bug, not a taste question, and for a controller it's a hard dead end.
+Fix: lift the cursor/move logic out of MainMenuInner into a small useListCursor hook and use it in SettingsScreen too (up/down selects a row, left/right steps its value, Escape backs out), and extend the gamepad poll to run on all three screens. The selected row should get the same marker treatment as the title screen so the two screens read as one system.
+
+11. Two elements ignore the scale system entirely
+MainMenu.tsx:273 (build stamp px={2}) and :400 ([ESC] BACK px={2})
+
+menuScale.tsx carefully defines six sizes across four tiers, and these two hardcode 2. At 1920×1080 (tier title:12, item:5) everything else is 2.5× larger and these stay at a 10px cap height. In size-1920x1080.png the build stamp is a speck.
+
+Fix: add chrome: number to MenuScale (2/3/3/4 across the tiers) and use it in both places.
+
+12. [ESC] BACK renders as ESC BACK — the brackets are missing glyphs
+MainMenu.tsx:400, font table at src/engine/scene/pixelKit.tsx:575-656
+
+The 3×5 GLYPHS table contains ( and ) but no [ or ], and there's no FOLD entry for them (pixelKit.tsx:657), so textRects falls through to GLYPHS[" "] and draws two blank cells. crop-back.png confirms: it reads ESC — wide gap — BACK, with no brackets and an unexplained hole in the middle of the label.
+
+Related, same class: MainMenu.tsx:273 sets "BUILD 0.9 · DEV" but FOLD maps · → ., so it renders as BUILD 0.9 . DEV with a stray full stop on the baseline.
+
+Real bugs. Fix: add [/] to GLYPHS (["11","10","10","10","11"] / ["11","01","01","01","11"]) and add a genuine mid-dot glyph (["0","0","1","0","0"] at 1 cell wide) rather than folding it to a period. Then re-check every PixelLabel string in the project against the table — a lint rule or a dev-mode console.warn on an unmapped character would stop this recurring.
+
+13. Credits: the heading is orphaned ~200px above its content, and the crawl uses 18% of the width it claims
+MainMenu.tsx:384 (top-[25vh]) + CreditsScreen.tsx:259 (220 - travelled) + :273 (mask fades in at 16%)
+
+In m-credits-a.png the CREDITS heading sits at y=191 and the first line of content at y=409. On opening Credits you get a heading and then a void. Meanwhile the crawl is left-aligned in a ~230px-wide column inside a panel that spans left-[7%] right-[7%] — roughly 1090px — so 80%+ of the frame is empty on the right, and the street it's supposed to be playing over is invisible under the 62% scrim (MainMenu.tsx:224) plus the stage's own darkening. The stated intent at CreditsScreen.tsx:210-212 ("keeps the street behind it, so this reads as the end of something") does not survive contact with the scrim.
+
+Fix: three changes. (a) Drop the +220 offset and start the crawl at the top of its box so content appears immediately. (b) Centre the crawl in the panel, or give it a two-column role/name layout on a shared axis — a left-aligned narrow column in a wide frame is the "developer put a div there" look. (c) Reduce the scrim to ~0.40 for Credits specifically and let the street show; if type legibility suffers, darken behind the crawl column only.
+
+14. Screen transitions run backwards
+MainMenu.tsx:222-225 (500ms scrim) vs :239/:258/:269 (hard mount/unmount)
+
+Pressing Enter on SETTINGS unmounts the nav in one frame and mounts the settings list in one frame; the background then darkens over 500ms. The content change leads and the atmosphere follows. It looks like a page swap with a lazy CSS transition trailing it, which is precisely what it is.
+
+Fix: fade the outgoing content out over ~180ms, then the scrim in, then the incoming content in — or at minimum give the sub-screen and the nav the same 500ms opacity transition as the scrim so all three move together. A 180ms translateY(6px) + opacity on the sub-screen's arrival would cost nothing and read as intentional.
+
+15. The stage jumps sideways when you return to the tab
+MenuStage.tsx:75-90
+
+The effect depends on [still, hidden] and captures start = performance.now() fresh on every run, but never resets el.style.transform when it bails out. Hide the tab mid-drift (transform at, say, -183px), come back, and the effect restarts with k=0 → the street snaps 183px to the right in one frame. Real bug.
+Fix: persist the phase — store the elapsed offset in a ref on teardown and seed start = now - elapsed on restart.
+
+Same class, CreditsScreen.tsx:256: const span = el.scrollHeight + 220 is captured once with deps [still], but scale changes on resize (menuScale.tsx:291-295) and the effect never re-runs — so resizing while the credits are up leaves a stale loop length and the crawl either repeats early or leaves a gap. Add scale to the deps.
+
+16. The scale tiers make the wordmark shrink on the most common laptop sizes
+menuScale.tsx:275-280
+
+Title cap height as a fraction of viewport height, by tier:
+
+viewport h	tier title px	cap height	% of height
+993 (1080p)	12	60px	6.0%
+979	9	45px	4.6%
+759	7	35px	4.6%
+713 (1280×800)	7	35px	4.9%
+681 (1366×768)	7	35px	5.1%
+619	6	30px	4.8%
+433	6	30px	6.9%
+The ratio sawtooths between 4.3% and 6.9% — a 60% swing. The two most common laptop windows (1280×800 and 1366×768) land just above a breakpoint, which is why m-title.png and size-1366x768.png both show a small, timid wordmark adrift in a huge empty sky. Above 1080p there's no tier at all, so the whole menu shrinks relatively on a 1440p display.
+
+Fix: either add tiers at 1200 and 1450, or — better — compute title = clamp(6, round(h / 90), 16) and keep the other values tiered. That holds the wordmark at a constant ~5.5–6% of height on every screen while keeping the small type on crisp integer steps, which is where integer-ness actually matters.
+
+17. The stage is scaled by non-integer factors and drifted on sub-pixel offsets
+MenuStage.tsx:157 (height: "46%"), :163-165 (viewBox 0 0 1280 180, slice), :85 (.toFixed(1))
+
+The scene is 1280×180. The band is 46% of viewport height, so the SVG scale factor is a continuous function of window size: 1.107× at 820×520, 1.412× at 1024×640, 1.822× at 1280×800, 2.54× at 1920×1080. menuScale.tsx:249-252 argues at length that pixel type must land on integer steps — and then the art, which is two orders of magnitude more pixels, is scaled by 1.412. On top of that, the drift transform is toFixed(1), so the whole layer translates on tenth-pixel offsets and every pixel edge is resampled by the compositor every frame.
+
+Why it matters: it's the pixel-art shimmer that reads as amateur to anyone who plays this genre, and it's especially bad at 1024×640 where 1.412× makes some 1px lines 1px and others 2px within the same sprite.
+Fix: derive the band height from an integer scale — const k = Math.max(1, Math.floor(vh * 0.46 / 180)); height = k * 180 — and let the sky take the remainder (the sky is a gradient, it doesn't care). Round the drift to whole scene-pixels: Math.round(offset / k) * k. The drift becomes a series of whole-pixel steps, which is more correct for this art style, not less — it's how the genre does camera movement.
+
+18. The nav sits on the busiest part of the picture; the empty part is above it
+MainMenu.tsx:240 (bottom-[12%]) against MenuStage.tsx:157 (band top at 54%)
+
+At every size, all four options land inside the scene band, over the Żabka storefront and the block facade. Measured region luminance in m-title.png: Żabka sign p99 175, shopfront window p99 166, paczkomat p99 142 — versus unselected menu labels at ~132. The busiest, brightest, most detailed 40% of the frame is directly behind the type, and the eye goes to the green sign before it finds the menu.
+
+At 820×520 it's worse in a different way: CONTINUE sits on dark sky, NEW GAME straddles the roofline, and SETTINGS/CREDITS sit on the building — four rows on three different backgrounds.
+
+The left scrim (MenuStage.tsx:204-211) is doing real work but it's a 52%-wide horizontal gradient fighting a vertical problem, and the facade still shows through as a lighter rectangle behind CONTINUE in crop-nav.png.
+
+Fix: the honest fix is compositional, not a heavier scrim. Move the nav up into the sky — bottom ~34% — so it sits on the gradient and the street runs clean beneath it as a horizon band. That closes the 287px hole between wordmark and menu at the same time, gives the picture a proper foreground/background separation, and lets you reduce the scrim so more of the art is visible. Two problems, one move.
+
+19. Minor / worth noting
+SettingsScreen.tsx:80-87: FULLSCREEN persists a boolean that is never restored on load (applySettings doesn't request fullscreen), and there's no fullscreenchange listener, so pressing F11 or Esc desyncs the displayed value. The row will read ON while the game is windowed. Real bug.
+SettingsScreen.tsx:60-62: "SOUND" as the label for the SFX bus, sitting under "MUSIC" and "AMBIENCE", is ambiguous — SOUND is the superset word. Use "EFFECTS".
+SettingsScreen.tsx:71-74: "MOTION — SYSTEM" and "QUALITY — AUTO … lets the engine drop detail" are developer vocabulary on a player-facing screen.
+SettingsScreen.tsx:167: eight full-saturation #fcee0a items (5 values + 3 meters) make Settings the loudest screen in the product — louder than the title, whose restraint is the whole pitch. In m-settings.png the meters are brighter than the wordmark. Consider parchment for the values and reserve yellow for the selected row only, once row selection exists (finding 10).
+MainMenu.tsx:246-251: sweeping the pointer down the list fires playSfx("click") three times in rapid succession. Debounce ~60ms.
+MainMenu.tsx:357 / SettingsScreen.tsx:2 / CreditsScreen.tsx:204: MenuPanel lives in MainMenu.tsx and both sub-screens import it back — a circular import. It works under ESM but will bite under HMR. Move MenuPanel to its own file.
+MainMenu.tsx:391-402: the [ESC] BACK plate is the only boxed control in the menu, which directly contradicts the design rule stated at MainMenu.tsx:16-18 ("no cards, no boxes around the options"). It's also the only place the HUD's PixelFrame material appears, so instead of tying the menu to the game it reads as a stray HUD widget. Either use plain type with the same marker treatment as the nav rows, or commit to PixelFrame in more than one place.
+What is genuinely working — don't break these
+The stage is the real scene. MenuStage.tsx mounting STREET_SCENE with NPCS.smoker and NPCS.babcia at dusk is the correct and expensive answer to "does it belong to the same game", and it's the thing that lifts this above a normal dev menu. Keep it exactly as is.
+The triangle-wave drift (MenuStage.tsx:80-87) — a slow pan that turns at each end rather than looping — is a genuinely good idea and reads as a held camera. Fix the sub-pixel offsets, keep the motion.
+The wordmark is set in the game's own 3×5 font. crop-wordmark.png shows OSIEDLE holding up well at 7px/cell; the glyphs are clean and the letterspacing is right. It just needs to be bigger and to have something to relate to.
+The audio handoff. menuAudio.ts treating the first input as the unlock gesture, and letting the track play through the fade into the flat while only the ambience bed swaps, is the kind of detail that separates a finished game from a menu. No "press any key for sound" line. Excellent.
+No fake loading screen (GameEntry.tsx:225-228) and no dead settings that were deliberately omitted (no resolution picker, no texture quality) — the restraint in what's absent is right, even though three of the rows that are present are dead.
+Reserving the note's height on unselected rows (MainMenu.tsx:111-115) so the list doesn't jump vertically. The reasoning is correct; it just needs the same treatment applied horizontally.
+Keeping CONTINUE visible-but-disabled with its reason underneath, rather than hiding it. Right call. Just fix the inverted brightness.
+Real bugs (as distinct from taste)
+#	Bug	Location
+1	QUALITY setting is read by nothing	settings.ts:70-78
+2	TEXT SPEED writes a dataset attr nobody reads; TEXT_MS imported by zero files	settings.ts:59,75
+3	MOTION has no effect in-game; all consumers read the OS media query	settings.ts:76 vs runtime-perf.ts:551 et al.
+4	[ and ] are not in the glyph table — [ESC] BACK renders as ESC BACK	MainMenu.tsx:400, pixelKit.tsx:575
+5	· folds to . — the build stamp reads BUILD 0.9 . DEV	MainMenu.tsx:273, pixelKit.tsx:657
+6	Settings unreachable by keyboard; completely unusable on a gamepad	SettingsScreen.tsx (all), MainMenu.tsx:176
+7	Stage snaps sideways up to 240px on tab re-focus	MenuStage.tsx:75-90
+8	Credits crawl loop length is stale after a resize (scale missing from deps)	CreditsScreen.tsx:256,264
+9	FULLSCREEN desyncs from reality and is never restored on load	SettingsScreen.tsx:80-87, settings.ts:70
+10	Circular import: MainMenu ↔ SettingsScreen/CreditsScreen	MainMenu.tsx:357
+If you fix only five things: the underscore-cursor (#2), the 22px column shift (#3), the horizon seam (#5), the dead settings (#1), and moving the nav up into the sky (#18). Those five change the answer to the brief's question.

@@ -12,8 +12,10 @@
   --color-parchment: #e3d9c2;
   --color-term: #6fce80;
   --color-term-bright: #c9f5cf;
-  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+  /* the game is set in mono throughout; the sans and display faces they used to
+     name were loaded, shipped, and referred to by nothing */
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-display: ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
 }
 
@@ -245,6 +247,10 @@
   }
 }
 
+[data-reduced-motion="reduce"] .deck-eq {
+  animation: none;
+}
+
 .engine-marker-bob {
   animation: marker-bob 1.15s ease-in-out infinite;
 }
@@ -274,4 +280,24 @@
   .animate-pulse {
     animation: none;
   }
+}
+
+/*
+ * The same list again, driven by the game's own MOTION setting rather than the
+ * operating system's. A media query cannot be satisfied from JavaScript, so the
+ * override arrives as an attribute on <html> (see applySettings) and every rule
+ * above needs a twin here. Duplication, but the alternative is a settings row
+ * that stops half the animations in the game and leaves the other half running.
+ */
+[data-reduced-motion="reduce"] .dog-breathe,
+[data-reduced-motion="reduce"] .steam,
+[data-reduced-motion="reduce"] .crt-cursor,
+[data-reduced-motion="reduce"] .meter-disc,
+[data-reduced-motion="reduce"] .note,
+[data-reduced-motion="reduce"] .tulle-sway,
+[data-reduced-motion="reduce"] .washer-rumble,
+[data-reduced-motion="reduce"] .tv-static,
+[data-reduced-motion="reduce"] .engine-marker-bob,
+[data-reduced-motion="reduce"] .animate-pulse {
+  animation: none;
 }

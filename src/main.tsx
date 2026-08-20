@@ -1,5 +1,7 @@
-import "@fontsource-variable/archivo";
-import "@fontsource-variable/geist";
+// Only the mono face is ever used — `body` sets `--font-mono` and every panel
+// in the game inherits it. Geist Variable and Archivo Variable backed
+// `--font-sans` and `--font-display`, and nothing in the source refers to
+// either, so they were six woff2 files shipped to be never requested.
 import "@fontsource-variable/geist-mono";
 import "@/index.css";
 import "@/i18n";

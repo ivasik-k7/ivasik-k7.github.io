@@ -1,4 +1,5 @@
 import { type AnimalConfig, createAnimal } from "@/engine";
+import { lazyRegistry } from "@/engine/sprite/lazyRegistry";
 
 /**
  * The animals — everybody on the osiedle who is not on two legs.
@@ -8,7 +9,7 @@ import { type AnimalConfig, createAnimal } from "@/engine";
  * difference is that there are far fewer of them and one of them is family.
  */
 
-export const ANIMALS: Record<string, AnimalConfig> = {
+const ANIMALS_FACTORIES: Record<string, () => AnimalConfig> = {
   /**
    * Gross. A shiba, eleven years old, and the reason the flat has a rug in
    * that corner rather than anywhere sensible.
@@ -26,131 +27,138 @@ export const ANIMALS: Record<string, AnimalConfig> = {
    * He is deliberately not `fluffy` and not `large`. He is a small old dog who
    * has decided about most things already.
    */
-  gross: createAnimal({
-    id: "gross",
-    name: "Gross",
-    species: "dog",
-    size: "small",
-    doing: "sleeping",
-    look: {
-      ears: "prick",
-      tail: "curled",
-      muzzle: "medium",
-      coat: "medium",
-      fur: "redFawn",
-      pattern: "mask",
-      belly: "cream",
-      nose: "jet",
-      eye: "hazel",
-    },
-    reactions: {
-      // he does not get up for you, and both of you know it
-      onNotice: "notice",
-      onPet: "pet",
-      onCall: "unfold",
-    },
-  }),
+  gross: () =>
+    createAnimal({
+      id: "gross",
+      name: "Gross",
+      species: "dog",
+      size: "small",
+      doing: "sleeping",
+      look: {
+        ears: "prick",
+        tail: "curled",
+        muzzle: "medium",
+        coat: "medium",
+        fur: "redFawn",
+        pattern: "mask",
+        belly: "cream",
+        nose: "jet",
+        eye: "hazel",
+      },
+      reactions: {
+        // he does not get up for you, and both of you know it
+        onNotice: "notice",
+        onPet: "pet",
+        onCall: "unfold",
+      },
+    }),
 
   /**
    * The one that lives under the bin sheds and owes nobody anything. Grey
    * tabby, whip tail, and the loaf as a default position.
    */
-  kot: createAnimal({
-    id: "kot-osiedlowy",
-    name: "Kot",
-    species: "cat",
-    size: "small",
-    doing: "loafing",
-    look: {
-      ears: "prick",
-      tail: "whip",
-      muzzle: "short",
-      coat: "short",
-      fur: "slate",
-      pattern: "tabby",
-      belly: "smoke",
-      nose: "rose",
-      eye: "olive",
-    },
-  }),
+  kot: () =>
+    createAnimal({
+      id: "kot-osiedlowy",
+      name: "Kot",
+      species: "cat",
+      size: "small",
+      doing: "loafing",
+      look: {
+        ears: "prick",
+        tail: "whip",
+        muzzle: "short",
+        coat: "short",
+        fur: "slate",
+        pattern: "tabby",
+        belly: "smoke",
+        nose: "rose",
+        eye: "olive",
+      },
+    }),
 
   /**
    * Somebody's, on a lead, on the way back from the park. Large, black and
    * tan, and pleased about the whole arrangement.
    */
-  owczarek: createAnimal({
-    id: "owczarek",
-    name: "Owczarek",
-    species: "dog",
-    size: "large",
-    doing: "standing",
-    look: {
-      ears: "prick",
-      tail: "bushy",
-      muzzle: "long",
-      coat: "medium",
-      fur: "sand",
-      pattern: "saddle",
-      patch: "ink",
-      belly: "sand",
-      nose: "jet",
-      eye: "hazel",
-      collar: "oxblood",
-    },
-  }),
+  owczarek: () =>
+    createAnimal({
+      id: "owczarek",
+      name: "Owczarek",
+      species: "dog",
+      size: "large",
+      doing: "standing",
+      look: {
+        ears: "prick",
+        tail: "bushy",
+        muzzle: "long",
+        coat: "medium",
+        fur: "sand",
+        pattern: "saddle",
+        patch: "ink",
+        belly: "sand",
+        nose: "jet",
+        eye: "hazel",
+        collar: "oxblood",
+      },
+    }),
 
   /**
    * The ginger from the fourth floor who gets out onto the balconies. Fluffy,
    * tufted, and entirely aware of how he looks.
    */
-  rudy: createAnimal({
-    id: "rudy",
-    name: "Rudy",
-    species: "cat",
-    size: "medium",
-    doing: "sitting",
-    look: {
-      ears: "tufted",
-      tail: "plume",
-      muzzle: "short",
-      coat: "fluffy",
-      fur: "ginger",
-      pattern: "socks",
-      belly: "cream",
-      nose: "rose",
-      eye: "amber",
-    },
-  }),
+  rudy: () =>
+    createAnimal({
+      id: "rudy",
+      name: "Rudy",
+      species: "cat",
+      size: "medium",
+      doing: "sitting",
+      look: {
+        ears: "tufted",
+        tail: "plume",
+        muzzle: "short",
+        coat: "fluffy",
+        fur: "ginger",
+        pattern: "socks",
+        belly: "cream",
+        nose: "rose",
+        eye: "amber",
+      },
+    }),
 
   /**
    * The old spaniel from the ground floor, out on the grass twice a day
    * whatever the weather.
    */
-  spaniel: createAnimal({
-    id: "spaniel",
-    name: "Spaniel",
-    species: "dog",
-    size: "small",
-    doing: "lying",
-    look: {
-      ears: "drop",
-      tail: "stub",
-      muzzle: "medium",
-      coat: "fluffy",
-      fur: "chestnut",
-      pattern: "patched",
-      patch: "cream",
-      belly: "cream",
-      nose: "liver",
-      eye: "hazel",
-      collar: "navy",
-    },
-  }),
+  spaniel: () =>
+    createAnimal({
+      id: "spaniel",
+      name: "Spaniel",
+      species: "dog",
+      size: "small",
+      doing: "lying",
+      look: {
+        ears: "drop",
+        tail: "stub",
+        muzzle: "medium",
+        coat: "fluffy",
+        fur: "chestnut",
+        pattern: "patched",
+        patch: "cream",
+        belly: "cream",
+        nose: "liver",
+        eye: "hazel",
+        collar: "navy",
+      },
+    }),
 };
 
-export const ANIMAL_LIST = Object.values(ANIMALS);
+/**
+ * Built on first access, not on import. Gross alone is 287 ms of frame
+ * assembly and four of the five animals are not in the flat.
+ */
+export const ANIMALS: Record<string, AnimalConfig> = lazyRegistry(ANIMALS_FACTORIES);
 
-/** By the object id the scenes use, so a handler can find whoever was poked. */
-export const ANIMAL_BY_OBJECT: Record<string, AnimalConfig> = Object.fromEntries(
-  ANIMAL_LIST.map((animal) => [animal.id, animal]),
-);
+/** Every animal id, without building any of them. */
+export const ANIMAL_IDS = Object.keys(ANIMALS_FACTORIES);

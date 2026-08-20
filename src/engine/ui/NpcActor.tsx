@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { FLOOR_Y } from "../core/constants";
+import { useIsVisible } from "../core/runtime-cull";
 import type { ActorDef } from "../core/runtime-types";
 import type { AnyWorld, SpriteMap } from "../core/types";
 import type { NpcConfig } from "../sprite/npcBuilder";
+import { useAnimationGate, useReducedMotion } from "./animationGate";
 import { PixelSprite } from "./PixelSprite";
+import { speakingAction, useSpeaking } from "./speaking";
 
 /**
  * NpcActor — a built NPC, standing in a scene and doing something.
@@ -43,7 +46,7 @@ export function useNpcFrame(npc: NpcConfig, action?: string, playing = true): Sp
   const frames = useMemo(() => def?.frames ?? ["stand"], [def]);
   const start = phaseOf(npc.id, frames.length);
   const [i, setI] = useState(start);
-  const still = useStill();
+  const still = useReducedMotion();
 
   useEffect(() => {
     setI(start);
@@ -68,6 +71,7 @@ export function NpcActor({
   opacity,
   shadow = true,
   cropBelow,
+  objId,
 }: {
   npc: NpcConfig;
   /** scene x, in logical px — the figure is centred on it */
@@ -87,8 +91,29 @@ export function NpcActor({
    * rows simply are not emitted, so nothing bleeds through the furniture.
    */
   cropBelow?: number;
+  /**
+   * The scene object this person answers to, when it is not their own id —
+   * Pan Heniek is `waiting` in the cast and `waiting-man` in the street.
+   * Without it a conversation would not reach them.
+   */
+  objId?: string;
 }) {
-  const frame = useNpcFrame(npc, action, playing);
+  /**
+   * A conversation overrides whatever the scene asked for. The line's own
+   * `act` wins if it has one, otherwise the character's talk reaction — so a
+   * character stops mopping and turns to answer, and does it from any scene
+   * without the scene having to arrange it.
+   */
+  const speaking = useSpeaking();
+  const spoken = speakingAction(speaking, objId ?? npc.id, npc.reactions.onTalk, action);
+  /**
+   * Only animate somebody the player could actually be looking at. A figure
+   * off the side of a 1760 px square, or anybody at all while a menu covers
+   * the screen, was still cycling frames and rebuilding its sprite every beat.
+   */
+  const onCamera = useIsVisible(Math.round(x - npc.width / 2), npc.width, 48);
+  const running = useAnimationGate();
+  const frame = useNpcFrame(npc, spoken, playing && onCamera && running);
   const cell = npc.cell ?? 2;
   const left = Math.round(x - npc.width / 2);
   // Ground the sprite by the frame it is *showing*, not by how tall the person
@@ -144,19 +169,6 @@ export function NpcActor({
 function groundedRows(frame: SpriteMap): number {
   for (let i = frame.length - 1; i >= 0; i--) if (/[^.]/.test(frame[i])) return i + 1;
   return frame.length;
-}
-
-function useStill() {
-  const [still, setStill] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setStill(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setStill(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return still;
 }
 
 /**

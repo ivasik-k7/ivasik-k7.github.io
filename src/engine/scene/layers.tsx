@@ -29,9 +29,9 @@ export interface SceneLayers {
   /**
    * Parallax scroll factor per layer (1 = moves with the ground,
    * 0 = pinned to the viewport). Defaults: far 0.35, middle 0.65, rest 1.
-   * The runtime publishes the camera offset as `--cam` (logical px);
-   * layers with factor < 1 compensate part of the pan via CSS transform,
-   * so a full-width layer never shows gaps at the scene edges.
+   * Layers with factor < 1 tag themselves `data-parallax` with the share of
+   * the pan they must cancel, and the runtime writes their transform as it
+   * moves the camera, so a full-width layer never shows gaps at the edges.
    */
   parallax?: Partial<Record<LayerKey, number>>;
 }
@@ -66,18 +66,35 @@ export function LayeredScene(layers: SceneLayers) {
       {ORDER.map((key) => {
         if (!layers[key]) return null;
         const factor = layers.parallax?.[key] ?? DEFAULT_PARALLAX[key];
-        // will-change promotes the group to its own compositor layer where the
-        // browser supports composited SVG transforms — without it, every --cam
-        // tick repaints the whole (often scene-wide) layer on the CPU
+        /**
+         * A parallax layer advertises how much of the camera pan it should
+         * cancel, and the runtime writes the transform straight onto this
+         * element every time the camera moves.
+         *
+         * It used to read a `--cam` custom property published on the scene
+         * root instead. Custom properties inherit, so setting one on an
+         * ancestor invalidates the computed style of every descendant —
+         * whether or not it uses the variable. With scenes running to eight
+         * thousand SVG nodes that turned a camera pan into a subtree style
+         * recalculation: measured at 326 ms of `UpdateLayoutTree` standing
+         * still against 1572 ms walking, which is where the frame rate went.
+         *
+         * Two element writes a frame cost nothing and invalidate nothing.
+         */
+        const shift = 1 - factor;
         const style =
-          factor < 1
-            ? {
-                transform: `translateX(calc(var(--cam, 0) * ${(1 - factor).toFixed(3)}px))`,
-                willChange: "transform",
-              }
+          shift > 0
+            ? // promoted to its own compositor layer: without it the whole
+              // (often scene-wide) group repaints on the CPU every pan
+              { willChange: "transform" }
             : undefined;
         return (
-          <g key={key} data-layer={key} style={style}>
+          <g
+            key={key}
+            data-layer={key}
+            data-parallax={shift > 0 ? shift.toFixed(3) : undefined}
+            style={style}
+          >
             {layers[key]}
           </g>
         );

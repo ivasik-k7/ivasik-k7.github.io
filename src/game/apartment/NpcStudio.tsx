@@ -55,8 +55,8 @@ import {
   useAnimalFrame,
   useNpcFrame,
 } from "@/engine";
-import { ANIMALS } from "./animals";
-import { NPC_LIST } from "./npcs";
+import { ANIMAL_IDS, ANIMALS } from "./animals";
+import { NPC_IDS, NPCS } from "./npcs";
 
 /**
  * The casting studio — where a new neighbour gets made.
@@ -245,7 +245,14 @@ const rollCollar = (): TrimName | undefined =>
 const collarDial = (collar: AnimalLook["collar"]): TrimName | "none" =>
   collar && collar in ANIMAL_TRIM ? (collar as TrimName) : "none";
 
-const KENNEL = Object.values(ANIMALS);
+/**
+ * The rosters are built when the studio opens, not when the module loads.
+ * Enumerating either registry constructs every rig in it — 1.4 s for the
+ * animals and 0.4 s for the cast on a production build — and this file is
+ * only ever on screen when somebody asked for it.
+ */
+const kennelRoster = () => ANIMAL_IDS.map((id) => ANIMALS[id]);
+const castRoster = () => NPC_IDS.map((id) => NPCS[id]);
 
 const pick = <T,>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
 
@@ -746,6 +753,7 @@ function CastFloor({
   spec: NpcSpec;
   setSpec: Dispatch<SetStateAction<NpcSpec>>;
 }) {
+  const cast = useMemo(castRoster, []);
   const npc = useMemo(() => createNpc(spec), [spec]);
   const actions = useMemo(() => Object.keys(npc.actions), [npc]);
   const set = useCallback(
@@ -815,8 +823,8 @@ function CastFloor({
   return (
     <div className="flex min-h-0 flex-1 gap-3">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-        <Roster title="THE CAST" count={NPC_LIST.length} tile={CAST_TILE}>
-          {NPC_LIST.map((member) => (
+        <Roster title="THE CAST" count={cast.length} tile={CAST_TILE}>
+          {cast.map((member) => (
             <div key={member.id} className="flex flex-col items-center gap-1">
               <Stall height={CAST_BOX}>
                 <Portrait npc={member} scale={CAST_SCALE} />
@@ -1031,6 +1039,7 @@ function KennelFloor({
   spec: AnimalSpec;
   setSpec: Dispatch<SetStateAction<AnimalSpec>>;
 }) {
+  const kennel = useMemo(kennelRoster, []);
   /**
    * The take the second preview is playing. Kept as a wish rather than as a
    * fact: a cat has no `bark`, so what is actually shown is whatever this
@@ -1098,8 +1107,8 @@ function KennelFloor({
   return (
     <div className="flex min-h-0 flex-1 gap-3">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-        <Roster title="THE KENNEL" count={KENNEL.length} tile={kennelTile} fill={false}>
-          {KENNEL.map((member) => (
+        <Roster title="THE KENNEL" count={kennel.length} tile={kennelTile} fill={false}>
+          {kennel.map((member) => (
             <div key={member.id} className="flex flex-col items-center gap-1">
               <Stall height={kennelBox}>
                 <AnimalPortrait animal={member} scale={kennelScale} />

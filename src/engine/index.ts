@@ -12,17 +12,41 @@
 
 // audio
 export { type AmbienceName, ambience } from "./audio/ambience";
-export { LOFI_TRACKS, LofiPlayer, type LofiTrack, lofiPlayer } from "./audio/lofi";
-export { playSfx, type SfxName } from "./audio/sfx";
+export {
+  type AudioGraph,
+  LOFI_TRACKS,
+  LofiPlayer,
+  type LofiTrack,
+  lofiPlayer,
+  MUSIC_TRACKS,
+  type MusicTrack,
+} from "./audio/lofi";
+export { playSfx, type SfxName, setSfxLevel } from "./audio/sfx";
 export { mumble, type VoiceProfile, voiceFor } from "./audio/voice";
 // core
 export * from "./core/constants";
 export * from "./core/math";
+export {
+  DEFAULT_PREFS,
+  type EnginePrefs,
+  getPrefs,
+  type MotionPref,
+  motionPref,
+  type QualityPref,
+  qualityPin,
+  setPrefs,
+  subscribePrefs,
+  TEXT_MS,
+  type TextSpeedPref,
+  textCharMs,
+  voiceEnabled,
+} from "./core/prefs";
 // runtime v2 — culling, sequencing, actors, adaptive quality
 export { CullBox, CullStrip, useIsVisible, useVisibleBand } from "./core/runtime-cull";
 export type {
   ActorDef,
   InputAction,
+  LiveState,
   QualityTier,
   RuntimeApi,
   RuntimeConfig,
@@ -135,6 +159,7 @@ export * from "./systems/save";
 export { AnimalActor, useAnimalFrame } from "./ui/AnimalActor";
 // ui
 export { AudioHud } from "./ui/AudioHud";
+export { AnimationGateProvider, useAnimationGate } from "./ui/animationGate";
 export { DialogueBox } from "./ui/DialogueBox";
 export { FpsMeter } from "./ui/FpsMeter";
 export { InteractPrompt, TargetMarker } from "./ui/InteractPrompt";
@@ -149,3 +174,15 @@ export {
   scanlines,
 } from "./ui/PixelFrame";
 export { PixelSprite } from "./ui/PixelSprite";
+export {
+  SpeechPanel,
+  SpeechTail,
+  SpeechText,
+  type SpeechTone,
+} from "./ui/SpeechPanel";
+export {
+  SpeakingProvider,
+  type SpeakingState,
+  speakingAction,
+  useSpeaking,
+} from "./ui/speaking";

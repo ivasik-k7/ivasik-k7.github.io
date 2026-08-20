@@ -34,6 +34,25 @@ export interface ActionDef {
   loops: number;
   /** Walking cancels the action instead of waiting it out. */
   interruptible?: boolean;
+  /**
+   * Frames played once on the way in, before `frames` starts looping, and once
+   * on the way out after it finishes.
+   *
+   * Without these an action is a hard cut in both directions: the character is
+   * mid-stride one frame and holding a kettlebell overhead the next, and when
+   * a sit ends he goes from seated to standing without passing through a
+   * crouch. The poses to bridge with are almost always already in the rig —
+   * what was missing was anywhere to say so.
+   */
+  enter?: readonly string[];
+  exit?: readonly string[];
+  /**
+   * Played instead of `exit` when the action is cut short by the player
+   * walking away. Usually shorter than the full exit — one frame to get back
+   * on both feet is enough, and making somebody watch a four-frame stand-up
+   * after they have already pressed a direction is worse than the pop was.
+   */
+  abort?: readonly string[];
 }
 
 export interface PlayerConfig<F extends string = string> {
@@ -203,6 +222,17 @@ export interface GameConfig<W extends AnyWorld = AnyWorld> {
   onSceneChange?: (scene: string) => void;
   /** Menu overlay opened by TAB/M; opaque to the engine. */
   menuOverlay?: unknown;
+  /**
+   * Pause overlay, opened by Escape (and by Start on a pad) when there is
+   * nothing else for Escape to cancel — no sequence running, no auto-walk in
+   * progress, no overlay already up.
+   *
+   * Opening it pauses the simulation, the input, the animation gate and the SMIL
+   * clock, because that is what any overlay already does. The pause menu is not
+   * a special case in the loop; it is the ordinary overlay that Escape reaches
+   * for when the key would otherwise do nothing.
+   */
+  pauseOverlay?: unknown;
   /** Intro splash; dismissed on any key/tap. Fires onFirstGesture. */
   renderIntro?: (dismiss: () => void) => ReactNode;
   /** First user gesture — the right moment to unlock the AudioContext. */

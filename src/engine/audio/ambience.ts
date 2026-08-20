@@ -334,7 +334,8 @@ class AmbienceEngine {
       return;
     }
     this.pending = null;
-    const { ctx, master } = graph;
+    // the ambience bus, so the AMBIENCE slider moves this and nothing else
+    const { ctx, ambience: bus } = graph;
     const old = this.current;
     if (old) {
       const now = ctx.currentTime;
@@ -343,7 +344,7 @@ class AmbienceEngine {
       old.gain.gain.linearRampToValueAtTime(0, now + FADE_S);
       window.setTimeout(() => old.stop(), (FADE_S + 0.2) * 1000);
     }
-    const bed = buildBed(ctx, name, master);
+    const bed = buildBed(ctx, name, bus);
     if (bed) {
       const now = ctx.currentTime;
       bed.gain.gain.setValueAtTime(0, now);
@@ -354,6 +355,26 @@ class AmbienceEngine {
   }
 
   private pending: AmbienceName | null = null;
+
+  /**
+   * Set the ambience level from the player's setting, 0..1.
+   *
+   * The bed's own loudness is 0.16 against the master bus, arrived at by ear,
+   * and the slider defaults to 0.6 — so 0.6 has to keep sounding exactly as it
+   * always did. Hence the scale: `0.2667 * v` puts the default back on 0.16
+   * and lets the top of the slider go a little louder than the old fixed bed.
+   */
+  setLevel(v: number) {
+    this.level = 0.2667 * Math.max(0, Math.min(1, v));
+    const graph = lofiPlayer.graph;
+    const bed = this.current;
+    if (!graph || !bed) return;
+    // ramp rather than jump: dragging a slider should not click
+    const now = graph.ctx.currentTime;
+    bed.gain.gain.cancelScheduledValues(now);
+    bed.gain.gain.setValueAtTime(bed.gain.gain.value, now);
+    bed.gain.gain.linearRampToValueAtTime(this.level, now + 0.12);
+  }
 
   /** Call once after the first gesture unlocks audio. */
   applyPending() {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { HUD } from "@/components/game/Hud";
 import { MenuScreen, type MenuTab, PANEL_TAB } from "@/components/game/MenuScreen";
@@ -21,20 +21,34 @@ import {
   initialWorld,
   type WorldState,
 } from "@/lib/worldState";
+import { PauseMenu } from "../menu/PauseMenu";
+import { PLACE_NAME, SAVE_KEY, SAVE_VERSION } from "../menu/saveSummary";
 import { paletteForAppearanceCached } from "./appearance";
 import { CharacterMonologue } from "./CharacterMonologue";
 import { APARTMENT_HANDLERS } from "./handlers";
-import { NpcStudio } from "./NpcStudio";
 import { OUTSIDE_SCENES } from "./outsideScenes";
 import { PLAYER } from "./player";
 import { APARTMENT_SCENES } from "./scenes";
 import { WardrobePanel } from "./WardrobePanel";
 
+/**
+ * The two developer benches load only when somebody opens one. Importing them
+ * statically pulled the whole cast and kennel into the boot path, and
+ * enumerating either registry builds every rig in it — measured at 1.8 s of
+ * frame assembly before the first paint, for a flat containing one dog and one
+ * person.
+ */
+const NpcStudio = lazy(() => import("./NpcStudio").then((m) => ({ default: m.NpcStudio })));
+const PlayerStudio = lazy(() =>
+  import("./PlayerStudio").then((m) => ({ default: m.PlayerStudio })),
+);
+
 type Overlay =
   | { type: "panel"; id: PanelId }
   | { type: "terminal" }
   | { type: "menu" }
-  | { type: "wardrobe" };
+  | { type: "wardrobe" }
+  | { type: "pause" };
 
 /**
  * You should be able to start a conversation from conversational distance —
@@ -124,7 +138,7 @@ function exposeGameApi(api: RuntimeApi<WorldState>) {
   (window as unknown as { __game: RuntimeApi<WorldState> }).__game = api;
 }
 
-export function EngineGame() {
+export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
   const { t } = useTranslation();
   const [visited, setVisited] = useState<string[]>([]);
   const [here, setHere] = useState<string>("studio");
@@ -133,8 +147,11 @@ export function EngineGame() {
   const skipIntro = true;
   // const skipIntro = Boolean(params?.has("nointro"));
   const showFps = Boolean(params?.has("fps"));
-  const showDebug = Boolean(params?.has("debug"));
   const [studio, setStudio] = useState(Boolean(params?.has("npcs")));
+  const [bench, setBench] = useState(Boolean(params?.has("player")));
+  // the bench reads the frame rate off the runtime's debug sampler, which only
+  // runs when debug is on — so opening it turns sampling on
+  const showDebug = Boolean(params?.has("debug")) || bench;
   const devScene = params?.get("scene");
   const devX = Number(params?.get("x"));
   const devWorld = params
@@ -154,6 +171,15 @@ export function EngineGame() {
 
   const config: RuntimeConfig<WorldState> = {
     scenes: SCENES,
+    /**
+     * The save. The runtime has owned autosave and restore since it was
+     * written and nothing had ever configured it, so every session began in
+     * the flat with fifty złoty and the title screen had no Continue to offer.
+     *
+     * It is always on. New Game does not turn persistence off — it wipes the
+     * slot before mounting, so a fresh game still saves from its first step.
+     */
+    persist: { key: SAVE_KEY, version: SAVE_VERSION },
     start:
       devScene && SCENES[devScene]
         ? { scene: devScene, x: Number.isFinite(devX) && devX > 0 ? devX : 100 }
@@ -183,6 +209,18 @@ export function EngineGame() {
     renderMonologue: (toast, scale) => <CharacterMonologue toast={toast} scale={scale} />,
     renderOverlay: (overlay, close, world, updateWorld) => {
       const o = overlay as Overlay;
+      if (o.type === "pause")
+        return (
+          <PauseMenu
+            key="pause"
+            onResume={close}
+            onQuit={() => {
+              close();
+              onQuit?.();
+            }}
+            place={PLACE_NAME[here] ?? here}
+          />
+        );
       if (o.type === "terminal") return <Terminal key="terminal" onClose={close} />;
       if (o.type === "wardrobe")
         return (
@@ -202,18 +240,28 @@ export function EngineGame() {
       );
     },
     renderExtras:
-      showFps || studio
+      showFps || studio || bench
         ? () => (
             <>
               {showFps ? <FpsMeter /> : null}
-              {studio ? <NpcStudio onClose={() => setStudio(false)} /> : null}
+              <Suspense fallback={null}>
+                {studio ? <NpcStudio onClose={() => setStudio(false)} /> : null}
+                {bench ? <PlayerStudio onClose={() => setBench(false)} /> : null}
+              </Suspense>
             </>
           )
         : undefined,
     debug: showDebug,
+    // the bench shows the same numbers, better laid out and in the same visual
+    // language; two overlapping readouts in the top-left corner is just noise
+    // returning null would fall straight through the runtime's `?? default`,
+    // so this hands back an empty fragment instead
+    renderDebug: bench ? () => <></> : undefined,
     // dev/test hook: lets CDP scripts and Playwright drive the game directly
     onReady: import.meta.env.DEV ? exposeGameApi : undefined,
     menuOverlay: { type: "menu" },
+    // Escape, when it has nothing else to back out of
+    pauseOverlay: { type: "pause" },
     onSceneChange: (scene) => {
       ambience.set(AMBIENCE[scene] ?? "room");
       setHere(scene);

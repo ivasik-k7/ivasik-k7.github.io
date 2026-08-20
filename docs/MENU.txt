@@ -1,0 +1,363 @@
+We now need to create the **main menu and game entry flow**.
+
+The main menu should feel like a real, finished game interface and establish the visual identity and atmosphere of the game before the player enters gameplay.
+
+Use **Fading Afternoon** as an inspiration for mood, composition, restrained presentation, typography, pacing, and overall feeling, but **do not copy its UI or assets directly**.
+
+The final result must feel original and native to our existing game.
+
+---
+
+# 1. Main Menu
+
+Create a full-screen main menu with the following primary options:
+
+* New Game
+* Continue
+* Settings
+* Credits
+
+The menu should occupy the entire game viewport and work naturally at `100vw × 100vh`.
+
+Do not make it feel like a generic web application.
+
+It should feel like an actual game title screen.
+
+---
+
+# 2. Visual Direction
+
+Use the existing game's visual language as the foundation.
+
+Combine it with inspiration from the atmosphere of **Fading Afternoon**:
+
+* restrained;
+* melancholic;
+* grounded;
+* slightly gritty;
+* atmospheric;
+* cinematic;
+* mature;
+* understated rather than flashy.
+
+Avoid excessive UI decoration.
+
+The menu should have visual breathing room and allow the environment/character presentation to establish atmosphere.
+
+Use the existing:
+
+* pixel-art style;
+* `pixelKit`;
+* `lightKit`;
+* typography;
+* lighting;
+* animation systems;
+* HUD visual language;
+* scene rendering infrastructure.
+
+The main menu should look like it belongs to the same game as the existing scenes, HUD, NPCs, characters, and dialogue system.
+
+---
+
+# 3. Background / Menu Scene
+
+Do not simply place buttons over a static background.
+
+Create a dedicated menu presentation/scene.
+
+Consider:
+
+* an atmospheric environment;
+* subtle environmental animation;
+* moving light;
+* distant background activity;
+* ambient particles;
+* subtle character/environment movement;
+* weather/lighting effects where appropriate;
+* depth layers;
+* subtle camera movement;
+* day/evening/night atmosphere if compatible with the game.
+
+The background should remain visually interesting without distracting from the menu.
+
+The player should immediately get a sense of the game's world.
+
+---
+
+# 4. Menu Composition
+
+Create a strong composition around the menu.
+
+The primary menu should be clearly readable but should not consume the entire screen.
+
+Consider:
+
+* game title/logo placement;
+* menu alignment;
+* vertical rhythm;
+* selected-item indicator;
+* subtle decorative elements;
+* contextual background information;
+* version/build information where appropriate.
+
+The selected menu option should have a clear but restrained visual state.
+
+Avoid modern SaaS-style cards and oversized buttons unless they naturally fit the existing game style.
+
+---
+
+# 5. Interaction
+
+Make menu navigation feel polished.
+
+Support:
+
+* mouse;
+* keyboard;
+* controller/gamepad if the existing architecture supports it.
+
+Interactions should include:
+
+* hover;
+* focus;
+* selection;
+* navigation;
+* confirmation;
+* cancellation/back.
+
+Use subtle animations rather than instantaneous state changes.
+
+For example:
+
+* selected option subtly shifts/highlights;
+* text transitions smoothly;
+* background reacts subtly;
+* confirmation produces appropriate feedback.
+
+---
+
+# 6. New Game
+
+`New Game` should begin the actual game.
+
+Before entering gameplay, determine whether a short transition would improve the experience.
+
+Consider:
+
+* fade;
+* cinematic transition;
+* loading presentation;
+* environmental transition;
+* brief title/card sequence.
+
+Do not introduce unnecessary loading screens if the game can transition directly.
+
+The transition should feel intentional and cinematic.
+
+---
+
+# 7. Continue
+
+Implement a proper `Continue` flow based on the game's existing save/state architecture.
+
+If a save exists:
+
+* display appropriate save information;
+* allow the player to continue;
+* transition smoothly into the saved game state.
+
+If no save exists:
+
+* make `Continue` visually disabled or otherwise clearly unavailable;
+* provide an appropriate explanation/feedback.
+
+Do not create fake save functionality if the actual persistence system does not yet exist.
+
+Instead, integrate cleanly with the existing architecture or establish the necessary foundation.
+
+---
+
+# 8. Settings
+
+Create a settings screen using the same visual language.
+
+At minimum, inspect whether the game should support:
+
+* audio;
+* music;
+* sound effects;
+* display;
+* fullscreen;
+* resolution/scaling where applicable;
+* graphics quality;
+* controls;
+* accessibility options.
+
+Only expose settings that are actually supported.
+
+Settings should use the same polished interaction patterns as the main menu.
+
+Include a clear way to return to the main menu.
+
+---
+
+# 9. Credits
+
+Create a proper credits presentation rather than a plain text page.
+
+It should fit the game's atmosphere.
+
+Consider:
+
+* cinematic scrolling;
+* subtle background animation;
+* music/audio integration;
+* character/environment presentation;
+* elegant typography;
+* controlled pacing.
+
+Keep it understated and atmospheric.
+
+---
+
+# 10. Animation & Atmosphere
+
+The menu itself should feel alive.
+
+Use subtle animation for:
+
+* menu entry;
+* menu transitions;
+* selected states;
+* background environment;
+* lighting;
+* particles;
+* characters;
+* atmospheric effects.
+
+Avoid excessive animation.
+
+The target is **quietly alive**, not flashy.
+
+---
+
+# 11. Audio
+
+If the existing audio system supports it, integrate:
+
+* menu music;
+* ambient sound;
+* hover/focus sounds;
+* selection sounds;
+* cancellation sounds;
+* transition sounds.
+
+Audio should reinforce the atmosphere.
+
+Avoid generic UI sound effects that conflict with the game's identity.
+
+---
+
+# 12. Architecture
+
+Build the menu as a proper reusable game system.
+
+Avoid hardcoding everything directly into one component.
+
+Separate:
+
+* menu state;
+* navigation;
+* presentation;
+* settings;
+* save/continue state;
+* transitions;
+* audio;
+* input handling.
+
+Follow the existing architecture and reuse established systems wherever possible.
+
+The menu should be extensible for future options.
+
+---
+
+# 13. Performance
+
+The menu should remain lightweight.
+
+Do not allow atmospheric effects to create unnecessary performance overhead.
+
+Review:
+
+* animation loops;
+* rendering;
+* particles;
+* lighting;
+* background effects;
+* asset loading;
+* input listeners;
+* scene lifecycle.
+
+Inactive menu screens should not continue unnecessary processing.
+
+---
+
+# 14. Independent Design Review
+
+After the initial implementation, perform an independent review.
+
+Ask:
+
+> Does this look and feel like the opening screen of a finished indie game, or does it still look like a developer-built menu?
+
+Specifically inspect:
+
+* composition;
+* typography;
+* visual hierarchy;
+* atmosphere;
+* transitions;
+* interaction feedback;
+* consistency with the existing game;
+* similarity to the intended Fading Afternoon-inspired mood without copying it.
+
+Then implement another polish pass based on the findings.
+
+---
+
+# 15. Proactively Improve
+
+During implementation, actively identify additional features that would make the main menu more compelling.
+
+Examples could include:
+
+* animated title treatment;
+* contextual world information;
+* subtle time/weather changes;
+* save-slot presentation;
+* last-location information;
+* last-played timestamp;
+* difficulty selection;
+* accessibility shortcuts;
+* input remapping;
+* ambient NPC activity;
+* menu-specific environmental storytelling;
+* hidden/optional menu interactions.
+
+Do not add features merely for novelty.
+
+Recommend and implement additional features when they genuinely improve the game.
+
+---
+
+# 16. Final Flow
+
+The desired player experience should be:
+
+**Launch game → atmospheric main menu → New Game / Continue → polished transition → actual game**
+
+The transition from the menu into gameplay should feel like the beginning of the game itself, not like navigating from a website into another page.
+
+The main menu is the player's first contact with the world.
+
+Treat it as part of the game's narrative, atmosphere, and visual identity — not merely as a functional UI screen.

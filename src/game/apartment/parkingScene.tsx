@@ -1414,9 +1414,7 @@ function ParkingEffects({
             npc={NPCS.marek}
             x={1009}
             facing={-1}
-            action={
-              dialogueOpen ? NPCS.marek.reactions.onTalk : mode === "bonnet" ? "lean" : undefined
-            }
+            action={mode === "bonnet" ? "lean" : undefined}
           />
         </svg>
       ) : null}

@@ -35,6 +35,18 @@ export type SfxName =
   | "trickle" // a quiet, polite, unmistakable stream
   | "flush"; // the cistern lets go, then refills through the whole riser
 
+/**
+ * The one-shot bus level. Every voice opens at this gain, so the setting
+ * reaches sounds that have not been made yet without a bus node to keep alive
+ * between them. 0.8 — the default setting — restores the 0.5 these were
+ * balanced at.
+ */
+let sfxLevel = 0.5;
+
+export function setSfxLevel(v: number): void {
+  sfxLevel = 0.625 * Math.max(0, Math.min(1, v));
+}
+
 interface Voice {
   ctx: AudioContext;
   out: GainNode;
@@ -44,14 +56,15 @@ interface Voice {
 function voice(): Voice | null {
   const graph = lofiPlayer.graph;
   if (!graph) return null;
-  const { ctx, master } = graph;
+  // the sfx bus, so the SOUND slider moves one-shots and nothing else
+  const { ctx, sfx: bus } = graph;
   const out = ctx.createGain();
-  out.gain.value = 0.5;
+  out.gain.value = sfxLevel;
   const soften = ctx.createBiquadFilter();
   soften.type = "lowpass";
   soften.frequency.value = 6500;
   out.connect(soften);
-  soften.connect(master);
+  soften.connect(bus);
   return { ctx, out, t: ctx.currentTime };
 }
 

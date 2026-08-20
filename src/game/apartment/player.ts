@@ -1,4 +1,4 @@
-import { ACTIONS, PLAYER_PALETTE, WALK_CYCLE } from "@/components/game/sprites";
+import { ACTIONS, PLAYER_PALETTE } from "@/components/game/sprites";
 import {
   type ActionDef,
   createCharacter,
@@ -123,46 +123,95 @@ const LEGS_STRIDE: SpriteMap = [
   ".BBBB............BBBB...",
 ];
 
+// Contact — the frame where a foot lands. The 16 cells between the shoe
+// centres are not a drawing choice: the runtime advances one walk frame per
+// 16 logical px, so a four-frame cycle covers 64 px of ground and each of its
+// two steps covers 32 px. Feet 16 cells apart at cell 2 is exactly 32 px, so
+// the planted foot stays where it was put instead of skating forward under
+// him. It also lands at 0.42 of his height, which is where a walking step of
+// a man this size actually lands.
+//
+// The trailing leg is drawn a tone down (q fill, Q edge) because at a contact
+// one leg is behind the other and the whole point of the pose is which. That
+// makes the set asymmetric in colour and symmetric in silhouette, so the
+// opposite contact is the same map with the leg rows mirrored — the far leg
+// becomes the near one, the body does not move, and the face never flips.
+const LEGS_CONTACT: SpriteMap = [
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......Qqqqq..ppppq......",
+  "......Qqqqq..ppppq......",
+  ".....Qqqqq....ppppq.....",
+  ".....Qqqqq....ppppq.....",
+  ".....Qqqq......pppq.....",
+  "....Qqqq........pppq....",
+  "....Qqqq........pppq....",
+  "....Qqqq........pppq....",
+  "...Qqqq..........pppq...",
+  "...Qqqq..........pppq...",
+  "...Qqq............ppq...",
+  "...Qqq............ppq...",
+  "...Sqq............pps...",
+  "...BBB............bbb...",
+  "..BBBB............bbbb..",
+  "..BBBB............BBBB..",
+];
+
+// Pass — the halfway frame, where one leg carries and the other swings past
+// it. The carrying leg sits dead centre (columns 10-13, symmetric about 11.5)
+// so mirroring the leg rows leaves the supporting foot exactly where it was
+// and swaps only which leg is doing the work. The swinging foot is three rows
+// clear of the floor; a foot that never leaves the ground is a shuffle.
 const LEGS_PASS: SpriteMap = [
   "......qppppppppppq......",
   "......qppppppppppq......",
-  "......qppQQpppppq.......",
-  "......qppQQpppppq.......",
-  ".......qpQQppppq........",
-  ".......qpQQppppq........",
-  ".......qpQQpppq.........",
-  ".......qpQQpppq.........",
-  ".......qpQ.pppq.........",
-  ".......qpQ.pppq.........",
-  ".......qpQ.ppq..........",
-  ".......qpQ.ppq..........",
-  "........qQ.ppq..........",
-  "........qQ.ppq..........",
-  "........sQ.pps..........",
-  "........bb.bbb..........",
-  ".......bbb.bbbb.........",
-  ".......BBB.BBBB.........",
+  "......Qqqqqpppppq.......",
+  "......Qqqqqpppppq.......",
+  ".......Qqqqppppq........",
+  ".......Qqqqppppq........",
+  ".......Qqqppppq.........",
+  ".......Qqqppppq.........",
+  ".......Qqqpppq..........",
+  ".......Qqqpppq..........",
+  ".......Qqqpppq..........",
+  ".......Qqqpppq..........",
+  ".......Sqqpppq..........",
+  ".......BBBpppq..........",
+  "......BBBBppps..........",
+  "..........bbbb..........",
+  "..........bbbb..........",
+  "..........BBBB..........",
 ];
 
-const LEGS_STRIDE_LOW: SpriteMap = [
+// Half depth — the pose between standing and LEGS_BENT. Without it every
+// squat, deadlift and pick-up in the game is a two-frame strobe between two
+// heights 300 cells apart; with it they are three, and the knee reads as
+// bending rather than as the body teleporting down. The empty top row is the
+// height the bend absorbs, filled by dropBody(1).
+//
+// The shoes land on exactly the columns LEGS_STAND leaves them on, because
+// nobody moves their feet to squat. LEGS_BENT does slide them three cells
+// outward on each side, which is a defect of its own; keeping the halfway
+// pose honest at least means the entry into a bend costs nothing.
+const LEGS_HALF: SpriteMap = [
+  "........................",
   "......qppppppppppq......",
   "......qppppppppppq......",
-  "......qpppp..ppppq......",
-  ".....qpppp...ppppq......",
-  ".....qppp.....pppq......",
-  "....qppp......pppq......",
-  "....qppp.......pppq.....",
-  "....qppp.......pppq.....",
-  "...qppp.........pppq....",
-  "...qppp.........pppq....",
-  "...qpp...........ppq....",
-  "...qpp...........ppq....",
-  "...qpp...........ppq....",
-  "...qpp...........ppq....",
-  "...spp...........pps....",
-  "...bbb...........bbb....",
-  "..bbbb...........bbbb...",
-  "..BBBB...........BBBB...",
+  ".....qppppppppppppq.....",
+  ".....qpppp....ppppq.....",
+  ".....qpppp....ppppq.....",
+  ".....qppp......pppq.....",
+  ".....qppp......pppq.....",
+  ".....qppp......pppq.....",
+  "......qpp......ppq......",
+  "......qpp......ppq......",
+  "......qpp......ppq......",
+  "......qpp......ppq......",
+  "......qpp......ppq......",
+  "......spp......pps......",
+  "......bbb......bbb......",
+  "......bbbb....bbbb......",
+  "......BBBB....BBBB......",
 ];
 
 // Knees driven out over the toes, hips back — the squat a lifter actually does.
@@ -227,29 +276,6 @@ const LEGS_TIPTOE: SpriteMap = [
   ".......spp....pps.......",
   ".......bbb....bbb.......",
   ".......bb......bb.......",
-];
-
-// Kneeling before the icon: knees down front, shins folded back, six empty
-// rows on top so dropBody(6) can lower the torso into them.
-const LEGS_KNEEL: SpriteMap = [
-  "........................",
-  "........................",
-  "........................",
-  "........................",
-  "........................",
-  "........................",
-  "......qppppppppppq......",
-  "......qppppppppppq......",
-  "......qpppp..ppppq......",
-  "......qpppp..ppppq......",
-  ".......qppp..pppq.......",
-  ".......qppp..pppq.......",
-  ".......qppp..pppq.......",
-  ".......ppp....ppp.......",
-  "....qqppp...qppp........",
-  "..ppppp...ppppp.........",
-  "..bbb.....bbb...........",
-  "..BBB.....BBB...........",
 ];
 
 // --- the back view -----------------------------------------------------------
@@ -350,9 +376,15 @@ const BACK_LEGS_BARE: SpriteMap = [
   "......SSSS....SSSS......",
 ];
 
-/** falling water, one streak column every 4px, alternating rows per frame */
+// Falling water, two streaks either side of him, alternating rows per frame.
+// The streaks used to run straight down the middle in opaque `c`, patched last,
+// so they erased the torso and the figure read as a white barcode. There is no
+// translucent zone in this palette, so the fix is placement: the columns are
+// picked to miss the body and only graze the shoulders.
 const waterRows = (off: number): string[] =>
-  Array.from({ length: 32 }, (_, i) => ((i + off) % 2 === 0 ? "c...c...c" : "........."));
+  Array.from({ length: 32 }, (_, i) =>
+    (i + off) % 2 === 0 ? "c..c..............c..c" : "......................",
+  );
 
 // Weight on the back leg, front knee unlocked, front foot half a step out —
 // how a person actually stands when nobody is watching.
@@ -423,6 +455,48 @@ const P = {
     c: 20,
     rows: ["tt.", "tt.", "ss.", "ss.", "ss.", ".ss", ".ss", ".ss", ".ss", ".sS"],
   } as Patch,
+  // Halfway through the swing, at the pass. Not vertical: an arm at the pass
+  // is already travelling, and drawing it plumb is what makes a walk look like
+  // a mannequin being slid along. Both are a row shorter than armDown because
+  // an arm swinging out of the plane is foreshortened.
+  armMidFwd: {
+    r: 8,
+    c: 19,
+    rows: [
+      "ttt.",
+      "ttt.",
+      "tss.",
+      "sys.",
+      "sys.",
+      ".sss",
+      ".ss.",
+      ".sss",
+      ".sss",
+      "..ss",
+      "..ss",
+      "..sS",
+      "..SS",
+    ],
+  } as Patch,
+  armMidBack: {
+    r: 8,
+    c: 18,
+    rows: [
+      ".ttt",
+      ".ttt",
+      ".tss",
+      ".sys",
+      ".sys",
+      "sss.",
+      ".ss.",
+      "sss.",
+      "sss.",
+      "ss..",
+      "ss..",
+      "sS..",
+      "SS..",
+    ],
+  } as Patch,
   armSwingBack: {
     r: 8,
     c: 15,
@@ -438,6 +512,13 @@ const P = {
       "sS....",
       "S.....",
     ],
+  } as Patch,
+  // A hand up at the shoulder, palm turned out — the shape a person makes
+  // while explaining something. Small: at 24 columns a gesture is four pixels.
+  armTalkUp: {
+    r: 7,
+    c: 17,
+    rows: ["..ss", ".sss", ".ss.", "tss.", "ttt.", "tt..", "tt.."],
   } as Patch,
   armReach: {
     r: 6,
@@ -467,18 +548,6 @@ const P = {
     c: 16,
     rows: ["..ccc", "..sss", "..ss.", ".ss..", "tt..."],
   } as Patch,
-  // forearms converging to clasped hands at the waist
-  handsFold: {
-    r: 12,
-    c: 3,
-    rows: [
-      "SS..............ss",
-      "SSS............sss",
-      ".SSs........ssss..",
-      "..sssssssssss.....",
-      "...ssssssss.......",
-    ],
-  } as Patch,
   armGuardHigh: {
     r: 6,
     c: 16,
@@ -489,7 +558,6 @@ const P = {
     c: 17,
     rows: ["ssss", "sss.", "tt..", "t..."],
   } as Patch,
-  cigLean: { r: 9, c: 19, rows: ["ttt", "tss", "sss", ".sc", "..o"] } as Patch,
   // the smoke cycle: cig at the hip, halfway up, and at the lips
   armCigDown: {
     r: 8,
@@ -523,7 +591,7 @@ const P = {
     r: 7,
     c: 5,
     rows: [
-      "................nnR",
+      "...............nnR.",
       "...............WWn.",
       "..............WW...",
       ".............WW....",
@@ -745,27 +813,6 @@ const P = {
       ".S..................",
     ],
   } as Patch,
-  // sign of the cross — four stations of the right hand
-  crossForehead: {
-    r: 2,
-    c: 15,
-    rows: ["..ss", ".sss", ".ss.", ".ss.", "ss..", "ss..", "ts..", "tt.."],
-  } as Patch,
-  crossChest: {
-    r: 8,
-    c: 12,
-    rows: ["....tt", "...tss", "..sss.", ".ss...", "ss...."],
-  } as Patch,
-  crossFar: {
-    r: 8,
-    c: 4,
-    rows: [".............tt", ".........sssss.", "....sssss......", "..sss.........."],
-  } as Patch,
-  crossNear: {
-    r: 8,
-    c: 13,
-    rows: ["..sst", ".sss.", "ss..."],
-  } as Patch,
   armReachHalf: {
     r: 7,
     c: 18,
@@ -979,12 +1026,12 @@ const P = {
   // wavers between frames the way the water alternates in the shower
   wispA: {
     r: 9,
-    c: 21,
+    c: 20,
     rows: [".v.", "..v", ".v.", "..v", ".v.", ".v.", "..v", ".v.", "..v", ".v."],
   } as Patch,
   wispB: {
     r: 9,
-    c: 21,
+    c: 20,
     rows: ["..v", ".v.", "..v", ".v.", "..v", "..v", ".v.", "..v", ".v.", "..v"],
   } as Patch,
   // the exhale: dense at the lips, then dispersed and climbing
@@ -995,7 +1042,7 @@ const P = {
   } as Patch,
   puffB: {
     r: 0,
-    c: 17,
+    c: 16,
     rows: [".v.v.v.", "v.vvv.v", ".v.v.v.", "...v...", "......."],
   } as Patch,
   // kettlebell, two-handed: arms straight down to the bell between the knees,
@@ -1024,16 +1071,19 @@ const P = {
     c: 14,
     rows: ["....ss..", "...sGGs.", "..sgggg.", "tssgggg.", "tt.gg..."],
   } as Patch,
-  // barbell across the frame: bar R with plates P, full 24 columns
+  // Barbell across the frame: bar R with plates P. 22 columns, not 24 — the
+  // builder pads every frame to the widest one and the runtime centres that
+  // box on the player's x, so a frame that fills the box leaves no room and
+  // the next wide prop would shift the whole character off his own feet.
   barRack: {
     r: 10,
-    c: 0,
-    rows: ["PP..RRRRRRRRRRRRRRRR..PP", "PP....................PP"],
+    c: 1,
+    rows: ["PP.RRRRRRRRRRRRRRRR.PP", "PP..................PP"],
   } as Patch,
   barUp: {
     r: 1,
-    c: 0,
-    rows: ["PP..RRRRRRRRRRRRRRRR..PP", "PP....................PP"],
+    c: 1,
+    rows: ["PP.RRRRRRRRRRRRRRRR.PP", "PP..................PP"],
   } as Patch,
   armsRack: {
     r: 10,
@@ -1283,10 +1333,16 @@ b.part("head", HEAD)
   .part("legsStand", LEGS_STAND)
   .part("legsStride", LEGS_STRIDE)
   .part("legsPass", LEGS_PASS)
-  .part("legsStrideLow", LEGS_STRIDE_LOW)
+  // The opposite half of the walk is the same legs with the rows mirrored:
+  // the trailing leg becomes the leading one and the shading swaps with it,
+  // while the head, torso and arms — which are stacked and patched after —
+  // stay facing the way they were.
+  .part("legsPassAlt", mirrorRows(LEGS_PASS, 0, LEGS_PASS.length - 1))
+  .part("legsContact", LEGS_CONTACT)
+  .part("legsContactAlt", mirrorRows(LEGS_CONTACT, 0, LEGS_CONTACT.length - 1))
+  .part("legsHalf", LEGS_HALF)
   .part("legsBent", LEGS_BENT)
   .part("legsSit", LEGS_SIT)
-  .part("legsKneel", LEGS_KNEEL)
   .part("backHead", BACK_HEAD)
   .part("backTorso", BACK_TORSO)
   .part("backLegsKneel", BACK_LEGS_KNEEL)
@@ -1302,28 +1358,53 @@ const base = (legs: string) => (f: Parameters<Parameters<typeof b.frame>[1]>[0])
 b.frame("stand", (f) => base("legsStand")(f).patch(P.armDown));
 b.variant("idleB", "stand", (m) => dropBody(m, 1));
 b.variant("blink", "stand", (m) => replaceColor(m, "e", "s"));
+// The same blink at the out-breath height. `blink` is derived from `stand`, so
+// a blink landing in the exhale half of the breath used to lift the whole body
+// back up a pixel for as long as the lids were shut. The eyes close; the ribs
+// do not jump.
+b.variant("blinkLow", "idleB", (m) => replaceColor(m, "e", "s"));
 b.variant("lookBack", "stand", (m) => mirrorRows(m, 0, 6));
 b.frame("leanIdle", (f) =>
   f.stack("head", "torso", "legsIdleShift").patch(P.farArm).patch(P.armSwingBack),
 );
 b.frame("stretchA", (f) => base("legsStand")(f).patch(P.armUpBoth));
 b.frame("stretchB", (f) => base("legsTiptoe")(f).patch(P.armUpBoth));
-b.frame("squat", (f) =>
-  base("legsBent")(f)
-    .patch(P.armDown)
-    .map((m) => dropBody(m, 2)),
-);
 
-// walking
-b.frame("stride", (f) =>
-  f.stack("head", "torso", "legsStride").patch(P.farArmFwd).patch(P.armSwingBack),
-);
-b.frame("pass", (f) => base("legsPass")(f).patch(P.armDown));
-b.frame("strideLow", (f) =>
+// Walking: contact, pass, opposite contact, opposite pass — two steps, which is
+// what a cycle is. The old one was contact, stand, pass, stand: half of it was
+// the idle pose, so he covered one step per cycle and came back to attention
+// twice on the way.
+//
+// The contacts sit a pixel lower than the passes. A body is at its lowest when
+// a foot lands and at its highest riding over the straight support leg, and
+// that pixel is most of the difference between walking and sliding.
+//
+// The arms are the legs' opposite and reverse with them: near leg forward means
+// near arm back, and the mid-swing arms carry the change through the passes so
+// the swing never stops. Previously the arms hung still for three frames in
+// four and swung forward on the fourth.
+b.frame("contactA", (f) =>
   f
-    .stack("head", "torso", "legsStrideLow")
+    .stack("head", "torso", "legsContact")
+    .patch(P.farArmFwd)
+    .patch(P.armSwingBack)
+    .map((m) => dropBody(m, 1)),
+);
+b.frame("passA", (f) => base("legsPass")(f).patch(P.armMidFwd));
+b.frame("contactB", (f) =>
+  f
+    .stack("head", "torso", "legsContactAlt")
     .patch(P.farArmBack)
     .patch(P.armSwingFwd)
+    .map((m) => dropBody(m, 1)),
+);
+b.frame("passB", (f) => base("legsPassAlt")(f).patch(P.armMidBack));
+
+// The pose between standing and the deep bend — a knee on its way down rather
+// than a body that has teleported to a new height.
+b.frame("crouchHalf", (f) =>
+  base("legsHalf")(f)
+    .patch(P.armDown)
     .map((m) => dropBody(m, 1)),
 );
 
@@ -1388,6 +1469,16 @@ b.frame("swingDown", (f) =>
     .map((m) => bowHead(dropBody(m, 2), 1, 2)),
 );
 b.frame("swingUp", (f) => f.stack("head", "torso", "legsStand").patch(P.giriaChest));
+// Standing over the bell, and the dip toward it. Without these the swing began
+// with him upright and empty-handed one frame and bent double over a kettlebell
+// that had materialised on the floor the next.
+b.frame("swingStand", (f) => f.stack("head", "torso", "legsStand").patch(P.giriaFloor));
+b.frame("swingDip", (f) =>
+  f
+    .stack("head", "torso", "legsHalf")
+    .map((m) => bowHead(dropBody(m, 1), 1, 1))
+    .patch(P.giriaFloor),
+);
 
 // sport: barbell press
 b.frame("pressRack", (f) =>
@@ -1401,6 +1492,15 @@ b.frame("pressDip", (f) =>
     .map((m) => dropBody(m, 2)),
 );
 b.frame("pressUp", (f) => f.stack("head", "torso", "legsStand").patch(P.armsUp).patch(P.barUp));
+// Taking the bar off the low rack: hands already on it, knees still bent. The
+// press used to conjure a loaded barbell into the hands of a standing man.
+b.frame("pressLift", (f) =>
+  f
+    .stack("head", "torso", "legsHalf")
+    .patch(P.armsRack)
+    .patch(P.barRack)
+    .map((m) => dropBody(m, 1)),
+);
 
 // sport: sambo shadow work
 b.frame("samboA", (f) => base("legsStride")(f).patch(P.armGuardHigh));
@@ -1414,6 +1514,13 @@ b.frame("samboC", (f) =>
     .patch(P.armGuardHigh)
     .map((m) => dropBody(m, 2)),
 );
+// Mid-level, on the way in or out of the stance. The loop used to run straight
+// from the splayed standing guard to the deep one twice a second.
+b.frame("samboD", (f) =>
+  base("legsHalf")(f)
+    .patch(P.armGuardHigh)
+    .map((m) => dropBody(m, 1)),
+);
 
 // phone home, tea, prayer, balcony lean
 b.frame("phoneA", (f) => base("legsStand")(f).patch(P.armPhone));
@@ -1421,20 +1528,6 @@ b.variant("phoneB", "phoneA", (m) => bowHead(m));
 b.frame("drinkA", (f) => base("legsStand")(f).patch(P.armMug));
 b.frame("drinkB", (f) => base("legsStand")(f).patch(P.armMugUp));
 b.variant("drinkD", "drinkB", (m) => raiseChin(m));
-b.frame("crossA", (f) => base("legsStand")(f).patch(P.crossForehead));
-b.frame("crossB", (f) => base("legsStand")(f).patch(P.crossChest));
-b.frame("crossC", (f) => base("legsStand")(f).patch(P.crossFar));
-b.frame("crossD", (f) => base("legsStand")(f).patch(P.crossNear));
-b.frame("kneel", (f) =>
-  f
-    .stack("head", "torso", "legsKneel")
-    .patch(P.farArm)
-    .patch(P.handsFold)
-    .map((m) => dropBody(m, 6)),
-);
-b.variant("kneelBow", "kneel", (m) => bowHead(m, 1, 6));
-b.variant("kneelDeep", "kneel", (m) => bowHead(m, 2, 6));
-
 // prayer, seen from behind — he faces the icon on the far wall
 b.frame("backStand", (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.backArms));
 b.frame("backPray", (f) =>
@@ -1529,16 +1622,22 @@ b.frame("peeStand", (f) => f.stack("backHead", "backTorso", "legsStand").patch(P
 b.variant("peeBow", "peeStand", (m) => bowHead(m, 1));
 b.variant("peeUp", "peeStand", (m) => raiseChin(m));
 b.frame("peeShift", (f) => f.stack("backHead", "backTorso", "legsIdleShift").patch(P.peeArms));
+// The reach for the cistern. It used to be backArmsFold over a bowed head,
+// which is byte-for-byte the prayer pose — funny, but it meant editing one
+// silently edited the other. The raised arm is the same one that reaches the
+// shower tap, which is the right shape and costs nothing.
 b.frame("peeFlush", (f) =>
   f
     .stack("backHead", "backTorso", "legsStand")
-    .patch(P.backArmsFold)
+    .patch(P.showerTapArm)
     .map((m) => bowHead(m, 1)),
 );
-b.frame("leanA", (f) => base("legsStand")(f).patch(P.cigLean));
-b.variant("leanB", "leanA", (m) => bowHead(m));
-
 b.frame("reachHalf", (f) => base("legsStand")(f).patch(P.armReachHalf));
+// Talking. He faces whoever he is talking to already, so what is missing is
+// the hand and the nod, not a head turn: one raised palm, and the same pose
+// with the chin dropped a pixel.
+b.frame("talkA", (f) => base("legsStand")(f).patch(P.armTalkUp));
+b.variant("talkB", "talkA", (m) => bowHead(m));
 b.frame("petA", (f) =>
   f
     .stack("head", "torso", "legsBent")
@@ -1658,46 +1757,53 @@ b.frame("smokeH", (f) =>
   f.stack("head", "torso", "legsIdleShift").patch(P.farArm).patch(P.armCigDown).patch(P.wispB),
 );
 
-b.walkCycle(...WALK_CYCLE);
+// The cycle lives here, next to the frames it names. It used to be imported
+// from the legacy sprite file, three rooms away from the poses, which is how
+// it came to contain the standing idle twice without anyone noticing.
+b.walkCycle("contactA", "passA", "contactB", "passB");
+/**
+ * Every action used to begin and end on a hard cut: the first frame appeared
+ * the moment the key was pressed and the last one was replaced by the standing
+ * idle on the tick after it. `sit` ended seated and the next frame was a man on
+ * his feet; `swing` went from standing empty-handed to bent double over a
+ * kettlebell that had appeared on the floor.
+ *
+ * `enter` and `exit` are the way in and the way out, played once around the
+ * loop. `abort` replaces `exit` when the player walks away — shorter, because
+ * making somebody watch a four-frame stand-up after they have already pressed
+ * a direction is worse than the pop was.
+ *
+ * One constraint on `enter` in particular: handlers.ts times sound and toasts
+ * to these animations in absolute milliseconds, so anything played before the
+ * loop shifts that schedule. `pee`, `shower`, `strum`, `call` and `pray` open
+ * on a pose that already works as an entry and are left alone; only their exits
+ * and aborts are new.
+ */
 const ACTION_OVERRIDES: Record<string, ActionDef> = {
   ...ACTIONS,
   use: { frames: ["reachHalf", "reach", "reach", "reachHalf"], frameMs: 150, loops: 1 },
+  // down through a half squat and a crouch, and back up through the forward
+  // hunch that is how a person actually gets off a sofa
   sit: {
-    frames: [
-      "crouch",
-      "sit",
-      "sit",
-      "sitBack",
-      "sitBack",
-      "sitCross",
-      "sitCross",
-      "sitBack",
-      "sit",
-    ],
-    frameMs: 520,
+    enter: ["crouchHalf", "crouch"],
+    frames: ["sit", "sit", "sitBack", "sitBack", "sitCross", "sitCross", "sitBack"],
+    exit: ["sitSlouch", "crouchB", "crouchHalf"],
+    abort: ["sitSlouch", "crouchB"],
+    frameMs: 480,
     loops: 1,
+    interruptible: true,
   },
+  // Not interruptible: the bed handler opens the sleep panel on a timer that
+  // nothing cancels, so walking away would still put it in your face.
   lay: {
-    frames: [
-      "crouch",
-      "sit",
-      "bedSitUp",
-      "bedLie",
-      "bedLieB",
-      "bedLie",
-      "bedLieB",
-      "bedSide",
-      "bedSide",
-      "bedLie",
-      "bedLieB",
-      "bedLie",
-      "bedSitUp",
-      "sit",
-    ],
+    enter: ["crouchHalf", "crouch"],
+    frames: ["sit", "bedSitUp", "bedLie", "bedLieB", "bedSide", "bedSide", "bedLieB", "bedLie"],
+    exit: ["bedSitUp", "sit", "sitSlouch", "crouchB", "crouchHalf"],
     frameMs: 560,
     loops: 1,
   },
   pet: {
+    enter: ["crouchHalf"],
     frames: [
       "crouch",
       "petA",
@@ -1715,30 +1821,43 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
       "petB",
       "crouchB",
     ],
+    exit: ["crouchHalf"],
+    abort: ["crouchHalf"],
     frameMs: 270,
     loops: 1,
     interruptible: true,
   },
   drink: {
+    enter: ["reachHalf"],
     frames: ["drinkA", "drinkB", "drinkD", "drinkD", "drinkB", "drinkC", "drinkA"],
+    exit: ["reachHalf"],
+    abort: ["reachHalf"],
     frameMs: 420,
     loops: 2,
+    interruptible: true,
   },
   // Żabka counter rituals — the mug zone doubles as a paper cup and a bun
   coffee: {
+    enter: ["reachHalf"],
     frames: ["drinkA", "drinkB", "drinkD", "drinkB", "drinkD", "drinkC", "drinkA"],
+    exit: ["reachHalf"],
+    abort: ["reachHalf"],
     frameMs: 460,
     loops: 2,
+    interruptible: true,
   },
   // Alchemia's machines — all built from frames the rig already owns
   run: {
-    frames: ["strideLow", "pass", "stride", "pass"],
+    frames: ["contactA", "passA", "contactB", "passB"],
     frameMs: 150,
     loops: 8,
     interruptible: true,
   },
   cycle: {
+    enter: ["crouchHalf"],
     frames: ["crouch", "crouchB", "crouch", "crouchB"],
+    exit: ["crouchHalf"],
+    abort: ["crouchHalf"],
     frameMs: 220,
     loops: 5,
     interruptible: true,
@@ -1764,22 +1883,32 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
     loops: 2,
     interruptible: true,
   },
+  // Three depths, not two. Standing straight to a full bent-knee crouch is a
+  // 300-cell change, and at 340 ms that reads as a strobe rather than a squat.
   squat: {
-    frames: ["stand", "crouch", "crouch", "stand"],
-    frameMs: 340,
+    frames: ["crouchHalf", "crouch", "crouch", "crouchHalf", "stand"],
+    abort: ["crouchHalf"],
+    frameMs: 240,
     loops: 4,
     interruptible: true,
   },
   deadlift: {
-    frames: ["crouchB", "crouch", "stand", "stand", "crouch", "crouchB"],
-    frameMs: 380,
+    enter: ["crouchHalf"],
+    frames: ["crouchB", "crouch", "crouchHalf", "stand", "stand", "crouchHalf", "crouch"],
+    exit: ["crouchHalf"],
+    abort: ["crouchHalf"],
+    frameMs: 300,
     loops: 3,
     interruptible: true,
   },
   hotdog: {
+    enter: ["reachHalf"],
     frames: ["drinkA", "drinkC", "drinkA", "drinkC", "drinkA", "drinkB", "drinkC", "drinkA"],
+    exit: ["reachHalf"],
+    abort: ["reachHalf"],
     frameMs: 380,
     loops: 1,
+    interruptible: true,
   },
   call: {
     frames: [
@@ -1794,11 +1923,15 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
       "phoneB",
       "phoneA",
     ],
+    abort: ["phoneA"],
     frameMs: 900,
     loops: 2,
     interruptible: true,
   },
+  // the bell is on the floor before he bends to it, and back on the floor
+  // before he straightens up
   swing: {
+    enter: ["swingStand", "swingDip"],
     frames: [
       "swingSetup",
       "swingHike",
@@ -1821,19 +1954,31 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
       "swingDown",
       "swingSetup",
     ],
+    exit: ["swingDip", "swingStand"],
+    abort: ["swingDip", "swingStand"],
     frameMs: 280,
     loops: 1,
     interruptible: true,
   },
   press: {
+    enter: ["crouchHalf", "pressLift"],
     frames: ["pressRack", "pressDip", "pressUp", "pressUp", "pressDip", "pressRack"],
+    exit: ["pressLift", "crouchHalf"],
+    abort: ["pressLift", "crouchHalf"],
     frameMs: 360,
     loops: 2,
+    interruptible: true,
   },
+  // samboD is the mid-level guard; without it the loop jumped between a
+  // standing stance and a deep one four times a second, including at the seam
   sambo: {
-    frames: ["samboA", "samboC", "samboB", "samboC", "samboA", "samboB"],
+    enter: ["samboD"],
+    frames: ["samboA", "samboD", "samboC", "samboB", "samboC", "samboD"],
+    exit: ["samboD"],
+    abort: ["samboD"],
     frameMs: 260,
     loops: 2,
+    interruptible: true,
   },
   // the whole rite, in the correct projection: a glance up at the icon, then
   // he turns INTO the scene (back to the camera), crosses himself — forehead,
@@ -1866,6 +2011,7 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
       "lookBack",
       "stand",
     ],
+    abort: ["backStand", "lookBack"],
     frameMs: 460,
     loops: 1,
     interruptible: true,
@@ -1890,12 +2036,15 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
       "smokeA2",
       "smokeE",
     ],
+    abort: ["smokeA"],
     frameMs: 400,
     loops: 2,
     interruptible: true,
   },
   // the full wash: undress over the head, tap on, hair, ribs, rinse with the
   // chin up, tap off, towel, dressed again. Water alternates per frame.
+  // Walking out mid-wash used to put him in a black tee two frames after he
+  // was naked under the spray; the abort reaches for the towel first.
   shower: {
     frames: [
       "backStand",
@@ -1921,6 +2070,7 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
       "backStand",
       "lookBack",
     ],
+    abort: ["towelOut", "undress", "backStand", "lookBack"],
     frameMs: 380,
     loops: 1,
     interruptible: true,
@@ -1944,6 +2094,7 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
       "backStand",
       "lookBack",
     ],
+    abort: ["backStand", "lookBack"],
     frameMs: 420,
     loops: 1,
     interruptible: true,
@@ -1979,7 +2130,19 @@ const ACTION_OVERRIDES: Record<string, ActionDef> = {
       "gtrDown",
       "reachHalf",
     ],
+    abort: ["gtrDown", "reachHalf"],
     frameMs: 320,
+    loops: 1,
+    interruptible: true,
+  },
+  // Nothing starts this yet — the dialogue system does not drive the player's
+  // animation at all, so during every conversation in the game he stands
+  // breathing. The frames are here so that when something does, there is
+  // something to play other than a phone held to his ear, which is what `talk`
+  // used to be.
+  talk: {
+    frames: ["stand", "talkA", "talkB", "talkA", "idleB", "talkA", "talkB", "stand"],
+    frameMs: 340,
     loops: 1,
     interruptible: true,
   },

@@ -1453,6 +1453,548 @@ var require_react = __commonJS({
   }
 });
 
+// src/components/game/sprites.tsx
+var PLAYER_PALETTE = {
+  h: "#3a2a1e",
+  // hair
+  H: "#2b1e15",
+  // hair shade / hair dark
+  s: "#e0b48c",
+  // skin
+  S: "#c79a72",
+  // skin shade — jaw, neck shadow, inner arm
+  y: "#ead9a8",
+  // skin highlight — pecs, bicep swell, forearm catch
+  e: "#2f6b3f",
+  // green eyes — muted
+  t: "#1d1d24",
+  // black sport t-shirt
+  T: "#0a0a0e",
+  // shirt deep shade — pec shadow, under-arm
+  u: "#7a8f9f",
+  // duvet — matches the bedroom's slate ramp
+  U: "#687c8b",
+  // duvet fold shade
+  p: "#33415e",
+  // trousers
+  q: "#28344c",
+  // trousers shade (back leg)
+  Q: "#1e2839",
+  // trousers deep shade (inner back leg mid-stride)
+  k: "#2e4568",
+  // cap crown (wardrobe-deletable zone)
+  K: "#23344d",
+  // cap brim/shade
+  m: "#6d7278",
+  // hood & pocket (wardrobe-deletable zone)
+  M: "#565a60",
+  // hood shade
+  f: "#7a5c48",
+  // stubble
+  F: "#5f4636",
+  // stubble shade
+  b: "#d8d8d0",
+  // sneakers
+  B: "#8f9089",
+  // soles
+  g: "#43434b",
+  // giria (kettlebell)
+  G: "#5c5c66",
+  // giria highlight
+  R: "#9aa0a8",
+  // barbell bar
+  P: "#3f3f47",
+  // barbell plates
+  c: "#f0ede4",
+  // cigarette / mug
+  o: "#e07a30",
+  // ember
+  x: "#c96a28",
+  // ember halo — the light the coal throws on skin and air
+  v: "#b8b4ac",
+  // cigarette smoke
+  w: "#c9863f",
+  // guitar top — the same honeyed spruce as the one on the wall
+  W: "#8a5a28",
+  // guitar rim / side shade
+  n: "#3a2614"
+  // guitar neck, fretboard, soundhole
+};
+var BODY = [
+  "............hhhhhh............",
+  "...........HhhhhhH............",
+  "...........hhhhhhhh...........",
+  "...........hSsshsSh...........",
+  "...........hsssessh...........",
+  "...........hssssff............",
+  ".........sshsssshhss..........",
+  "......ttTssTtTTtTssTt.........",
+  "......ttTssyttytssTt..........",
+  "....ttttTTssTTyTTssTTtttt.....",
+  "....ttttTyssTyTTssTTtttt......",
+  "....SSTtsstsssssTTSs..........",
+  "....SSssstsssssTTSs...........",
+  "...SSSssstsssssSSSs...........",
+  "...SSSssstsssssSSSs...........",
+  "...SSssstsssssSSSs............",
+  "...SSssstsssstSSSs............",
+  "....sssTttttttTss.............",
+  ".....sssttttttss..............",
+  ".....TttttttttttttT...........",
+  ".....pppppppppppppp...........",
+  ".....ppqpppppppppq............",
+  ".....ppqpppppppppq............",
+  ".....qpppppppppppq............",
+  ".....qpppppppppppq............"
+];
+var LEGS_STAND = [
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......pppppp..pppppp.......",
+  ".......qqqqqq..qqqqqq.......",
+  ".......BBBBBB..BBBBBB......."
+];
+var LEGS_STRIDE = [
+  "......pppppp....pppppp......",
+  "......pppppp....pppppp......",
+  "......pppppp....pppppp......",
+  "......pppppp....pppppp......",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....pppppp........pppppp...",
+  ".....qqqqqq........qqqqqq...",
+  "....BBBBBB........BBBBBB...."
+];
+var LEGS_PASS = [
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........pppppppppppp........",
+  "........QQQQQQQQQQQQ........",
+  ".......BBBBBBBBBBBB........."
+];
+var LEGS_BENT = [
+  "......pppppp..pppppp.......",
+  "......pppppp..pppppp.......",
+  "......pppppp..pppppp.......",
+  ".....pppppp....pppppp......",
+  ".....pppppp....pppppp......",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....pppp..........pppp.....",
+  "....qqqq........qqqq......",
+  "...BBBB........BBBB......."
+];
+function compose(legs, patches = []) {
+  const grid = [...BODY, ...legs].map((row2) => row2.split(""));
+  for (const patch of patches) {
+    patch.rows.forEach((row2, dy) => {
+      for (let dx = 0; dx < row2.length; dx++) {
+        const ch = row2[dx];
+        if (ch === ".") continue;
+        const y = patch.r + dy;
+        const x = patch.c + dx;
+        if (grid[y] && x >= 0 && x < grid[y].length) grid[y][x] = ch;
+      }
+    });
+  }
+  return grid.map((row2) => row2.join(""));
+}
+var GIRIA = [".GG.", "g..g", "gggg", "gGgg", "gggg", ".gg."];
+var BARBELL = ["PP................PP", "PPRRRRRRRRRRRRRRRRPP", "PP................PP"];
+var ARM_DOWN = ["ss", "ss", "ss", "ss", "ss", "ss", "ss", "ss", "ss", "ss"];
+var LEAN_A = [
+  "........................",
+  "........................",
+  "...........hhhhhh........",
+  "..........HhhhhhH........",
+  "..........hhhhhhhh........",
+  "..........hSssssSh........",
+  "..........hsssessh........",
+  "..........hssssss.........",
+  "...........ssssh.........",
+  ".....ttssTttttTssTTt.....",
+  "....ttssTttyttssTTtt.....",
+  "....ttTTssTTyTTssTTt.....",
+  "....ttTyssTyTTssTTs......",
+  "....SSTyssTysyssTss......",
+  "....SSyssTysyssSSSs......",
+  "....SSyssTysyssSSSs......",
+  "....SSyssTysyssSSSc......",
+  "....SsysstysystSSso......",
+  ".....ppppppppppppp.......",
+  ".....ppppppppppppp.......",
+  ".....ppppppppppppp.......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......qqqqqq..qqqqqq......",
+  ".......BBBBBB..BBBBBB......"
+];
+var LEAN_B = [
+  "........................",
+  "........................",
+  "...........hhhhhh........",
+  "..........HhhhhhH........",
+  "..........hhhhhhhh........",
+  "..........hSssssSh........",
+  "..........hsssessh........",
+  "..........hsssscs.........",
+  "...........ssshos.........",
+  ".....ttssTttttTssyTTt.....",
+  "....ttssTttyttssTtytt.....",
+  "....ttTTssTTyTTssTTt.....",
+  "....ttTyssTyTTssTTs.......",
+  "....ttTyssTysyssTTt.......",
+  "....SSTyssTysyssSSSs......",
+  "....SSyssTysyssSSSs......",
+  "....SSyssTysyssSSSs......",
+  "....SsysstysystSSss......",
+  ".....ppppppppppppp.......",
+  ".....ppppppppppppp.......",
+  ".....ppppppppppppp.......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......pppppp..pppppp......",
+  ".......qqqqqq..qqqqqq......",
+  ".......BBBBBB..BBBBBB......"
+];
+var stripSmoke = (map) => map.map((row2) => row2.replace("c", ".").replace("o", "."));
+var LEAN_PHONE_A = [
+  "....................",
+  "....................",
+  "..........hhhh......",
+  ".........hhhhhh.....",
+  ".........hhhhhh.....",
+  ".........hsssss.gg..",
+  ".........hssses.gg..",
+  ".........hsssss.gs..",
+  "..........ssss..s...",
+  "....tttttttttttts...",
+  "...tttttttttttttt...",
+  "...tttttttttttttt...",
+  "...tttttttttt.ss....",
+  "...tttttttttt..ss...",
+  "...tttttttttt...ss..",
+  "...tttttttttt....ss.",
+  "...tttttttttt....ss.",
+  "...tttttttttt.......",
+  "....pppppppppp......",
+  "....pppppppppp......",
+  "....pppppppppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....bbbb..bbbb......",
+  "...BBBBB..BBBBB....."
+];
+var LEAN_PHONE_B = [
+  "....................",
+  "....................",
+  "....................",
+  "..........hhhh......",
+  ".........hhhhhh.....",
+  ".........hhhhhh.....",
+  ".........hsssss.gg..",
+  ".........hssses.gg..",
+  ".........hsssss.gs..",
+  "....tttttttttttts...",
+  "...tttttttttttttt...",
+  "...tttttttttttttt...",
+  "...tttttttttt.ss....",
+  "...tttttttttt..ss...",
+  "...tttttttttt...ss..",
+  "...tttttttttt....ss.",
+  "...tttttttttt....ss.",
+  "...tttttttttt.......",
+  "....pppppppppp......",
+  "....pppppppppp......",
+  "....pppppppppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....qqqq..pppp......",
+  "....bbbb..bbbb......",
+  "...BBBBB..BBBBB....."
+];
+var EMPTY_ROW = "....................";
+var BODY_BREATHE = [EMPTY_ROW, ...BODY.slice(0, 6), ...BODY.slice(7)];
+var withoutEye = (map) => map.map((row2) => row2.replace(/e/g, "s"));
+var shiftedDown = (map) => [EMPTY_ROW, ...map.slice(0, map.length - 1)];
+var STAND = compose(LEGS_STAND);
+var STRIDE = compose(LEGS_STRIDE);
+var LOOK_BACK = STAND.map((row2, i) => i <= 6 ? [...row2].reverse().join("") : row2);
+var STRETCH_BODY = [
+  "....ss........ss....",
+  "....ss........ss....",
+  "....ss..hhhh..ss....",
+  "....ss.hhhhhh.ss....",
+  "....ss.hhhhhh.ss....",
+  "....ss.hsssss.ss....",
+  "....ss.hssses.ss....",
+  "....ss.hsssss.ss....",
+  "....tt..ssss..tt....",
+  "....tttttttttttt....",
+  "...tttttttttttttt...",
+  "...tttttttttttttt...",
+  "....tttttttttttt....",
+  ".....tttttttttt.....",
+  ".....tttttttttt.....",
+  ".....tttttttttt.....",
+  ".....tttttttttt.....",
+  ".....tttttttttt.....",
+  ".....pppppppppp.....",
+  ".....pppppppppp.....",
+  ".....pppppppppp.....",
+  ".....pppppppppp....."
+];
+var LEGS_TIPTOE = [
+  ...LEGS_STAND.slice(0, 11),
+  ".......bbbbb...bbbbb.......",
+  ".......BBBBB...BBBBB......."
+];
+var SQUAT = [
+  EMPTY_ROW,
+  EMPTY_ROW,
+  EMPTY_ROW,
+  EMPTY_ROW,
+  EMPTY_ROW,
+  EMPTY_ROW,
+  "........hhhh........",
+  ".......hhhhhh.......",
+  ".......hhhhhh.......",
+  ".......hsssss.......",
+  ".......hssses.......",
+  ".......hsssss.......",
+  "........ssss........",
+  "...tttttttttttttt...",
+  "...ttttttttttttttss.",
+  "...ttttttttttttttss.",
+  "...tttttttttttttt...",
+  ".....tttttttttt.....",
+  ".....tttttttttt.....",
+  ".....pppppppppp.....",
+  ".....pppppppppp.....",
+  "....pppppppppppp....",
+  "....pppppppppppppp..",
+  "...ppppppppppppppp..",
+  "...pp.........ppp...",
+  "...pp.........ppp...",
+  "...pp.........ppp...",
+  "...pp.........ppp...",
+  "...pp.........ppp...",
+  "...pp.........ppp...",
+  "...pp.........ppp...",
+  "...pp.........ppp...",
+  "...pp.........ppp...",
+  "...bbb.......bbbb...",
+  "..BBBB.......BBBBB.."
+];
+var SIT = [
+  EMPTY_ROW,
+  EMPTY_ROW,
+  EMPTY_ROW,
+  EMPTY_ROW,
+  EMPTY_ROW,
+  "........hhhh........",
+  ".......hhhhhh.......",
+  ".......hhhhhh.......",
+  ".......hsssss.......",
+  ".......hssses.......",
+  ".......hsssss.......",
+  "........ssss........",
+  "...tttttttttttttt...",
+  "...tttttttttttttt...",
+  "...tttttttttttttt...",
+  "...tttttttttttttt...",
+  "...ssttttttttttss...",
+  "...ssttttttttttss...",
+  ".....tttttttttt.....",
+  ".....tttttttttt.....",
+  ".....tttttttttt.....",
+  ".....ttttttttttss...",
+  ".....pppppppppp.....",
+  "....pppppppppppp....",
+  "....pppppppppppppp..",
+  "..............pppp..",
+  "..............pppp..",
+  "..............pppp..",
+  "..............pppp..",
+  "..............pppp..",
+  "..............pppp..",
+  "..............pppp..",
+  "..............pppp..",
+  "..............bbbb..",
+  ".............BBBBB.."
+];
+var PLAYER_FRAMES = {
+  stand: STAND,
+  idleB: [...BODY_BREATHE, ...LEGS_STAND],
+  blink: withoutEye(STAND),
+  lookBack: LOOK_BACK,
+  stretchA: [...STRETCH_BODY, ...LEGS_STAND],
+  stretchB: [...STRETCH_BODY, ...LEGS_TIPTOE],
+  squat: SQUAT,
+  stride: STRIDE,
+  strideLow: shiftedDown(STRIDE),
+  pass: compose(LEGS_PASS),
+  // one arm out toward whatever is being used — sleeve, then bare forearm
+  reach: compose(LEGS_STAND, [{ r: 10, c: 16, rows: ["tsss", ".sss"] }]),
+  sit: SIT,
+  // reaching down toward the dog (its back is around rows 25–26)…
+  crouch: compose(LEGS_BENT, [{ r: 16, c: 15, rows: ARM_DOWN }]),
+  // …and the scratching motion, hand a pixel lower
+  crouchB: compose(LEGS_BENT, [{ r: 17, c: 15, rows: ARM_DOWN }]),
+  // kettlebell swing: giria hanging low in front, bare arms down the front line
+  swingDown: compose(LEGS_STRIDE, [
+    { r: 16, c: 15, rows: ["ss", "ss", "ss", "ss", "ss", "ss"] },
+    { r: 22, c: 13, rows: GIRIA }
+  ]),
+  // top of the swing: giria driven to chest height, arms straight out
+  swingUp: compose(LEGS_STAND, [
+    { r: 11, c: 15, rows: ["ssss", "ssss"] },
+    { r: 10, c: 16, rows: GIRIA }
+  ]),
+  // barbell at the chest…
+  pressRack: compose(LEGS_STAND, [
+    { r: 8, c: 0, rows: BARBELL },
+    { r: 10, c: 3, rows: ["ss............ss"] }
+  ]),
+  // …the dip…
+  pressDip: compose(LEGS_BENT, [
+    { r: 8, c: 0, rows: BARBELL },
+    { r: 10, c: 3, rows: ["ss............ss"] }
+  ]),
+  // …and overhead, split-jerk legs, bare arms locked out
+  pressUp: compose(LEGS_STRIDE, [
+    { r: 0, c: 0, rows: BARBELL },
+    {
+      r: 2,
+      c: 4,
+      rows: ["s..........s", "s..........s", "s..........s", "t..........t", "t..........t"]
+    }
+  ]),
+  // sambo drill: grip-fighting arms forward…
+  samboA: compose(LEGS_STRIDE, [{ r: 10, c: 16, rows: ["tsss", "ssss"] }]),
+  // …a lower entry…
+  samboB: compose(LEGS_BENT, [{ r: 13, c: 16, rows: ["sss.", "ssss"] }]),
+  // …and the finish, pulling down through the throw
+  samboC: compose(LEGS_BENT, [{ r: 12, c: 15, rows: ["ssss", "ss.."] }]),
+  // tea: mug at the chest…
+  drinkA: compose(LEGS_STAND, [{ r: 11, c: 14, rows: ["scc", ".cc"] }]),
+  // …mug at the mouth, forearm raised in front of the chest
+  drinkB: compose(LEGS_STAND, [
+    { r: 5, c: 13, rows: ["scc", ".cc"] },
+    { r: 7, c: 14, rows: ["ss", "ss", "ss", "ss"] }
+  ]),
+  leanA: LEAN_A,
+  leanB: LEAN_B,
+  leanIdle: stripSmoke(LEAN_A),
+  phoneA: LEAN_PHONE_A,
+  phoneB: LEAN_PHONE_B,
+  // sign of the cross before the painting: forehead…
+  prayA: compose(LEGS_STAND, [
+    { r: 3, c: 13, rows: ["ss"] },
+    { r: 4, c: 14, rows: ["s", "s", "s", "s"] }
+  ]),
+  // …chest…
+  prayB: compose(LEGS_STAND, [{ r: 9, c: 12, rows: ["ss"] }]),
+  // …shoulder…
+  prayC: compose(LEGS_STAND, [{ r: 7, c: 13, rows: ["ss"] }]),
+  // …then hands folded, a few words under his breath
+  prayD: compose(LEGS_STAND, [{ r: 10, c: 11, rows: ["ssss"] }])
+};
+var WALK_CYCLE = ["strideLow", "stand", "pass", "stand"];
+var ACTIONS = {
+  use: { frames: ["reach"], frameMs: 350, loops: 1 },
+  // pick the giria up out of the squat, then swing
+  swing: {
+    frames: ["squat", "swingDown", "swingUp", "swingDown", "swingUp"],
+    frameMs: 420,
+    loops: 2
+  },
+  // deadlift the bar, then clean → dip → jerk
+  press: {
+    frames: ["squat", "pressRack", "pressDip", "pressUp", "pressRack"],
+    frameMs: 460,
+    loops: 2
+  },
+  // loosen up, then grips, entry, throw
+  sambo: {
+    frames: ["stretchA", "samboA", "samboB", "samboA", "samboC"],
+    frameMs: 400,
+    loops: 2
+  },
+  pet: { frames: ["crouch", "crouchB"], frameMs: 420, loops: 3 },
+  smoke: { frames: ["leanA", "leanB"], frameMs: 950, loops: 4, interruptible: true },
+  call: { frames: ["phoneA", "phoneB"], frameMs: 900, loops: 5, interruptible: true },
+  pray: {
+    frames: ["prayA", "prayB", "prayC", "prayC", "prayD", "prayD", "prayD"],
+    frameMs: 520,
+    loops: 1,
+    interruptible: true
+  },
+  sit: { frames: ["sit"], frameMs: 5e3, loops: 1, interruptible: true },
+  drink: { frames: ["drinkA", "drinkB", "drinkB", "drinkA"], frameMs: 550, loops: 1 },
+  reach: { frames: ["reach"], frameMs: 350, loops: 1 },
+  talk: { frames: ["phoneA", "phoneB"], frameMs: 400, loops: 1 }
+};
+
 // src/engine/audio/lofi.ts
 var LOFI_TRACKS = [
   {
@@ -1945,9 +2487,9 @@ function scheduleBirds(ctx, bus) {
     for (let i = 0; i < n; i++) {
       const at = t + i * (0.09 + Math.random() * 0.06);
       const osc = ctx.createOscillator();
-      const base = 2800 + Math.random() * 1200;
-      osc.frequency.setValueAtTime(base, at);
-      osc.frequency.exponentialRampToValueAtTime(base * 1.4, at + 0.04);
+      const base2 = 2800 + Math.random() * 1200;
+      osc.frequency.setValueAtTime(base2, at);
+      osc.frequency.exponentialRampToValueAtTime(base2 * 1.4, at + 0.04);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.05, at);
       g.gain.exponentialRampToValueAtTime(1e-3, at + 0.07);
@@ -2376,6 +2918,9 @@ function patchMap(map, patch) {
 function stackMaps(...parts) {
   return parts.flatMap((p) => [...p]);
 }
+function mirrorRows(map, from, to) {
+  return map.map((row2, i) => i >= from && i <= to ? [...row2].reverse().join("") : row2);
+}
 function replaceColor(map, fromKey, toKey) {
   return map.map((row2) => row2.split(fromKey).join(toKey));
 }
@@ -2434,10 +2979,10 @@ var CharacterBuilder = class _CharacterBuilder {
   }
   /** Derive a frame from an existing one via a pure transform. */
   variant(name, from, transform) {
-    const base = this.frames.get(from);
-    if (!base) throw new Error(`character: variant "${name}" from unknown frame "${from}"`);
+    const base2 = this.frames.get(from);
+    if (!base2) throw new Error(`character: variant "${name}" from unknown frame "${from}"`);
     if (this.frames.has(name)) throw new Error(`character: frame "${name}" already defined`);
-    this.frames.set(name, transform(base));
+    this.frames.set(name, transform(base2));
     return this;
   }
   /** The looping walk frames, in order. */
@@ -2515,164 +3060,16 @@ function createCharacter(opts) {
   return new CharacterBuilder(opts);
 }
 
+// src/engine/sprite/animalBuilder.ts
+var ROWS = 26;
+var FLOOR = ROWS - 1;
+
 // src/engine/sprite/npcBody.ts
-var W2 = 24;
 var HEAD_ROWS = 7;
 var TORSO_ROWS = 15;
 var LEG_ROWS = 16;
-var ROWS = HEAD_ROWS + TORSO_ROWS + LEG_ROWS;
+var ROWS2 = HEAD_ROWS + TORSO_ROWS + LEG_ROWS;
 var CENTRE = 12;
-function row(...spans) {
-  const cells = new Array(W2).fill(".");
-  for (const [start, text] of spans) {
-    for (let i = 0; i < text.length; i++) {
-      const x = start + i;
-      if (x >= 0 && x < W2) cells[x] = text[i];
-    }
-  }
-  return cells.join("");
-}
-var band = (start, len, zone) => [
-  start,
-  zone.repeat(Math.max(0, len))
-];
-function shell(centre, half, fill, edge = fill) {
-  const len = half * 2;
-  return row([centre - half, edge + fill.repeat(Math.max(0, len - 2)) + edge]);
-}
-function stamp(map, cells) {
-  const out = map.map((r) => r.split(""));
-  for (const { x, y, z } of cells) {
-    if (y >= 0 && y < out.length && x >= 0 && x < W2) out[y][x] = z;
-  }
-  return out.map((r) => r.join(""));
-}
-function stroke(x0, y0, x1, y1, z, thick = 2) {
-  const cells = [];
-  const dx = x1 - x0;
-  const dy = y1 - y0;
-  const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  for (let i = 0; i <= steps; i++) {
-    const t = steps === 0 ? 0 : i / steps;
-    const x = Math.round(x0 + dx * t);
-    const y = Math.round(y0 + dy * t);
-    for (let k = 0; k < thick; k++) cells.push({ x: x + k, y, z });
-  }
-  return cells;
-}
-var SHOULDER = { slim: 6, regular: 7, stout: 8 };
-var WAIST = { slim: 5, regular: 6, stout: 7 };
-var TRIM = { short: 3, average: 1, tall: 0 };
-function anatomy(build) {
-  const sh = SHOULDER[build];
-  const wa = WAIST[build];
-  const legW = Math.max(2, wa - 1);
-  const shoulderY = HEAD_ROWS + 1;
-  return {
-    sh,
-    wa,
-    legW,
-    /** torso columns, inclusive */
-    bodyL: CENTRE - sh,
-    bodyR: CENTRE + sh - 1,
-    /**
-     * The shoulder joints, just outside the torso: a stroke is two pixels wide
-     * and drawn rightwards from its anchor, so the left arm anchors two columns
-     * clear of the body and the right one column clear. Any further in and the
-     * arm paints over the chest it is meant to hang beside.
-     */
-    shoulderY,
-    shoulderL: CENTRE - sh - 2,
-    shoulderR: CENTRE + sh,
-    /** seen edge-on, an arm hangs on the centre line rather than at the shoulder */
-    shoulderSide: CENTRE - 1,
-    /** a relaxed arm reaches to here */
-    elbowY: shoulderY + UPPER_ARM,
-    wristY: shoulderY + UPPER_ARM + FOREARM,
-    /** hips and the leg tops */
-    hipY: HEAD_ROWS + TORSO_ROWS,
-    legL: CENTRE - wa,
-    legR: CENTRE + wa - legW,
-    headL: 8,
-    headR: 15,
-    floorY: ROWS - 1
-  };
-}
-function solveElbow(sx, sy, tx, ty, bend) {
-  let dx = tx - sx;
-  let dy = ty - sy;
-  let d = Math.hypot(dx, dy) || 1e-3;
-  const far = UPPER_ARM + FOREARM - 0.5;
-  const near = Math.abs(UPPER_ARM - FOREARM) + 0.5;
-  const k = d > far ? far / d : d < near ? near / d : 1;
-  dx *= k;
-  dy *= k;
-  d *= k;
-  const along = (UPPER_ARM * UPPER_ARM - FOREARM * FOREARM + d * d) / (2 * d);
-  const off = Math.sqrt(Math.max(0, UPPER_ARM * UPPER_ARM - along * along));
-  const ux = dx / d;
-  const uy = dy / d;
-  return {
-    ex: Math.round(sx + along * ux - bend * off * uy),
-    ey: Math.round(sy + along * uy + bend * off * ux),
-    wx: Math.round(sx + dx),
-    wy: Math.round(sy + dy)
-  };
-}
-var UPPER_ARM = 6;
-var FOREARM = 5;
-function reach(v, len) {
-  const m = Math.hypot(v[0], v[1]);
-  if (m === 0) return [0, 0];
-  return [Math.round(v[0] * len / m), Math.round(v[1] * len / m)];
-}
-function arm(a, side, pose, opts = {}) {
-  const cloth = opts.cloth ?? "t";
-  const shadeZone = opts.shade ?? "T";
-  const skin = opts.skin ?? "s";
-  const sleeve = opts.sleeve ?? "short";
-  const sx = opts.at ?? (side === 1 ? a.shoulderR : a.shoulderL);
-  const sy = a.shoulderY;
-  const { ex, ey, wx, wy } = joints(side, pose, sx, sy);
-  const cells = [];
-  cells.push(...stroke(sx, sy, ex, ey, sleeve === "bare" ? skin : cloth, 2));
-  cells.push(...stroke(ex, ey, wx, wy, sleeve === "long" ? cloth : skin, 2));
-  if (sleeve === "long") {
-    cells.push({ x: wx, y: wy - 1, z: shadeZone }, { x: wx + 1, y: wy - 1, z: shadeZone });
-  } else if (sleeve === "short") {
-    cells.push({ x: ex, y: ey, z: shadeZone }, { x: ex + 1, y: ey, z: shadeZone });
-  }
-  const kind = pose.hand ?? "open";
-  if (kind !== "none") {
-    const hx = wx - (side === 1 ? 0 : 1);
-    cells.push(
-      { x: hx, y: wy + 1, z: skin },
-      { x: hx + 1, y: wy + 1, z: skin },
-      { x: hx + 2, y: wy + 1, z: skin },
-      { x: hx, y: wy + 2, z: kind === "grip" ? "S" : skin },
-      { x: hx + 1, y: wy + 2, z: "S" },
-      { x: hx + 2, y: wy + 2, z: kind === "grip" ? "S" : "S" }
-    );
-    if (kind === "open") cells.push({ x: hx + 1, y: wy + 3, z: skin });
-  }
-  return cells;
-}
-function joints(side, pose, sx, sy) {
-  if (pose.to) {
-    const tx = side === 1 ? pose.to[0] : 2 * CENTRE - 1 - pose.to[0];
-    return solveElbow(sx, sy, tx, pose.to[1], (pose.bend ?? 1) * side);
-  }
-  const [edx, edy] = reach(pose.elbow, UPPER_ARM);
-  const [wdx, wdy] = reach(pose.wrist, FOREARM);
-  const ex = sx + edx * side;
-  const ey = sy + edy;
-  return { ex, ey, wx: ex + wdx * side, wy: ey + wdy };
-}
-function handAt(a, side, pose, at) {
-  const sx = at ?? (side === 1 ? a.shoulderR : a.shoulderL);
-  const { wx, wy } = joints(side, pose, sx, a.shoulderY);
-  return { x: wx, y: wy + 1 };
-}
 var ARM = {
   /** hanging, slightly out from the body */
   rest: { elbow: [0, 5], wrist: [1, 4] },
@@ -2751,1547 +3148,7 @@ var ARM = {
   pumpDown: { elbow: [0, 4], wrist: [-1, 1], hand: "grip" }
 };
 
-// src/engine/sprite/npcFace.ts
-var SKULLS = {
-  oval: { skull: 4, cheek: 4, jaw: 3, chin: 2, crown: "round", chinOut: 0 },
-  round: { skull: 4, cheek: 4, jaw: 4, chin: 3, crown: "round", chinOut: 0 },
-  square: { skull: 4, cheek: 4, jaw: 4, chin: 3, crown: "flat", chinOut: 1 },
-  long: { skull: 3, cheek: 3, jaw: 3, chin: 2, crown: "round", chinOut: 0 },
-  gaunt: { skull: 3, cheek: 3, jaw: 2, chin: 2, crown: "flat", chinOut: 1 },
-  heart: { skull: 4, cheek: 4, jaw: 3, chin: 1, crown: "round", chinOut: 0 }
-};
-function skullOf(shape) {
-  return SKULLS[shape];
-}
-var grid = () => Array.from({ length: HEAD_ROWS }, () => new Array(W2).fill("."));
-var done = (g) => g.map((r) => r.join(""));
-function put(g, x, y, z) {
-  if (y >= 0 && y < g.length && x >= 0 && x < W2) g[y][x] = z;
-}
-function span(g, x0, x1, y, z) {
-  for (let x = x0; x <= x1; x++) put(g, x, y, z);
-}
-var lft = (half) => CENTRE - half;
-var rgt = (half) => CENTRE + half - 1;
-var EYE_COL = 2;
-var NOSE_OUT = {
-  small: 1,
-  button: 1,
-  straight: 1,
-  long: 1,
-  broad: 2,
-  hook: 2
-};
-function faceGeometry(t) {
-  const skull = SKULLS[t.shape];
-  return {
-    skull,
-    eyeL: CENTRE - EYE_COL,
-    eyeR: CENTRE + EYE_COL - 1,
-    browRow: 1,
-    eyeRow: 2,
-    noseRow: 4,
-    mouthRow: 5,
-    chinRow: 6,
-    backX: lft(skull.skull),
-    faceX: rgt(skull.skull),
-    noseOut: NOSE_OUT[t.nose]
-  };
-}
-function headFront(t) {
-  const g = grid();
-  const geo = faceGeometry(t);
-  const s = geo.skull;
-  const crownIn = s.crown === "round" ? 1 : 0;
-  span(g, lft(s.skull) + crownIn, rgt(s.skull) - crownIn, 0, "h");
-  span(g, lft(s.skull), rgt(s.skull), 1, "s");
-  put(g, lft(s.skull), 1, "h");
-  put(g, rgt(s.skull), 1, "h");
-  span(g, lft(s.skull), rgt(s.skull), 2, "s");
-  put(g, lft(s.skull), 2, "h");
-  put(g, rgt(s.skull), 2, "h");
-  span(g, lft(s.cheek), rgt(s.cheek), 3, "s");
-  put(g, lft(s.cheek) + 1, 3, "y");
-  put(g, rgt(s.cheek), 3, "S");
-  span(g, lft(s.cheek), rgt(s.cheek), 4, "s");
-  put(g, lft(s.cheek), 4, "S");
-  put(g, rgt(s.cheek), 4, "S");
-  span(g, lft(s.jaw), rgt(s.jaw), 5, "s");
-  put(g, lft(s.jaw), 5, "S");
-  put(g, rgt(s.jaw), 5, "S");
-  put(g, rgt(s.jaw) - 1, 5, "S");
-  span(g, lft(s.chin), rgt(s.chin), 6, "S");
-  if (s.chin >= 2) span(g, lft(s.chin) + 1, rgt(s.chin) - 1, 6, "s");
-  if (t.ears === "out") {
-    put(g, lft(s.cheek) - 1, 3, "s");
-    put(g, rgt(s.cheek) + 1, 3, "S");
-  }
-  drawBrow(g, t, geo);
-  drawEyes(g, t, geo);
-  drawNose(g, t, geo);
-  drawMouth(g, t, geo);
-  return done(g);
-}
-function drawBrow(g, t, geo) {
-  const shapes = {
-    thin: { out: 0, inn: 0, z: "H" },
-    flat: { out: 0, inn: 1, z: "H" },
-    heavy: { out: 1, inn: 1, z: "h" },
-    arched: { out: 1, inn: 0, z: "H" },
-    worried: { out: 0, inn: 1, z: "h" },
-    raised: { out: 0, inn: 0, z: "H" }
-  };
-  const { out, inn, z } = shapes[t.brow];
-  span(g, geo.eyeL - out, geo.eyeL + inn, geo.browRow, z);
-  span(g, geo.eyeR - inn, geo.eyeR + out, geo.browRow, z);
-  if (t.brow === "raised") {
-    put(g, geo.eyeL, 0, "y");
-    put(g, geo.eyeR, 0, "y");
-  }
-  if (t.brow === "worried") {
-    put(g, geo.eyeL + inn, geo.eyeRow, "H");
-    put(g, geo.eyeR - inn, geo.eyeRow, "H");
-  }
-}
-function drawEyes(g, t, geo) {
-  put(g, geo.eyeL, geo.eyeRow, "e");
-  put(g, geo.eyeR, geo.eyeRow, "e");
-  const outL = geo.eyeL - 1;
-  const outR = geo.eyeR + 1;
-  const room = outL > lft(geo.skull.skull) && outR < rgt(geo.skull.skull);
-  switch (t.eyes) {
-    case "narrow":
-      put(g, geo.eyeL, geo.eyeRow - 1, "S");
-      put(g, geo.eyeR, geo.eyeRow - 1, "S");
-      break;
-    case "deep":
-      put(g, geo.eyeL, geo.eyeRow - 1, "S");
-      put(g, geo.eyeR, geo.eyeRow - 1, "S");
-      put(g, geo.eyeL, geo.eyeRow + 1, "S");
-      put(g, geo.eyeR, geo.eyeRow + 1, "S");
-      break;
-    case "round":
-      put(g, geo.eyeL, geo.eyeRow + 1, "S");
-      put(g, geo.eyeR, geo.eyeRow + 1, "S");
-      break;
-    case "wide":
-      if (room) {
-        put(g, outL, geo.eyeRow, "y");
-        put(g, outR, geo.eyeRow, "y");
-      }
-      break;
-    case "bright":
-      put(g, geo.eyeL, geo.eyeRow - 1, "y");
-      put(g, geo.eyeR, geo.eyeRow - 1, "y");
-      break;
-    default:
-      break;
-  }
-}
-function drawNose(g, t, geo) {
-  const x = CENTRE - 1;
-  switch (t.nose) {
-    case "small":
-      put(g, x, geo.noseRow, "S");
-      break;
-    case "straight":
-      put(g, x, geo.noseRow - 1, "S");
-      put(g, x, geo.noseRow, "S");
-      break;
-    case "broad":
-      span(g, x, x + 1, geo.noseRow, "S");
-      put(g, x, geo.noseRow - 1, "S");
-      break;
-    case "hook":
-      put(g, x, geo.noseRow - 1, "S");
-      put(g, x, geo.noseRow, "S");
-      put(g, x + 1, geo.noseRow, "S");
-      break;
-    case "button":
-      put(g, x, geo.noseRow - 1, "y");
-      put(g, x, geo.noseRow, "S");
-      break;
-    case "long":
-      put(g, x, geo.noseRow - 2, "S");
-      put(g, x, geo.noseRow - 1, "S");
-      put(g, x, geo.noseRow, "S");
-      break;
-  }
-}
-function mouthCells(t, view) {
-  const geo = faceGeometry(t);
-  const g = grid();
-  if (view === "front") drawMouth(g, t, geo);
-  else drawProfileMouth(g, t, geo);
-  const cells = [];
-  g.forEach((line, y) => {
-    line.forEach((z, x) => {
-      if (z !== ".") cells.push({ x, y, z });
-    });
-  });
-  return cells;
-}
-function drawMouth(g, t, geo) {
-  const r = geo.mouthRow;
-  switch (t.mouth) {
-    case "neutral":
-      span(g, CENTRE - 1, CENTRE, r, "S");
-      break;
-    case "wide":
-      span(g, CENTRE - 2, CENTRE + 1, r, "S");
-      break;
-    case "thin":
-      span(g, CENTRE - 2, CENTRE, r, "S");
-      break;
-    case "set":
-      span(g, CENTRE - 2, CENTRE + 1, r, "S");
-      put(g, CENTRE - 1, r + 1, "S");
-      put(g, CENTRE, r + 1, "S");
-      break;
-    case "smile":
-      span(g, CENTRE - 1, CENTRE, r, "S");
-      put(g, CENTRE - 2, r - 1, "S");
-      put(g, CENTRE + 1, r - 1, "S");
-      break;
-    case "frown":
-      span(g, CENTRE - 1, CENTRE, r, "S");
-      put(g, CENTRE - 2, r + 1, "S");
-      put(g, CENTRE + 1, r + 1, "S");
-      break;
-  }
-}
-function headProfile(t) {
-  const g = grid();
-  const geo = faceGeometry(t);
-  const s = geo.skull;
-  const back = geo.backX;
-  const face = geo.faceX;
-  span(g, back, face, 0, "h");
-  span(g, back, face, 1, "s");
-  span(g, back, back + s.skull - 1, 1, "h");
-  span(g, back, face, 2, "s");
-  span(g, back, back + s.skull - 2, 2, "h");
-  span(g, back + 1, face, 3, "s");
-  span(g, back + 1, face, 4, "s");
-  put(g, back + 1, 4, "H");
-  put(g, face, 4, "S");
-  span(g, back + 2, face, 5, "S");
-  span(g, back + 2, back + s.jaw + 1, 6, "S");
-  span(g, back + 3, back + s.chin + 1, 6, "s");
-  drawProfileNose(g, t, geo);
-  drawProfileMouth(g, t, geo);
-  if (s.chinOut > 0) put(g, face - 1 + s.chinOut, 6, "S");
-  const eyeX = face - 2;
-  put(g, eyeX, geo.eyeRow, "e");
-  if (t.eyes === "deep") put(g, eyeX - 1, geo.eyeRow, "S");
-  if (t.eyes === "bright") put(g, eyeX - 1, geo.eyeRow, "y");
-  if (t.eyes === "narrow") put(g, eyeX, geo.eyeRow - 1, "S");
-  const brow = t.brow === "heavy" || t.brow === "worried" ? "h" : "H";
-  put(g, eyeX, geo.browRow, brow);
-  if (t.brow === "heavy" || t.brow === "arched") put(g, eyeX + 1, geo.browRow, brow);
-  if (t.brow === "raised") put(g, eyeX, 0, "y");
-  return done(g);
-}
-function drawProfileNose(g, t, geo) {
-  const face = geo.faceX;
-  switch (t.nose) {
-    case "small":
-      put(g, face + 1, 3, "s");
-      break;
-    case "button":
-      put(g, face + 1, 3, "s");
-      put(g, face + 1, 4, "S");
-      break;
-    case "straight":
-      put(g, face + 1, 3, "s");
-      put(g, face + 1, 4, "s");
-      put(g, face + 1, 5, "S");
-      break;
-    case "long":
-      put(g, face + 1, 2, "s");
-      put(g, face + 1, 3, "s");
-      put(g, face + 1, 4, "s");
-      put(g, face + 1, 5, "S");
-      break;
-    case "broad":
-      put(g, face + 1, 3, "s");
-      put(g, face + 2, 3, "s");
-      put(g, face + 1, 4, "s");
-      put(g, face + 2, 4, "S");
-      break;
-    case "hook":
-      put(g, face + 1, 2, "s");
-      put(g, face + 2, 3, "s");
-      put(g, face + 1, 4, "s");
-      put(g, face + 2, 4, "S");
-      break;
-  }
-}
-function drawProfileMouth(g, t, geo) {
-  const face = geo.faceX;
-  const r = geo.mouthRow;
-  put(g, face, r, "S");
-  if (t.mouth === "wide" || t.mouth === "set") put(g, face - 1, r, "S");
-  if (t.mouth === "smile") put(g, face - 1, r - 1, "S");
-  if (t.mouth === "frown") put(g, face - 1, r + 1, "S");
-}
-function featureCells(kind, t, view) {
-  const geo = faceGeometry(t);
-  const s = geo.skull;
-  const cells = [];
-  const at = (x, y, z) => cells.push({ x, y, z });
-  if (view === "front") {
-    switch (kind) {
-      case "beard":
-        for (let x = lft(s.jaw); x <= rgt(s.jaw); x++) at(x, 5, "f");
-        for (let x = lft(s.chin); x <= rgt(s.chin); x++) at(x, 6, "f");
-        at(lft(s.cheek), 4, "F");
-        at(rgt(s.cheek), 4, "F");
-        at(CENTRE - 1, 5, "F");
-        at(CENTRE, 5, "F");
-        break;
-      case "goatee":
-        for (let x = CENTRE - 2; x <= CENTRE + 1; x++) at(x, 6, "f");
-        at(CENTRE - 1, 5, "F");
-        at(CENTRE, 5, "F");
-        break;
-      case "moustache":
-        for (let x = CENTRE - 2; x <= CENTRE + 1; x++) at(x, 5, "f");
-        break;
-      case "stubble":
-        for (let x = lft(s.jaw); x <= rgt(s.jaw); x += 2) at(x, 5, "F");
-        for (let x = lft(s.chin); x <= rgt(s.chin); x++) at(x, 6, "F");
-        break;
-      case "sideburns":
-        at(lft(s.cheek), 3, "f");
-        at(rgt(s.cheek), 3, "f");
-        at(lft(s.cheek), 4, "F");
-        at(rgt(s.cheek), 4, "F");
-        break;
-      case "glasses":
-        at(geo.eyeL - 1, geo.eyeRow, "c");
-        at(geo.eyeL + 1, geo.eyeRow, "c");
-        at(geo.eyeR - 1, geo.eyeRow, "c");
-        at(geo.eyeR + 1, geo.eyeRow, "c");
-        at(CENTRE - 1, geo.eyeRow, "c");
-        break;
-      case "sunglasses":
-        for (let x = geo.eyeL - 1; x <= geo.eyeR + 1; x++) at(x, geo.eyeRow, "n");
-        break;
-      case "old":
-        at(lft(s.skull) + 1, geo.eyeRow + 1, "S");
-        at(rgt(s.skull) - 1, geo.eyeRow + 1, "S");
-        at(CENTRE - 2, geo.noseRow, "S");
-        at(CENTRE + 1, geo.noseRow, "S");
-        break;
-      case "tired":
-        at(geo.eyeL, geo.eyeRow + 1, "S");
-        at(geo.eyeR, geo.eyeRow + 1, "S");
-        break;
-      case "freckles":
-        at(lft(s.cheek) + 1, geo.noseRow, "S");
-        at(rgt(s.cheek) - 1, geo.noseRow, "S");
-        at(CENTRE - 2, geo.noseRow - 1, "S");
-        break;
-      case "blusher":
-        at(lft(s.cheek) + 1, geo.noseRow, "y");
-        at(rgt(s.cheek) - 1, geo.noseRow, "y");
-        break;
-      case "scar":
-        at(rgt(s.skull) - 1, geo.browRow, "S");
-        at(rgt(s.skull) - 1, geo.eyeRow + 1, "S");
-        break;
-    }
-    return cells;
-  }
-  const face = geo.faceX;
-  switch (kind) {
-    case "beard":
-      at(face, 5, "f");
-      at(face - 1, 5, "f");
-      for (let x = geo.backX + 2; x <= face; x++) at(x, 6, "f");
-      at(face - 1, 4, "F");
-      break;
-    case "goatee":
-      at(face - 1, 6, "f");
-      at(face, 6, "f");
-      break;
-    case "moustache":
-      at(face - 1, 5, "f");
-      at(face, 5, "f");
-      break;
-    case "stubble":
-      at(face, 5, "F");
-      for (let x = geo.backX + 2; x <= face; x++) at(x, 6, "F");
-      break;
-    case "sideburns":
-      at(geo.backX + s.skull - 1, 3, "f");
-      at(geo.backX + s.skull - 1, 4, "F");
-      break;
-    case "glasses":
-      at(face - 3, geo.eyeRow, "c");
-      at(face - 1, geo.eyeRow, "c");
-      at(geo.backX + 2, geo.eyeRow, "c");
-      break;
-    case "sunglasses":
-      for (let x = face - 3; x <= face; x++) at(x, geo.eyeRow, "n");
-      break;
-    case "old":
-      at(face - 3, geo.eyeRow + 1, "S");
-      at(face - 1, geo.noseRow, "S");
-      break;
-    case "tired":
-      at(face - 2, geo.eyeRow + 1, "S");
-      break;
-    case "freckles":
-      at(face - 2, geo.noseRow, "S");
-      break;
-    case "blusher":
-      at(face - 2, geo.noseRow, "y");
-      break;
-    case "scar":
-      at(face - 2, geo.browRow, "S");
-      break;
-  }
-  return cells;
-}
-var SHAPES = ["oval", "round", "square", "long", "gaunt", "heart"];
-var BROWS = ["thin", "flat", "heavy", "arched", "worried", "raised"];
-var EYES = ["normal", "wide", "round", "narrow", "deep", "bright"];
-var NOSES = ["small", "straight", "broad", "hook", "button", "long"];
-var MOUTHS = ["neutral", "wide", "thin", "smile", "frown", "set"];
-function hash(seed, salt) {
-  let h = 2166136261 ^ salt;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0) % 1e3;
-}
-var pick = (list, seed, salt) => list[hash(seed, salt) % list.length];
-function faceFor(id, given = {}) {
-  return {
-    shape: given.shape ?? pick(SHAPES, id, 1),
-    brow: given.brow ?? pick(BROWS, id, 2),
-    eyes: given.eyes ?? pick(EYES, id, 3),
-    nose: given.nose ?? pick(NOSES, id, 4),
-    mouth: given.mouth ?? pick(MOUTHS, id, 5),
-    ears: given.ears ?? (hash(id, 6) < 300 ? "out" : "flat")
-  };
-}
-
-// src/engine/sprite/npcHair.ts
-var HAIR = "h";
-var HAIR_SHADE = "H";
-var HAIR_LIT = "i";
-var STUBBLE = "f";
-var STUBBLE_SHADE = "F";
-var SKIN = "s";
-var SKIN_SHADE = "S";
-var SKIN_LIT = "y";
-var HAT = "k";
-var HAT_SHADE = "K";
-var HAT_LIT = "j";
-var OCCLUDE = "d";
-var BARE = ".";
-function pen(geo) {
-  const half = geo.skull.skull;
-  const L = CENTRE - half;
-  const R = CENTRE + half - 1;
-  const OL = L - 1;
-  const OR = R + 1;
-  const cells = /* @__PURE__ */ new Map();
-  const at = (x, y, z = HAIR) => {
-    if (x < OL || x > OR || y < 0 || y >= HEAD_ROWS) return;
-    cells.set(`${x}:${y}`, { x, y, z });
-  };
-  const span2 = (x0, x1, y, z = HAIR) => {
-    for (let x = x0; x <= x1; x++) at(x, y, z);
-  };
-  const col = (x, y0, y1, z = HAIR) => {
-    for (let y = y0; y <= y1; y++) at(x, y, z);
-  };
-  const tint = (x, y, z) => {
-    const key = `${x}:${y}`;
-    const there = cells.get(key);
-    if (there && there.z !== BARE) cells.set(key, { x, y, z });
-  };
-  return {
-    L,
-    R,
-    OL,
-    OR,
-    /**
-     * How far a close cut is inset from the silhouette at the crown. A round
-     * skull keeps its rounded corners under short hair; a narrow one does not,
-     * because six columns of crown cannot give two away — and because the
-     * builder drops its crown highlight three columns left of centre whatever
-     * the head, which on an inset narrow crown lands beside the hair instead
-     * of on it.
-     */
-    crownIn: geo.skull.crown === "round" && half >= 4 ? 1 : 0,
-    /**
-     * How far a temple may come in along the brow row before it starts rubbing
-     * out an eyebrow. On a narrow head the answer is: not at all.
-     */
-    room: Math.max(0, half - 3),
-    at,
-    span: span2,
-    col,
-    tint,
-    cells
-  };
-}
-function shadeMass(cells, eyeRow) {
-  const solid = (x, y) => {
-    const c = cells.get(`${x}:${y}`);
-    return c !== void 0 && c.z !== BARE;
-  };
-  let crownEdge = Number.POSITIVE_INFINITY;
-  for (const cell of cells.values()) {
-    if (cell.y === 0 && cell.z !== BARE) crownEdge = Math.min(crownEdge, cell.x);
-  }
-  const out = [];
-  for (const cell of cells.values()) {
-    if (cell.z !== HAIR) {
-      out.push(cell);
-      continue;
-    }
-    const { x, y } = cell;
-    const left = solid(x - 1, y);
-    const right = solid(x + 1, y);
-    let z = HAIR;
-    if (left && !right) z = HAIR_SHADE;
-    if (y === 0 && right && x <= crownEdge + 1) z = HAIR_LIT;
-    if (!solid(x, y + 1) && y >= eyeRow) z = HAIR_SHADE;
-    out.push({ x, y, z });
-  }
-  return out;
-}
-function curl(p, y0, y1) {
-  for (let y = y0; y <= y1; y++) {
-    for (let x = p.OL; x <= p.OR; x++) {
-      if ((x + 2 * y) % 3 === 0) p.tint(x, y, HAIR_SHADE);
-    }
-  }
-}
-function scalp(p, z, lit, shade) {
-  p.span(p.L + p.crownIn, p.R - p.crownIn, 0, z);
-  p.at(p.L + p.crownIn, 0, lit);
-  p.at(p.R - p.crownIn, 0, shade);
-  if (p.crownIn) {
-    p.at(p.L, 0, BARE);
-    p.at(p.R, 0, BARE);
-  }
-}
-function fadedSides(p) {
-  p.at(p.L, 1, STUBBLE);
-  p.at(p.R, 1, STUBBLE_SHADE);
-  p.at(p.L, 2, STUBBLE);
-  p.at(p.R, 2, STUBBLE_SHADE);
-}
-function shortSides(p) {
-  p.at(p.L, 1);
-  p.at(p.L, 2);
-}
-var HAIR_STYLE = {
-  /** the plain one every other cut is read against: neat, close, ears clear */
-  short: (p) => {
-    p.span(p.L, p.R, 0);
-    shortSides(p);
-    if (p.room) p.at(p.L + 1, 1);
-  },
-  /** a number two all over: the sides go up above the ear and stay there */
-  crop: (p) => {
-    p.span(p.L + p.crownIn, p.R - p.crownIn, 0);
-    p.at(p.L, 1);
-    p.at(p.R, 1);
-    p.at(p.L, 2, STUBBLE);
-    p.at(p.R, 2, STUBBLE_SHADE);
-  },
-  /** clipped to the scalp: no mass at all, only a shadow of one */
-  shaved: (p) => {
-    scalp(p, STUBBLE, STUBBLE, STUBBLE_SHADE);
-    fadedSides(p);
-  },
-  /** bare over the top, and what is left grows low round the ears */
-  bald: (p) => {
-    scalp(p, SKIN, SKIN_LIT, SKIN_SHADE);
-    p.at(p.L, 1, SKIN);
-    p.at(p.R, 1, SKIN_SHADE);
-    p.at(p.L, 2);
-    p.at(p.R, 2, HAIR_SHADE);
-  },
-  /** the corners have gone first, as they always do, and taken the temples */
-  receding: (p) => {
-    scalp(p, SKIN, SKIN_LIT, SKIN_SHADE);
-    p.span(p.L + p.crownIn + 1, p.R - p.crownIn - 1, 0, HAIR);
-    p.at(p.L, 1, SKIN);
-    p.at(p.R, 1, SKIN_SHADE);
-    p.at(p.L, 2);
-    p.at(p.R, 2);
-  },
-  /** weight kept on top, sides taken off: the whole cut is that one step */
-  undercut: (p) => {
-    p.span(p.OL, p.OR, 0);
-    fadedSides(p);
-  },
-  /** the same fade, and everything left over gathered and tied on the crown */
-  topknot: (p) => {
-    scalp(p, STUBBLE, STUBBLE, STUBBLE_SHADE);
-    fadedSides(p);
-    p.span(CENTRE - 2, CENTRE + 1, 0, HAIR);
-  },
-  /** pushed up and apart, so the top edge is a gap and a clump, not a line */
-  spiky: (p) => {
-    p.span(p.OL, p.OR, 0);
-    p.at(CENTRE + 1, 0, BARE);
-    shortSides(p);
-  },
-  /** parted down the middle and swept off the forehead either side of it */
-  curtains: (p) => {
-    p.span(p.L, p.R, 0);
-    p.tint(CENTRE, 0, HAIR_SHADE);
-    p.span(p.L, CENTRE - 2, 1);
-    p.span(CENTRE + 1, p.R, 1);
-    p.tint(CENTRE - 2, 1, HAIR_SHADE);
-    p.tint(CENTRE + 1, 1, HAIR_SHADE);
-    p.at(p.L, 2);
-    p.at(p.R, 2);
-  },
-  /** cut straight across the brow, and the eyebrows go with it */
-  fringe: (p) => {
-    p.span(p.L, p.R, 0);
-    p.span(p.L, p.R, 1);
-    p.at(p.L, 2);
-    p.at(p.R, 2);
-  },
-  /** somebody's mother did this one: heavy fringe, ears buried, straight hem */
-  bowl: (p) => {
-    p.span(p.OL, p.OR, 0);
-    p.span(p.OL, p.OR, 1);
-    p.at(p.OL, 2);
-    p.at(p.L, 2);
-    p.at(p.R, 2);
-    p.at(p.OR, 2);
-    p.at(p.OL, 3);
-    p.at(p.L, 3);
-  },
-  /** to the jaw and turning under, parted rather than fringed */
-  bob: (p) => {
-    p.span(p.L, p.R, 0);
-    p.at(p.OL, 0);
-    p.at(p.OR, 0);
-    p.at(p.OL, 1);
-    p.at(p.OR, 1);
-    p.at(p.L, 1);
-    p.at(p.R, 1);
-    p.at(p.OL, 2);
-    p.at(p.L, 2);
-    p.at(p.R, 2);
-    p.at(p.OR, 2);
-    p.col(p.OL, 3, 4);
-    p.col(p.L, 3, 5);
-  },
-  /** past the collar, and tucked behind the far ear so the face stays a face */
-  long: (p) => {
-    p.span(p.L, p.R, 0);
-    p.at(p.OL, 0);
-    p.at(p.OR, 0);
-    p.at(p.OL, 1);
-    p.at(p.OR, 1);
-    p.at(p.L, 1);
-    p.at(p.R, 1);
-    p.at(p.OL, 2);
-    p.at(p.L, 2);
-    p.at(p.R, 2);
-    p.at(p.OR, 2);
-    p.col(p.OL, 3, 6);
-    p.col(p.L, 3, 6);
-  },
-  /** volume everywhere and a shadow in every third pixel of it */
-  curly: (p) => {
-    p.span(p.OL, p.OR, 0);
-    p.span(p.OL, p.L + p.room, 1);
-    p.span(p.R - p.room, p.OR, 1);
-    p.at(p.OL, 2);
-    p.at(p.L, 2);
-    p.at(p.R, 2);
-    p.at(p.OR, 2);
-    curl(p, 0, 2);
-  },
-  /** the same, grown out: wider at the ears than at the crown, and rounder */
-  afro: (p) => {
-    p.span(p.OL, p.OR, 0);
-    p.span(p.OL, p.L + p.room, 1);
-    p.span(p.R - p.room, p.OR, 1);
-    p.at(p.OL, 2);
-    p.at(p.L, 2);
-    p.at(p.R, 2);
-    p.at(p.OR, 2);
-    p.at(p.OL, 3);
-    curl(p, 0, 3);
-  },
-  /** scraped back flat, so all the interest is the knot behind the crown */
-  bun: (p) => {
-    p.span(p.L, p.R, 0);
-    shortSides(p);
-    p.at(p.OL, 0);
-    p.at(p.OL, 1);
-    p.at(p.OL, 2, HAIR_SHADE);
-  },
-  /** gathered behind the ear and hanging to the shoulder */
-  ponytail: (p) => {
-    p.span(p.L + p.crownIn, p.R - p.crownIn, 0);
-    shortSides(p);
-    p.col(p.OL, 2, 5);
-    p.at(p.L, 3);
-    p.at(p.L, 4);
-  },
-  /** the same tail, plaited: a shadow across it every other row is the trick */
-  braid: (p) => {
-    p.span(p.L + p.crownIn, p.R - p.crownIn, 0);
-    shortSides(p);
-    p.col(p.OL, 2, 6);
-    p.col(p.L, 3, 6);
-    p.at(p.OL, 4, HAIR_SHADE);
-    p.at(p.L, 4, HAIR_SHADE);
-    p.at(p.OL, 6, HAIR_SHADE);
-    p.at(p.L, 6, HAIR_SHADE);
-  },
-  /** short and flat on top, and then it simply does not stop at the collar */
-  mullet: (p) => {
-    p.span(p.L + p.crownIn, p.R - p.crownIn, 0);
-    shortSides(p);
-    p.col(p.OL, 2, 6);
-    p.at(p.L, 5);
-    p.at(p.L, 6);
-  }
-};
-var HAT_STYLE = {
-  /** crown, and a peak that projects forward over the brow and shades it */
-  cap: (p) => {
-    p.span(p.OL, p.R, 0, HAT);
-    p.at(p.OL, 0, HAT_LIT);
-    p.at(p.L, 0, HAT_LIT);
-    p.at(p.R, 0, HAT_SHADE);
-    p.span(p.L, p.OR, 1, HAT_SHADE);
-    p.at(p.OL, 1, HAT);
-    p.at(p.L, 2, OCCLUDE);
-    p.at(p.R, 2, OCCLUDE);
-  },
-  /** knitted, hugging the skull, turned up at the brow and over the ears */
-  beanie: (p) => {
-    p.span(p.OL, p.OR, 0, HAT);
-    p.at(p.OL, 0, HAT_LIT);
-    p.at(p.L, 0, HAT_LIT);
-    p.at(p.OR, 0, HAT_SHADE);
-    p.span(p.OL, p.OR, 1, HAT);
-    for (let x = p.OL; x <= p.OR; x += 2) p.at(x, 1, HAT_SHADE);
-    p.at(p.OL, 2, HAT);
-    p.at(p.L, 2, HAT);
-    p.at(p.R, 2, HAT_SHADE);
-    p.at(p.OR, 2, HAT_SHADE);
-  },
-  /** tied under the fringe and knotted at the nape, ends hanging */
-  kerchief: (p) => {
-    p.span(p.OL, p.OR, 0, HAT);
-    p.at(p.OL, 0, HAT_LIT);
-    p.at(p.L, 0, HAT_LIT);
-    p.at(p.OR, 0, HAT_SHADE);
-    p.span(p.OL, p.OR, 1, HAT);
-    p.at(p.OR, 1, HAT_SHADE);
-    p.at(p.OL, 2, HAT_SHADE);
-    p.at(p.L, 2, HAT_SHADE);
-    p.at(p.R, 2, HAT_SHADE);
-    p.at(p.OR, 2, HAT_SHADE);
-    p.at(p.OL, 3, HAT);
-    p.at(p.OL, 4, HAT_SHADE);
-  },
-  /** bigger than the head: walls either side of the face and a dark mouth */
-  hood: (p) => {
-    p.span(p.OL, p.OR, 0, HAT);
-    p.at(p.OL, 0, HAT_LIT);
-    p.at(p.L, 0, HAT_LIT);
-    p.at(p.OR, 0, HAT_SHADE);
-    p.span(p.OL, p.OR, 1, HAT);
-    p.at(p.L, 1, OCCLUDE);
-    p.at(p.R, 1, OCCLUDE);
-    p.at(p.OL, 2, HAT);
-    p.at(p.L, 2, OCCLUDE);
-    p.at(p.R, 2, OCCLUDE);
-    p.at(p.OR, 2, HAT_SHADE);
-    p.col(p.OL, 3, 5, HAT);
-    p.at(p.L, 3, HAT_SHADE);
-    p.at(p.L, 4, HAT_SHADE);
-  },
-  /** a narrow crown standing above a brim that is wider than the head */
-  fedora: (p) => {
-    p.span(p.L, p.R, 0, HAT);
-    p.at(p.L, 0, HAT_SHADE);
-    p.at(p.L + 1, 0, HAT_LIT);
-    p.at(p.R, 0, HAT_SHADE);
-    p.span(p.OL, CENTRE - 1, 1, HAT);
-    p.span(CENTRE, p.OR, 1, HAT_SHADE);
-    p.at(p.OL, 1, HAT_LIT);
-    p.at(p.L, 2, OCCLUDE);
-    p.at(p.R, 2, OCCLUDE);
-  },
-  /** a shell with a ridge down it and a brim all the way round */
-  hardhat: (p) => {
-    p.span(p.L, p.R, 0, HAT);
-    p.at(CENTRE - 1, 0, HAT_LIT);
-    p.at(CENTRE, 0, HAT_SHADE);
-    p.at(p.R, 0, HAT_SHADE);
-    p.span(p.OL, CENTRE - 1, 1, HAT);
-    p.span(CENTRE, p.OR, 1, HAT_SHADE);
-    p.at(p.OL, 1, HAT_LIT);
-    p.at(p.L, 2, OCCLUDE);
-    p.at(p.R, 2, OCCLUDE);
-  },
-  /** fur, a deep band, and the flaps down over both ears */
-  ushanka: (p) => {
-    p.span(p.OL, p.OR, 0, HAT);
-    for (let x = p.OL; x <= p.OR; x += 3) p.at(x, 0, HAT_LIT);
-    p.at(p.OR, 0, HAT_SHADE);
-    p.span(p.OL, p.OR, 1, HAT);
-    p.at(p.OR, 1, HAT_SHADE);
-    p.at(p.OL, 2, HAT);
-    p.at(p.L, 2, HAT);
-    p.at(p.R, 2, HAT_SHADE);
-    p.at(p.OR, 2, HAT_SHADE);
-    p.at(p.OL, 3, HAT);
-    p.at(p.OL, 4, HAT_SHADE);
-  },
-  /** a soft disc that has slumped off the back of the head, hair showing */
-  beret: (p) => {
-    p.span(p.OL, p.R - 1, 0, HAT);
-    p.at(p.OL, 0, HAT_LIT);
-    p.at(p.R - 1, 0, HAT_SHADE);
-    p.span(p.L, p.R, 1, HAT_SHADE);
-    p.at(p.OL, 1, HAT);
-    p.at(p.L, 1, HAT);
-    p.at(p.OL, 2, HAT_SHADE);
-  }
-};
-function hairCells(style, geo) {
-  const p = pen(geo);
-  HAIR_STYLE[style](p);
-  return shadeMass(p.cells, geo.eyeRow);
-}
-function hatCells(hat, geo) {
-  const p = pen(geo);
-  HAT_STYLE[hat](p);
-  return [...p.cells.values()];
-}
-
-// src/engine/sprite/npcPalette.ts
-var HEX6 = /^#([0-9a-f]{6})$/i;
-function toHsl(hex) {
-  const match = HEX6.exec(hex.trim());
-  if (!match) return null;
-  const n = Number.parseInt(match[1], 16);
-  const r = (n >> 16 & 255) / 255;
-  const g = (n >> 8 & 255) / 255;
-  const b = (n & 255) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const c = max - min;
-  const l = (max + min) / 2;
-  if (c === 0) return { h: 0, s: 0, l };
-  const sixth = max === r ? (g - b) / c % 6 : max === g ? (b - r) / c + 2 : (r - g) / c + 4;
-  return { h: (sixth * 60 + 360) % 360, s: c / (1 - Math.abs(2 * l - 1)), l };
-}
-function channels(h, c, x) {
-  switch (Math.floor((h % 360 + 360) % 360 / 60) % 6) {
-    case 0:
-      return [c, x, 0];
-    case 1:
-      return [x, c, 0];
-    case 2:
-      return [0, c, x];
-    case 3:
-      return [0, x, c];
-    case 4:
-      return [x, 0, c];
-    default:
-      return [c, 0, x];
-  }
-}
-function toHex({ h, s, l }) {
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(h / 60 % 2 - 1));
-  const floor = l - c / 2;
-  const [r, g, b] = channels(h, c, x);
-  const byte = (v) => Math.max(0, Math.min(255, Math.round((v + floor) * 255)));
-  return `#${(1 << 24 | byte(r) << 16 | byte(g) << 8 | byte(b)).toString(16).slice(1)}`;
-}
-function mix(hex, toward, amount) {
-  const a = Number.parseInt(hex.slice(1), 16);
-  const b = Number.parseInt(toward.slice(1), 16);
-  const ch = (shift) => {
-    const va = a >> shift & 255;
-    const vb = b >> shift & 255;
-    return Math.round(va + (vb - va) * amount);
-  };
-  return `#${(1 << 24 | ch(16) << 16 | ch(8) << 8 | ch(0)).toString(16).slice(1)}`;
-}
-var WARM_ARC_END = 40;
-var COOL_ARC_END = 250;
-var turnDirection = (h) => h >= WARM_ARC_END && h < COOL_ARC_END ? 1 : -1;
-var wrap = (h) => (h % 360 + 360) % 360;
-function saturationFor(chroma, l) {
-  const room = 1 - Math.abs(2 * l - 1);
-  return room < 1e-4 ? 0 : Math.min(1, chroma / room);
-}
-var ACHROMATIC_S = 0.07;
-var SHADOW_TINT_HUE = 228;
-var WARM_TINT_HUE = 44;
-var MIN_SHADE_CHROMA = 0.06;
-var MIN_LIT_CHROMA = 0.045;
-var SHADE_FLOOR_L = 0.045;
-var LIT_CEIL_L = 0.96;
-var LIGHT_RELIEF = 0.42;
-var MAX_SAT_GAIN = 1.35;
-function ramp(hex, t) {
-  const hsl = toHsl(hex);
-  if (!hsl) return { lit: hex, base: hex, shade: hex };
-  const { h, s, l } = hsl;
-  const chroma = s * (1 - Math.abs(2 * l - 1));
-  const achromatic = s < ACHROMATIC_S;
-  const dir = t.turnDir ?? turnDirection(h);
-  const shadeL = Math.max(SHADE_FLOOR_L, l * (1 - t.drop * (1 - LIGHT_RELIEF * l)));
-  const litL = Math.min(LIT_CEIL_L, l + (LIT_CEIL_L - l) * t.climb);
-  const shadeH = achromatic ? SHADOW_TINT_HUE : wrap(h + dir * t.shadeTurn);
-  const litH = achromatic ? WARM_TINT_HUE : wrap(h - dir * t.litTurn);
-  const carry = (target, toneL, floor) => Math.min(
-    1,
-    Math.max(
-      Math.min(saturationFor(target, toneL), s * MAX_SAT_GAIN),
-      saturationFor(floor, toneL)
-    )
-  );
-  return {
-    lit: toHex({ h: litH, s: carry(chroma * t.litChroma, litL, MIN_LIT_CHROMA), l: litL }),
-    base: hex,
-    shade: toHex({
-      h: shadeH,
-      s: carry(chroma * t.shadeChroma, shadeL, MIN_SHADE_CHROMA),
-      l: shadeL
-    })
-  };
-}
-var CLOTH = {
-  drop: 0.46,
-  climb: 0.2,
-  shadeTurn: 14,
-  litTurn: 11,
-  shadeChroma: 1.08,
-  litChroma: 0.92
-};
-var LEATHER = {
-  drop: 0.55,
-  climb: 0.22,
-  shadeTurn: 14,
-  litTurn: 12,
-  shadeChroma: 1,
-  litChroma: 0.85
-};
-var SKIN2 = {
-  drop: 0.4,
-  climb: 0.26,
-  shadeTurn: 13,
-  litTurn: 12,
-  shadeChroma: 1.12,
-  litChroma: 0.84,
-  turnDir: -1
-};
-var HAIR2 = {
-  drop: 0.45,
-  climb: 0.16,
-  shadeTurn: 15,
-  litTurn: 10,
-  shadeChroma: 1.06,
-  litChroma: 0.88
-};
-var PROP = {
-  drop: 0.6,
-  climb: 0.24,
-  shadeTurn: 16,
-  litTurn: 13,
-  shadeChroma: 1,
-  litChroma: 0.86
-};
-var NPC_SKINS = {
-  pale: "#f0d8c8",
-  fair: "#e5c29d",
-  olive: "#cdab7e",
-  tan: "#b8895c",
-  brown: "#8f603c",
-  deep: "#5d3b28",
-  /** Wind-burnt: a caretaker, a man who drinks outside the shop. */
-  ruddy: "#dda78c",
-  /** Yellowed, indoor, twenty a day. */
-  sallow: "#cdbc94"
-};
-var NPC_HAIRS = {
-  /** Blue-black. Warm black is the tell of a sepia palette. */
-  black: "#1f212b",
-  brown: "#4b3524",
-  chestnut: "#6d4327",
-  blond: "#c3a35d",
-  ginger: "#ae5628",
-  grey: "#8a8a90",
-  white: "#d9d8d6",
-  /** Dishwater blond that has started to go. */
-  ash: "#a89f96",
-  /** A home peroxide job with the roots still showing. */
-  bleach: "#e0cf9a"
-};
-var NPC_FABRICS = {
-  /** Tracksuit navy, three stripes down the leg. */
-  navy: "#243a63",
-  /** Faded, not new — the blue that has been through a hundred washes. */
-  denim: "#5c7391",
-  sky: "#87a9c8",
-  /** Oxidised copper, the green of a church roof. */
-  teal: "#2e7d74",
-  /** Bottle green. */
-  forest: "#2d5236",
-  /** Army surplus. */
-  olive: "#5b6235",
-  mustard: "#c69a33",
-  rust: "#a4522a",
-  /** Oxblood. */
-  maroon: "#6d2a2d",
-  red: "#b23129",
-  plum: "#682f5d",
-  pink: "#c98a92",
-  cream: "#dcd3b8",
-  white: "#e9e8e6",
-  /** Ash grey, the colour of everything on a stairwell. */
-  grey: "#888c92",
-  charcoal: "#383d46",
-  /** Blue-black, the way dyed cotton actually sits in daylight. */
-  black: "#262a33",
-  brown: "#66452a",
-  /** Roadworks yellow. Stays loud in shadow, which is the whole point of it. */
-  hiVis: "#d6e23f",
-  green: "#4a8a4a",
-  /** The block itself. */
-  brick: "#9c5240",
-  khaki: "#8b8058",
-  slate: "#4e5966",
-  sand: "#c9b489",
-  wine: "#5e2434",
-  copper: "#b0703a",
-  lilac: "#9b8fb5",
-  moss: "#5f7042",
-  steel: "#6f7d8c"
-};
-var fabric = (name) => NPC_FABRICS[name] ?? name;
-var OCCLUSION = "#0d0f17";
-var SMOKE = "#b6bac4";
-var EMBER = "#f08236";
-var DEFAULT_EYE = "#2b3239";
-function npcPalette(look = {}) {
-  const skin = ramp(NPC_SKINS[look.skin ?? "fair"], SKIN2);
-  const hair = ramp(NPC_HAIRS[look.hair ?? "brown"], HAIR2);
-  const top = ramp(fabric(look.topColour ?? "grey"), CLOTH);
-  const bottom = ramp(fabric(look.bottomColour ?? "charcoal"), CLOTH);
-  const shoes = ramp(fabric(look.shoeColour ?? "black"), LEATHER);
-  const accent = ramp(fabric(look.accentColour ?? "cream"), CLOTH);
-  const hat = ramp(fabric(look.hatColour ?? "navy"), CLOTH);
-  const prop = ramp(fabric(look.propColour ?? "cream"), PROP);
-  const beard = ramp(mix(hair.base, skin.base, 0.35), HAIR2);
-  return {
-    s: skin.base,
-    S: skin.shade,
-    y: skin.lit,
-    h: hair.base,
-    H: hair.shade,
-    i: hair.lit,
-    e: fabric(look.eyes ?? DEFAULT_EYE),
-    f: beard.base,
-    F: beard.shade,
-    t: top.base,
-    T: top.shade,
-    l: top.lit,
-    a: accent.base,
-    A: accent.shade,
-    g: accent.lit,
-    p: bottom.base,
-    q: bottom.shade,
-    m: bottom.lit,
-    b: shoes.base,
-    B: shoes.shade,
-    k: hat.base,
-    K: hat.shade,
-    j: hat.lit,
-    c: prop.base,
-    n: prop.shade,
-    d: OCCLUSION,
-    w: SMOKE,
-    o: EMBER
-  };
-}
-
 // src/engine/sprite/npcBuilder.ts
-function shadeTorso(map, build) {
-  const { sh } = anatomy(build);
-  const litFrom = CENTRE - sh + 1;
-  const litTo = CENTRE - sh + 2;
-  const flankFrom = CENTRE + sh - 3;
-  const flankTo = CENTRE + sh - 2;
-  return map.map((r, y) => {
-    const cells = [...r];
-    const swap = (x, from, to) => {
-      if (cells[x] === from) cells[x] = to;
-    };
-    for (let x = litFrom; x <= litTo; x++) swap(x, "t", "l");
-    for (let x = flankFrom; x <= flankTo; x++) swap(x, "t", "T");
-    if (y <= 1) for (let x = CENTRE - 2; x <= CENTRE + 1; x++) swap(x, "t", "d");
-    if (y <= 1) {
-      swap(CENTRE - sh, "t", "T");
-      swap(CENTRE + sh - 1, "t", "T");
-    }
-    return cells.join("");
-  });
-}
-function torsoFront(build) {
-  const { sh, wa } = anatomy(build);
-  const rows = [];
-  rows.push(shell(CENTRE, sh - 2, "t", "T"));
-  for (let i = 0; i < 5; i++) rows.push(shell(CENTRE, sh, "t", "T"));
-  rows.push(shell(CENTRE, sh - 1, "t", "T"));
-  rows.push(shell(CENTRE, sh - 1, "t", "T"));
-  for (let i = 0; i < 3; i++) rows.push(shell(CENTRE, wa + 1, "t", "T"));
-  for (let i = 0; i < 4; i++) rows.push(shell(CENTRE, wa, "t", "T"));
-  return rows.slice(0, TORSO_ROWS);
-}
-function torsoProfile(build) {
-  const { sh, wa } = anatomy(build);
-  const half = Math.max(3, sh - 2);
-  const hip = Math.max(3, wa - 1);
-  const rows = [];
-  rows.push(shell(CENTRE, half - 1, "t", "T"));
-  for (let i = 0; i < 8; i++) rows.push(shell(CENTRE, half, "t", "T"));
-  for (let i = 0; i < 3; i++) rows.push(shell(CENTRE, hip + 1, "t", "T"));
-  for (let i = 0; i < 3; i++) rows.push(shell(CENTRE, hip, "t", "T"));
-  return rows.slice(0, TORSO_ROWS);
-}
-function legs(build, opts = {}) {
-  const { wa, legW } = anatomy(build);
-  const stride = opts.stride ?? 0;
-  const spread = opts.gap ?? 0;
-  const L = CENTRE - wa - spread;
-  const R = CENTRE + wa - legW + spread;
-  const rows = [];
-  rows.push(shell(CENTRE, wa, "p", "q"));
-  rows.push(shell(CENTRE, wa, "p", "q"));
-  const near = (w) => "m" + "p".repeat(Math.max(0, w - 2)) + "q";
-  for (let i = 0; i < 5; i++) rows.push(row([L, near(legW)], band(R, legW, "q")));
-  for (let i = 0; i < 6; i++) {
-    const lean = Math.round(stride * (i + 1) / 6);
-    rows.push(row([L - lean, near(legW)], band(R + lean, legW, "q")));
-  }
-  rows.push(row(band(L - stride, legW, "s"), band(R + stride, legW, "s")));
-  rows.push(row(band(L - stride - 1, legW + 1, "b"), band(R + stride, legW + 1, "b")));
-  rows.push(row(band(L - stride - 1, legW + 1, "B"), band(R + stride, legW + 1, "B")));
-  return rows.slice(0, LEG_ROWS);
-}
-function legColumns(build, r, opts = {}) {
-  const { wa, legW } = anatomy(build);
-  const stride = opts.stride ?? 0;
-  const spread = opts.gap ?? 0;
-  const shin = r >= 7 && r <= 12 ? Math.round(stride * (r - 6) / 6) : r >= 13 ? stride : 0;
-  return {
-    legW,
-    L: CENTRE - wa - spread - shin,
-    R: CENTRE + wa - legW + spread + shin
-  };
-}
-function legsProfile(build, opts = {}) {
-  const { wa, legW } = anatomy(build);
-  const stride = opts.stride ?? 0;
-  const hip = Math.max(3, wa - 1);
-  const x = CENTRE - Math.floor(legW / 2);
-  const bare = opts.bareFrom ?? Number.POSITIVE_INFINITY;
-  const near = (r) => r >= bare ? "s" : "p";
-  const far = (r) => r >= bare ? "S" : "q";
-  const rows = [];
-  rows.push(shell(CENTRE, hip, "p", "q"));
-  rows.push(shell(CENTRE, hip, "p", "q"));
-  for (let i = 0; i < 4; i++) {
-    const lean = Math.round(stride * (i + 1) / 8);
-    const r = i + 2;
-    rows.push(row(band(x - lean, legW, far(r)), band(x + lean, legW, near(r))));
-  }
-  for (let i = 0; i < 7; i++) {
-    const lean = Math.round(stride * (i + 5) / 8);
-    const r = i + 6;
-    rows.push(row(band(x - lean, legW, far(r)), band(x + lean, legW, near(r))));
-  }
-  const toe = Math.round(stride);
-  rows.push(row(band(x - toe, legW, "S"), band(x + toe, legW, "s")));
-  rows.push(row(band(x - toe - 1, legW + 1, "B"), band(x + toe, legW + 2, "b")));
-  rows.push(row(band(x - toe - 1, legW + 1, "B"), band(x + toe, legW + 2, "B")));
-  return rows.slice(0, LEG_ROWS);
-}
-var SIT_ROWS = 9;
-function legsSit(build) {
-  const { wa, legW } = anatomy(build);
-  const knee = CENTRE + wa + 1;
-  const shinX = knee - legW + 1;
-  const rows = [];
-  const thigh = knee - (CENTRE - wa) + 1;
-  rows.push(row(band(CENTRE - wa, thigh, "p")));
-  rows.push(row(band(CENTRE - wa, thigh, "p")));
-  rows.push(row(band(CENTRE - wa, thigh, "q")));
-  const farX = shinX - legW - 1;
-  for (let i = 0; i < 4; i++) {
-    rows.push(row(band(farX, legW, "q"), band(shinX, legW, i === 3 ? "q" : "p")));
-  }
-  rows.push(row(band(farX, legW, "S"), band(shinX, legW, "s")));
-  rows.push(row(band(farX - 1, legW + 1, "B"), band(shinX, legW + 1, "B")));
-  return rows.slice(0, SIT_ROWS);
-}
-var SLEEVE = {
-  tshirt: "short",
-  shirt: "long",
-  jumper: "long",
-  hoodie: "long",
-  jacket: "long",
-  coat: "long",
-  dress: "short",
-  tracksuit: "long",
-  overalls: "short",
-  tank: "bare"
-};
-function topDetail(kind, build) {
-  const { sh, wa } = anatomy(build);
-  const out = [];
-  const collar = (zone) => ({
-    r: 0,
-    c: CENTRE - 3,
-    rows: [zone.repeat(6), `.${zone}ss${zone}.`]
-  });
-  switch (kind) {
-    case "shirt":
-      out.push(collar("T"));
-      out.push({ r: 1, c: CENTRE - 1, rows: ["T.", "T.", "T.", "T.", "T.", "T.", "T.", "T."] });
-      out.push({ r: 2, c: CENTRE, rows: ["c"] }, { r: 5, c: CENTRE, rows: ["c"] });
-      out.push({ r: 8, c: CENTRE, rows: ["c"] });
-      break;
-    case "jumper":
-      out.push(collar("T"));
-      out.push({ r: 13, c: CENTRE - wa, rows: ["T".repeat(wa * 2)] });
-      break;
-    case "hoodie":
-      out.push({ r: 0, c: CENTRE - 4, rows: ["TTTTTTTT", ".TTTTTT."] });
-      out.push({ r: 9, c: CENTRE - 3, rows: ["TTTTTT", "T....T"] });
-      break;
-    case "jacket":
-      out.push(collar("T"));
-      out.push({ r: 1, c: CENTRE - 3, rows: ["TT..TT", "TT..TT", ".T..T."] });
-      out.push({ r: 1, c: CENTRE, rows: ["T", "T", "T", "T", "T", "T", "T", "T", "T", "T"] });
-      break;
-    case "coat":
-      out.push({ r: 0, c: CENTRE - 4, rows: ["TTTTTTTT"] });
-      out.push({ r: 1, c: CENTRE, rows: Array.from({ length: 13 }, () => "T") });
-      out.push({ r: 3, c: CENTRE + 1, rows: ["c"] }, { r: 7, c: CENTRE + 1, rows: ["c"] });
-      break;
-    case "dress":
-      out.push({ r: 11, c: CENTRE - wa - 1, rows: ["a".repeat(wa * 2 + 2)] });
-      out.push({ r: 12, c: CENTRE - wa - 1, rows: ["a".repeat(wa * 2 + 2)] });
-      out.push({ r: 13, c: CENTRE - wa - 2, rows: ["a".repeat(wa * 2 + 4)] });
-      out.push({ r: 14, c: CENTRE - wa - 2, rows: ["A".repeat(wa * 2 + 4)] });
-      break;
-    case "tracksuit":
-      out.push({ r: 1, c: CENTRE - sh, rows: Array.from({ length: 6 }, () => "a") });
-      out.push({ r: 1, c: CENTRE + sh - 1, rows: Array.from({ length: 6 }, () => "a") });
-      out.push(collar("T"));
-      break;
-    case "overalls":
-      out.push({ r: 0, c: CENTRE - 3, rows: ["a....a", "a....a"] });
-      out.push({ r: 5, c: CENTRE - wa, rows: ["a".repeat(wa * 2)] });
-      out.push({ r: 6, c: CENTRE - wa, rows: ["a".repeat(wa * 2)] });
-      out.push({ r: 7, c: CENTRE - 2, rows: ["A".repeat(4)] });
-      break;
-    case "tank":
-      out.push({ r: 0, c: CENTRE - 4, rows: ["ss....ss", "ss....ss"] });
-      break;
-    default:
-      out.push(collar("T"));
-  }
-  return out;
-}
-function bottomDetail(kind, build, stance = {}) {
-  const { wa } = anatomy(build);
-  const out = [];
-  const at = (r) => legColumns(build, r, stance);
-  switch (kind) {
-    case "jeans":
-      for (let r = 2; r <= 10; r++) out.push({ r, c: at(r).L + 1, rows: ["q"] });
-      out.push({ r: 12, c: at(12).L, rows: ["q".repeat(at(12).legW)] });
-      break;
-    case "skirt":
-      out.push({ r: 0, c: CENTRE - wa - 1, rows: ["p".repeat(wa * 2 + 2)] });
-      out.push({ r: 1, c: CENTRE - wa - 1, rows: ["p".repeat(wa * 2 + 2)] });
-      out.push({ r: 2, c: CENTRE - wa - 2, rows: ["p".repeat(wa * 2 + 4)] });
-      out.push({ r: 3, c: CENTRE - wa - 2, rows: ["q".repeat(wa * 2 + 4)] });
-      break;
-    case "shorts":
-      out.push({ r: 4, c: at(4).L, rows: ["q".repeat(at(4).legW)] });
-      out.push({ r: 4, c: at(4).R, rows: ["q".repeat(at(4).legW)] });
-      for (let r = 5; r < 11; r++) {
-        const { L, R, legW: w } = at(r);
-        out.push({ r, c: L, rows: ["s".repeat(w)] });
-        out.push({ r, c: R, rows: ["S".repeat(w)] });
-      }
-      break;
-    case "workpants":
-      for (let r = 4; r <= 6; r++) out.push({ r, c: at(r).L, rows: ["qq"] });
-      break;
-    case "tracksuit":
-      for (let r = 0; r <= 11; r++) out.push({ r, c: at(r).L, rows: ["a"] });
-      break;
-    default:
-      break;
-  }
-  return out;
-}
-function shoeDetail(kind, build, stance = {}) {
-  const foot = (r) => {
-    const { L, R, legW } = legColumns(build, r, stance);
-    return { L: L - 1, R, w: legW + 1, legW };
-  };
-  switch (kind) {
-    case "boots":
-      return [11, 12, 13].flatMap((r) => {
-        const f = foot(r);
-        return [
-          { r, c: f.L + 1, rows: ["b".repeat(f.legW)] },
-          { r, c: f.R, rows: ["b".repeat(f.legW)] }
-        ];
-      });
-    case "trainers": {
-      const f = foot(15);
-      return [
-        { r: 15, c: f.L, rows: ["c".repeat(f.w)] },
-        { r: 15, c: f.R, rows: ["c".repeat(f.w)] }
-      ];
-    }
-    case "heels": {
-      const f = foot(15);
-      return [
-        { r: 15, c: f.L, rows: [`${"B".repeat(f.w - 1)}.`] },
-        { r: 15, c: f.R, rows: [`.${"B".repeat(f.w - 1)}`] }
-      ];
-    }
-    case "sandals": {
-      const f = foot(13);
-      return [
-        { r: 13, c: f.L + 1, rows: ["s".repeat(f.legW)] },
-        { r: 13, c: f.R, rows: ["s".repeat(f.legW)] }
-      ];
-    }
-    default:
-      return [];
-  }
-}
-function accentPatchFor(kind, build) {
-  const { sh, wa } = anatomy(build);
-  const bodyW = sh * 2;
-  const waistW = wa * 2;
-  switch (kind) {
-    case "apron":
-      return [
-        { r: 3, c: CENTRE - 2, rows: ["aaaa"] },
-        {
-          r: 8,
-          c: CENTRE - wa,
-          rows: Array.from(
-            { length: 7 },
-            (_, i) => i === 6 ? "A".repeat(waistW) : "a".repeat(waistW)
-          )
-        }
-      ];
-    case "vest":
-      return [
-        {
-          r: 1,
-          c: CENTRE - sh + 1,
-          rows: Array.from({ length: 10 }, () => "a".repeat(Math.max(2, bodyW - 2)))
-        },
-        { r: 1, c: CENTRE, rows: Array.from({ length: 10 }, () => "A") },
-        { r: 4, c: CENTRE - sh + 1, rows: ["c".repeat(Math.max(2, bodyW - 2))] },
-        { r: 8, c: CENTRE - sh + 1, rows: ["c".repeat(Math.max(2, bodyW - 2))] }
-      ];
-    case "scarf":
-      return [
-        { r: 0, c: CENTRE - wa, rows: ["a".repeat(waistW), `.${"a".repeat(waistW - 2)}.`] },
-        { r: 2, c: CENTRE + 1, rows: ["aa", "aa", "aA"] }
-      ];
-    case "tie":
-      return [{ r: 1, c: CENTRE - 1, rows: ["aa", "aa", "aa", "aa", "aa", "AA"] }];
-    case "shawl":
-      return [
-        {
-          r: 0,
-          c: CENTRE - sh,
-          rows: ["a".repeat(bodyW), "a".repeat(bodyW), `.${"a".repeat(bodyW - 2)}.`]
-        },
-        { r: 3, c: CENTRE - 2, rows: ["Aaaa"] }
-      ];
-    case "lanyard":
-      return [
-        { r: 0, c: CENTRE - 2, rows: ["a...a", ".a.a.", "..a.."] },
-        { r: 3, c: CENTRE - 1, rows: ["cc", "cc"] }
-      ];
-    case "backpack":
-      return [
-        {
-          r: 1,
-          c: CENTRE - sh,
-          rows: Array.from({ length: 8 }, () => `a${".".repeat(bodyW - 2)}a`)
-        },
-        { r: 1, c: CENTRE + sh, rows: Array.from({ length: 8 }, () => "a") },
-        { r: 9, c: CENTRE + sh, rows: ["A"] }
-      ];
-    case "belt":
-      return [
-        { r: 12, c: CENTRE - wa, rows: ["a".repeat(waistW)] },
-        { r: 12, c: CENTRE, rows: ["c"] }
-      ];
-  }
-}
-function texturize(map, kind, from, to) {
-  if (kind === "none") return [...map];
-  const hit = (x, y) => {
-    switch (kind) {
-      case "stripe":
-        return y % 3 === 0;
-      case "pinstripe":
-        return x % 3 === 0;
-      case "check":
-        return x % 4 === 0 && y % 2 === 0;
-      case "knit":
-        return y % 2 === 0 && (x + y) % 4 === 0;
-      case "worn":
-        return (x * 7 + y * 13) % 11 === 0;
-      case "flecked":
-        return (x * 5 + y * 3) % 7 === 0;
-      default:
-        return false;
-    }
-  };
-  return map.map((r, y) => [...r].map((ch, x) => ch === from && hit(x, y) ? to : ch).join(""));
-}
-function propCells(kind, a, hand) {
-  const floor = a.floorY;
-  switch (kind) {
-    case "mop":
-      return [
-        ...stroke(hand.x, hand.y - 6, hand.x, floor - 2, "n", 1),
-        { x: hand.x - 1, y: floor - 1, z: "c" },
-        { x: hand.x, y: floor - 1, z: "c" },
-        { x: hand.x + 1, y: floor - 1, z: "c" },
-        { x: hand.x - 1, y: floor, z: "c" },
-        { x: hand.x, y: floor, z: "n" },
-        { x: hand.x + 1, y: floor, z: "c" }
-      ];
-    case "broom":
-      return [
-        ...stroke(hand.x, hand.y - 6, hand.x, floor - 1, "n", 1),
-        { x: hand.x - 1, y: floor, z: "n" },
-        { x: hand.x, y: floor, z: "c" },
-        { x: hand.x + 1, y: floor, z: "n" }
-      ];
-    case "cane":
-      return stroke(hand.x, hand.y, hand.x + 1, floor, "n", 1);
-    case "umbrella":
-      return [
-        ...stroke(hand.x, hand.y - 2, hand.x, floor, "n", 1),
-        { x: hand.x - 2, y: hand.y - 3, z: "c" },
-        { x: hand.x - 1, y: hand.y - 3, z: "c" },
-        { x: hand.x, y: hand.y - 3, z: "c" },
-        { x: hand.x + 1, y: hand.y - 3, z: "c" },
-        { x: hand.x + 2, y: hand.y - 3, z: "c" }
-      ];
-    case "bag":
-      return [
-        { x: hand.x, y: hand.y + 1, z: "n" },
-        { x: hand.x + 2, y: hand.y + 1, z: "n" },
-        ...[2, 3, 4, 5].flatMap(
-          (dy) => [0, 1, 2].map((dx) => ({ x: hand.x + dx, y: hand.y + dy, z: dy === 5 ? "n" : "c" }))
-        )
-      ];
-    case "shopping":
-      return [
-        { x: hand.x, y: hand.y + 1, z: "n" },
-        { x: hand.x + 2, y: hand.y + 1, z: "n" },
-        ...[2, 3, 4, 5, 6].flatMap(
-          (dy) => [0, 1, 2].map((dx) => ({
-            x: hand.x + dx,
-            y: hand.y + dy,
-            z: dy === 3 && dx === 1 ? "n" : "c"
-          }))
-        )
-      ];
-    case "phone":
-      return [
-        { x: hand.x, y: hand.y - 1, z: "n" },
-        { x: hand.x + 1, y: hand.y - 1, z: "n" },
-        { x: hand.x, y: hand.y, z: "c" },
-        { x: hand.x + 1, y: hand.y, z: "c" }
-      ];
-    case "coffee":
-      return [
-        { x: hand.x, y: hand.y - 2, z: "c" },
-        { x: hand.x + 1, y: hand.y - 2, z: "c" },
-        { x: hand.x, y: hand.y - 1, z: "c" },
-        { x: hand.x + 1, y: hand.y - 1, z: "n" }
-      ];
-    case "bottle":
-      return [
-        { x: hand.x, y: hand.y - 4, z: "n" },
-        { x: hand.x, y: hand.y - 3, z: "c" },
-        { x: hand.x, y: hand.y - 2, z: "c" },
-        { x: hand.x + 1, y: hand.y - 2, z: "c" },
-        { x: hand.x, y: hand.y - 1, z: "c" },
-        { x: hand.x + 1, y: hand.y - 1, z: "c" }
-      ];
-    case "newspaper":
-    case "clipboard":
-      return [0, 1, 2, 3].flatMap(
-        (dy) => [0, 1, 2].map((dx) => ({
-          x: hand.x + dx - 1,
-          y: hand.y + dy - 2,
-          z: dy === 1 && dx === 1 || kind === "clipboard" && dy === 0 ? "n" : "c"
-        }))
-      );
-    case "cigarette":
-      return [
-        { x: hand.x + 1, y: hand.y, z: "c" },
-        { x: hand.x + 2, y: hand.y, z: "o" }
-      ];
-    case "keys":
-      return [
-        { x: hand.x, y: hand.y + 1, z: "n" },
-        { x: hand.x, y: hand.y + 2, z: "c" },
-        { x: hand.x + 1, y: hand.y + 2, z: "c" }
-      ];
-    case "flowers":
-      return [
-        ...stroke(hand.x, hand.y - 4, hand.x, hand.y, "n", 1),
-        { x: hand.x - 1, y: hand.y - 5, z: "a" },
-        { x: hand.x, y: hand.y - 6, z: "a" },
-        { x: hand.x + 1, y: hand.y - 5, z: "a" },
-        { x: hand.x, y: hand.y - 5, z: "c" }
-      ];
-  }
-}
 var PROP_ARM = {
   mop: ARM.workLow,
   broom: ARM.workLow,
@@ -4308,1346 +3165,1760 @@ var PROP_ARM = {
   keys: ARM.rest,
   flowers: ARM.hold
 };
-function applyPatches(map, patches) {
-  let out = [...map];
-  for (const p of patches) if (p) out = patchInto(out, p);
-  return out;
-}
-function patchInto(map, patch) {
-  const out = map.map((r) => r.split(""));
-  patch.rows.forEach((prow, dr) => {
-    [...prow].forEach((ch, dc) => {
-      if (ch === "." || ch === " ") return;
-      const rr = patch.r + dr;
-      const cc = patch.c + dc;
-      if (out[rr] && cc >= 0 && cc < out[rr].length) out[rr][cc] = ch;
-    });
-  });
-  return out.map((r) => r.join(""));
-}
-function bow(map, depth = 1) {
-  const empty = ".".repeat(W2);
-  return [
-    ...Array.from({ length: depth }, () => empty),
-    ...map.slice(0, HEAD_ROWS - depth),
-    ...map.slice(HEAD_ROWS)
-  ];
-}
-function raiseChin(map) {
-  return [...map.slice(1, HEAD_ROWS), ".".repeat(W2), ...map.slice(HEAD_ROWS)];
-}
-function breathe(map, depth = 1) {
-  const empty = ".".repeat(W2);
-  const hips = HEAD_ROWS + TORSO_ROWS;
-  return [
-    ...Array.from({ length: depth }, () => empty),
-    ...map.slice(0, hips - depth),
-    ...map.slice(hips)
-  ];
-}
-function rise(map) {
-  const hips = HEAD_ROWS + TORSO_ROWS;
-  return [...map.slice(1, hips), map[hips - 1], ...map.slice(hips)];
-}
-function sway(map, dx) {
-  if (dx === 0) return [...map];
-  return map.map(
-    (r) => dx > 0 ? ".".repeat(dx) + r.slice(0, W2 - dx) : r.slice(-dx) + ".".repeat(-dx)
-  );
-}
-function mirrorHead(map) {
-  return map.map((r, i) => i <= HEAD_ROWS - 1 ? [...r].reverse().join("") : r);
-}
-function shorten(map, n) {
-  if (n <= 0) return [...map];
-  const empty = ".".repeat(W2);
-  const painted = (r) => /[^.]/.test(r);
-  if (map.length && !painted(map[map.length - 1])) {
-    const take = Math.min(n, 2);
-    const seated = [...map];
-    seated.splice(HEAD_ROWS + 8, take);
-    return [...seated, ...Array.from({ length: take }, () => empty)];
-  }
-  const cut = HEAD_ROWS + TORSO_ROWS + 8;
-  const out = [...map];
-  out.splice(cut, n);
-  return [...Array.from({ length: n }, () => empty), ...out];
-}
-var FX_ZONES = {
-  /** a fresh plume, the second after an exhale */
-  w: "#f2eee6e6",
-  /** the tail of it, thinning into the air */
-  W: "#e6e0d4a0",
-  /** water on a floor, and what runs off a mop when it comes out of a bucket */
-  v: "#9fc4d0cc"
-};
-function createNpc(spec) {
-  const build = spec.build ?? "regular";
-  const height = spec.height ?? "average";
-  const look = spec.look ?? {};
-  const doing = spec.doing ?? "standing";
-  const palette = { ...npcPalette(look), ...FX_ZONES, ...spec.palette ?? {} };
-  const a = anatomy(build);
-  const sleeve = SLEEVE[look.top ?? "tshirt"];
-  const b = createCharacter({ palette, cell: spec.cell ?? 2, walkSpeed: spec.walkSpeed ?? 46 });
-  const traits = faceFor(spec.id, {
-    shape: look.head,
-    brow: look.brow,
-    eyes: look.eyeShape,
-    nose: look.nose,
-    mouth: look.mouth,
-    ears: look.ears
-  });
-  const skull = skullOf(traits.shape);
-  const features = look.face ? Array.isArray(look.face) ? [...look.face] : [look.face] : [];
-  const geo = faceGeometry(traits);
-  const hair = hairCells(look.hairStyle ?? "short", geo);
-  const hat = look.hat && look.hat !== "none" ? hatCells(look.hat, geo) : [];
-  const accentPatches = look.accent && look.accent !== "none" ? accentPatchFor(look.accent, build) : [];
-  const sheen = { r: 0, c: CENTRE - 3, rows: ["ii"] };
-  const clipCrown = (head) => {
-    const l = CENTRE - skull.skull - 1;
-    const r = CENTRE + skull.skull;
-    return head.map((line) => [...line].map((c, x) => x < l || x > r ? "." : c).join(""));
-  };
-  const dress = (head, view) => {
-    let out = stamp(head, hair);
-    if (hat.length === 0) out = applyPatches(out, [sheen]);
-    out = clipCrown(stamp(out, hat));
-    out = stamp(
-      out,
-      features.flatMap((f) => featureCells(f, traits, view))
-    );
-    return features.length > 0 ? stamp(out, mouthCells(traits, view)) : out;
-  };
-  const texture = look.texture ?? "none";
-  const dressTorso = (torso) => shadeTorso(
-    texturize(
-      applyPatches(torso, [...topDetail(look.top ?? "tshirt", build), ...accentPatches]),
-      texture,
-      "t",
-      "T"
-    ),
-    build
-  );
-  const dressLegs = (l, stance = {}) => texturize(
-    applyPatches(l, [
-      ...bottomDetail(look.bottom ?? "trousers", build, stance),
-      ...shoeDetail(look.shoes ?? "shoes", build, stance)
-    ]),
-    // a fine weave belongs on a jumper, not on a trouser leg
-    texture === "knit" || texture === "flecked" ? "none" : texture,
-    "p",
-    "q"
-  );
-  const dressTorsoSide = (torso) => {
-    const silhouette = torso;
-    return dressTorso(torso).map(
-      (r, y) => [...r].map((c, x) => silhouette[y]?.[x] === "." ? "." : c).join("")
-    );
-  };
-  b.part("head", dress(headFront(traits), "front"));
-  b.part("headSide", dress(headProfile(traits), "side"));
-  b.part("torso", dressTorso(torsoFront(build)));
-  b.part("torsoSide", dressTorsoSide(torsoProfile(build)));
-  b.part("legs", dressLegs(legs(build)));
-  b.part("legsApart", dressLegs(legs(build, { gap: 1 }), { gap: 1 }));
-  b.part("legsStride", dressLegs(legs(build, { stride: 3 }), { stride: 3 }));
-  b.part("legsPass", dressLegs(legs(build, { stride: -1 }), { stride: -1 }));
-  b.part("legsSit", texturize(legsSit(build), texture === "knit" ? "none" : texture, "p", "q"));
-  const bareFrom = look.bottom === "shorts" ? 6 : void 0;
-  b.part(
-    "legsSideStride",
-    texturize(legsProfile(build, { stride: 3, bareFrom }), "none", "p", "q")
-  );
-  b.part("legsSidePass", texturize(legsProfile(build, { stride: 0, bareFrom }), "none", "p", "q"));
-  b.part("legsWeight", dressLegs(legs(build, { stride: 1 }), { stride: 1 }));
-  const prop = look.prop && look.prop !== "none" ? look.prop : null;
-  const armOpts = { sleeve, cloth: "t", shade: "T", skin: "s" };
-  const farArm = { ...armOpts, cloth: "T", shade: "T", skin: "S" };
-  const withArms = (left, right, opts = {}) => (m) => {
-    const cells = [...arm(a, -1, left, farArm), ...arm(a, 1, right, armOpts)];
-    let out = stamp(m, cells);
-    if (prop && opts.carry !== false) {
-      out = stamp(out, propCells(prop, a, handAt(a, 1, right)));
-      out = stamp(out, arm(a, 1, right, armOpts).slice(-6));
-    }
-    return out;
-  };
-  const holding = (fallback) => prop ? PROP_ARM[prop] ?? fallback : fallback;
-  const withSideArms = (near, far) => (m) => {
-    let out = stamp(m, arm(a, 1, far, { ...farArm, at: a.shoulderSide - 1 }));
-    out = stamp(out, arm(a, 1, near, { ...armOpts, at: a.shoulderSide + 1 }));
-    if (prop) {
-      out = stamp(out, propCells(prop, a, handAt(a, 1, near, a.shoulderSide + 1)));
-      out = stamp(out, arm(a, 1, near, { ...armOpts, at: a.shoulderSide + 1 }).slice(-6));
-    }
-    return out;
-  };
-  const front = (legPart) => (f) => f.stack("head", "torso", legPart);
-  const side = (legPart) => (f) => f.stack("headSide", "torsoSide", legPart);
-  b.frame("stand", (f) => front("legs")(f).map(withArms(ARM.rest, holding(ARM.rest))));
-  b.variant("breathe", "stand", (m) => breathe(m));
-  b.variant("blink", "stand", (m) => replaceColor(m, "e", "s"));
-  b.variant("lookBack", "stand", (m) => mirrorHead(m));
-  b.frame(
-    "weight",
-    (f) => front("legsWeight")(f).map(withArms(ARM.rest, holding(ARM.rest))).map((m) => sway(m, 1))
-  );
-  b.variant("weightB", "weight", (m) => breathe(m));
-  b.variant("nod", "stand", (m) => bow(m, 1));
-  b.frame("talkA", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.talk)));
-  b.frame("talkB", (f) => front("legs")(f).map(withArms(ARM.talkWide, ARM.rest)));
-  b.variant("talkC", "talkA", (m) => breathe(m));
-  b.variant("talkTilt", "talkB", (m) => mirrorHead(bow(m, 1)));
-  b.frame("waveA", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.waveUp)));
-  b.frame("waveB", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.waveOut)));
-  b.frame("shrug", (f) => front("legs")(f).map(withArms(ARM.shrug, ARM.shrug)));
-  b.frame("point", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.point)));
-  b.frame("pockets", (f) => front("legs")(f).map(withArms(ARM.pocket, ARM.pocket)));
-  b.frame("fold", (f) => front("legsApart")(f).map(withArms(ARM.foldOver, ARM.foldUnder)));
-  b.variant("foldB", "fold", (m) => breathe(m));
-  b.frame("scratchHead", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.behindHead)));
-  b.variant("scratchHeadB", "scratchHead", (m) => mirrorHead(m));
-  b.frame("hail", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.hail)));
-  b.frame("offer", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.offer)));
-  b.frame(
-    "count",
-    (f) => front("legs")(f).map(withArms(ARM.count, ARM.count)).map((m) => bow(m, 1))
-  );
-  b.frame("toMouth", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.toMouth)));
-  b.variant("toMouthUp", "toMouth", (m) => raiseChin(m));
-  b.frame(
-    "checkPhone",
-    (f) => front("legs")(f).map(withArms(ARM.rest, ARM.hold)).map((m) => bow(m, 1))
-  );
-  b.variant("laughA", "stand", (m) => raiseChin(m));
-  b.variant("laughB", "stand", (m) => bow(raiseChin(m), 1));
-  b.variant("coughA", "toMouth", (m) => bow(m, 1));
-  b.variant("coughB", "toMouth", (m) => bow(m, 2));
-  b.variant("lookL", "stand", (m) => mirrorHead(m));
-  b.variant("lookR", "weight", (m) => mirrorHead(m));
-  b.frame("walkA", (f) => side("legsSideStride")(f).map(withSideArms(ARM.swingFwd, ARM.swingBack)));
-  b.frame("walkB", (f) => side("legsSidePass")(f).map(withSideArms(ARM.rest, ARM.rest)));
-  b.frame("walkC", (f) => side("legsSideStride")(f).map(withSideArms(ARM.swingBack, ARM.swingFwd)));
-  b.variant("walkD", "walkB", (m) => breathe(m));
-  b.variant("walkBUp", "walkB", (m) => rise(m));
-  b.variant("walkDUp", "walkD", (m) => rise(m));
-  b.frame(
-    "standSide",
-    (f) => side("legsSidePass")(f).map(withSideArms(holding(ARM.rest), ARM.rest))
-  );
-  b.walkCycle("walkA", "walkBUp", "walkC", "walkDUp");
-  const actions = {
-    /**
-     * Standing about. Twenty seconds of it, because a six-second loop is a
-     * loop you can see, and a person you can see looping is a prop.
-     *
-     * The shape of it: long stretches of nearly nothing — breath, a blink, the
-     * weight going from one foot to the other — punctuated by one piece of
-     * small business. Nobody stands still, and nobody does anything much
-     * either. That is what waiting looks like.
-     */
-    idle: {
-      frames: [
-        "stand",
-        "breathe",
-        "stand",
-        "blink",
-        "stand",
-        "breathe",
-        "weight",
-        "weightB",
-        "weight",
-        "stand",
-        "lookBack",
-        "stand",
-        "breathe",
-        "pockets",
-        "pockets",
-        "pockets",
-        "stand",
-        "blink",
-        "weight",
-        "weightB",
-        "scratchHead",
-        "scratchHeadB",
-        "stand",
-        "breathe",
-        "stand",
-        "lookL",
-        "stand",
-        "lookR",
-        "weight",
-        "stand",
-        "checkPhone",
-        "checkPhone",
-        "checkPhone",
-        "stand",
-        "breathe",
-        "fold",
-        "foldB",
-        "fold",
-        "foldB",
-        "stand",
-        "blink",
-        "breathe"
-      ],
-      frameMs: 620,
-      loops: 1
-    },
-    talk: {
-      frames: [
-        "talkA",
-        "stand",
-        "talkB",
-        "talkTilt",
-        "nod",
-        "stand",
-        "talkA",
-        "talkC",
-        "stand",
-        "talkB",
-        "nod",
-        "stand"
-      ],
-      frameMs: 300,
-      loops: 1,
-      interruptible: true
-    },
-    wave: { frames: ["waveA", "waveB", "waveA", "waveB", "stand"], frameMs: 260, loops: 1 },
-    shrug: { frames: ["stand", "shrug", "shrug", "stand"], frameMs: 360, loops: 1 },
-    notice: { frames: ["lookBack", "stand", "nod", "stand"], frameMs: 320, loops: 1 },
-    point: { frames: ["stand", "point", "point", "talkA", "stand"], frameMs: 340, loops: 1 },
-    walk: { frames: ["walkA", "walkBUp", "walkC", "walkDUp"], frameMs: 190, loops: 4 },
-    // --- the library: everything a person does that is not standing still ---
-    greet: {
-      frames: ["lookBack", "stand", "hail", "waveA", "waveB", "waveA", "stand", "nod"],
-      frameMs: 280,
-      loops: 1
-    },
-    farewell: { frames: ["waveA", "waveB", "stand", "lookBack", "stand"], frameMs: 320, loops: 1 },
-    laugh: {
-      frames: ["laughA", "laughB", "laughA", "laughB", "laughA", "stand", "breathe"],
-      frameMs: 190,
-      loops: 1
-    },
-    cough: {
-      frames: ["stand", "toMouth", "coughA", "coughB", "coughA", "toMouth", "stand", "breathe"],
-      frameMs: 190,
-      loops: 1
-    },
-    phone: {
-      frames: [
-        "stand",
-        "checkPhone",
-        "checkPhone",
-        "checkPhone",
-        "scratchHead",
-        "checkPhone",
-        "stand"
-      ],
-      frameMs: 520,
-      loops: 1
-    },
-    drink: {
-      frames: ["stand", "toMouth", "toMouthUp", "toMouthUp", "toMouth", "stand", "breathe"],
-      frameMs: 400,
-      loops: 1
-    },
-    handOver: { frames: ["stand", "offer", "offer", "offer", "stand"], frameMs: 340, loops: 1 },
-    count: {
-      frames: ["stand", "count", "count", "count", "count", "stand"],
-      frameMs: 380,
-      loops: 1
-    },
-    lookAround: {
-      frames: ["stand", "lookL", "stand", "weight", "lookR", "weight", "stand", "breathe"],
-      frameMs: 480,
-      loops: 1
-    },
-    scratch: {
-      frames: ["stand", "scratchHead", "scratchHeadB", "scratchHead", "stand"],
-      frameMs: 340,
-      loops: 1
-    },
-    show: {
-      frames: ["stand", "point", "point", "talkA", "point", "stand"],
-      frameMs: 340,
-      loops: 1
-    }
-  };
-  if (doing === "working") {
-    b.frame("workA", (f) => front("legsApart")(f).map(withArms(ARM.workHigh, ARM.workLow)));
-    b.frame("workB", (f) => front("legsApart")(f).map(withArms(ARM.workLow, ARM.workHigh)));
-    b.variant("workC", "workA", (m) => breathe(m));
-    b.frame("wipeBrow", (f) => front("legsApart")(f).map(withArms(ARM.workLow, ARM.toFace)));
-    b.variant("wipeBrowB", "wipeBrow", (m) => bow(m, 1));
-    b.frame("stretchBack", (f) => front("legsApart")(f).map(withArms(ARM.back, ARM.back)));
-    b.variant("stretchBackB", "stretchBack", (m) => raiseChin(m));
-    b.frame("leanProp", (f) => front("legsApart")(f).map(withArms(ARM.rest, ARM.workHigh)));
-    b.variant("leanPropB", "leanProp", (m) => breathe(m));
-    b.frame(
-      "wring",
-      (f) => front("legsApart")(f).map(withArms(ARM.workLow, ARM.workLow)).map((m) => bow(m, 1))
-    );
-    b.variant("wringB", "wring", (m) => breathe(m));
-    actions.work = {
-      frames: [
-        "workA",
-        "workB",
-        "workC",
-        "workB",
-        "workA",
-        "workB",
-        "leanProp",
-        "leanPropB",
-        "wipeBrow",
-        "wipeBrowB",
-        "workA",
-        "workB",
-        "workC",
-        "workB",
-        "stretchBack",
-        "stretchBackB",
-        "stretchBack",
-        "stand"
-      ],
-      frameMs: 430,
-      loops: 1
-    };
-    actions.wring = {
-      frames: ["stand", "wring", "wringB", "wring", "wringB", "wring", "stand"],
-      frameMs: 380,
-      loops: 1
-    };
-    actions.rest = {
-      frames: ["leanProp", "leanPropB", "leanProp", "wipeBrow", "leanProp", "leanPropB"],
-      frameMs: 620,
-      loops: 1
-    };
-    actions.talkAtWork = {
-      frames: ["leanProp", "talkA", "leanProp", "talkB", "nod", "leanProp", "talkA", "leanProp"],
-      frameMs: 320,
-      loops: 1,
-      interruptible: true
-    };
-  }
-  if (doing === "serving") {
-    b.frame("serveHand", (f) => front("legs")(f).map(withArms(ARM.rest, ARM.offer)));
-    b.frame("serveTake", (f) => front("legs")(f).map(withArms(ARM.offer, ARM.rest)));
-    b.frame(
-      "serveTill",
-      (f) => front("legs")(f).map(withArms(ARM.rest, ARM.workHigh)).map((m) => bow(m, 1))
-    );
-    b.variant("serveWait", "weight", (m) => breathe(m));
-    actions.serve = {
-      frames: [
-        "stand",
-        "serveHand",
-        "serveHand",
-        "serveTill",
-        "serveTake",
-        "stand",
-        "serveWait",
-        "weight",
-        "stand",
-        "breathe"
-      ],
-      frameMs: 460,
-      loops: 1
-    };
-    actions.serveTalk = {
-      frames: ["talkA", "stand", "serveHand", "talkB", "nod", "stand"],
-      frameMs: 320,
-      loops: 1,
-      interruptible: true
-    };
-  }
-  if (doing === "running") {
-    b.frame(
-      "runA",
-      (f) => side("legsSideStride")(f).map(withSideArms(ARM.pumpUp, ARM.pumpDown)).map((m) => rise(m))
-    );
-    b.frame("runB", (f) => side("legsSidePass")(f).map(withSideArms(ARM.pumpMid, ARM.pumpMid)));
-    b.frame(
-      "runC",
-      (f) => side("legsSideStride")(f).map(withSideArms(ARM.pumpDown, ARM.pumpUp)).map((m) => rise(m))
-    );
-    b.variant("runD", "runB", (m) => breathe(m));
-    actions.run = { frames: ["runA", "runB", "runC", "runD"], frameMs: 120, loops: 8 };
-  }
-  if (doing === "lifting") {
-    b.frame(
-      "liftSet",
-      (f) => front("legsApart")(f).map(withArms(ARM.workHigh, ARM.workHigh)).map((m) => breathe(m, 1))
-    );
-    b.frame(
-      "liftDip",
-      (f) => front("legsApart")(f).map(withArms(ARM.workHigh, ARM.workHigh)).map((m) => breathe(m, 3))
-    );
-    b.frame("liftDrive", (f) => front("legsApart")(f).map(withArms(ARM.hail, ARM.hail)));
-    b.variant("liftLock", "liftDrive", (m) => raiseChin(m));
-    b.frame("liftRest", (f) => front("legsApart")(f).map(withArms(ARM.hip, ARM.hip)));
-    b.variant("liftBreathe", "liftRest", (m) => breathe(m));
-    actions.lift = {
-      frames: [
-        "liftSet",
-        "liftDip",
-        "liftDrive",
-        "liftLock",
-        "liftDrive",
-        "liftDip",
-        "liftSet",
-        "liftRest",
-        "liftBreathe",
-        "liftRest"
-      ],
-      frameMs: 340,
-      loops: 1
-    };
-  }
-  if (doing === "sitting") {
-    b.frame(
-      "sit",
-      (f) => f.stack("head", "torso", "legsSit").map(withArms(ARM.rest, holding(ARM.rest)))
-    );
-    b.variant("sitBreathe", "sit", (m) => breathe(m));
-    b.variant("sitNod", "sit", (m) => bow(m, 1));
-    b.frame(
-      "sitTalk",
-      (f) => f.stack("head", "torso", "legsSit").map(withArms(ARM.rest, ARM.talk))
-    );
-    b.frame(
-      "sitLean",
-      (f) => f.stack("head", "torso", "legsSit").map(withArms(ARM.rest, ARM.rest)).map((m) => bow(m, 1))
-    );
-    b.frame(
-      "crouchUp",
-      (f) => front("legsApart")(f).map(withArms(ARM.rest, ARM.rest)).map((m) => breathe(m, 2))
-    );
-    b.frame(
-      "sitLook",
-      (f) => f.stack("head", "torso", "legsSit").map(withArms(ARM.rest, ARM.rest)).map(mirrorHead)
-    );
-    actions.sit = {
-      frames: ["sit", "sit", "sitBreathe", "sit", "sitLook", "sit", "sitBreathe", "sitNod"],
-      frameMs: 700,
-      loops: 1
-    };
-    actions.standUp = {
-      frames: ["sit", "sitLean", "crouchUp", "stand", "stand"],
-      frameMs: 320,
-      loops: 1
-    };
-    actions.sitDown = {
-      frames: ["stand", "crouchUp", "sitLean", "sit", "sit"],
-      frameMs: 320,
-      loops: 1
-    };
-    actions.sitTalk = {
-      frames: ["sitTalk", "sit", "sitTalk", "sitNod", "sit", "sitTalk"],
-      frameMs: 340,
-      loops: 1,
-      interruptible: true
-    };
-  }
-  if (doing === "leaning" || doing === "waiting") {
-    b.frame("lean", (f) => front("legsApart")(f).map(withArms(ARM.foldOver, ARM.foldUnder)));
-    b.variant("leanBreathe", "lean", (m) => breathe(m));
-    b.variant("leanLook", "lean", (m) => mirrorHead(m));
-    b.frame("checkWatch", (f) => front("legsApart")(f).map(withArms(ARM.rest, ARM.toFace)));
-    actions.lean = {
-      frames: [
-        "lean",
-        "leanBreathe",
-        "lean",
-        "leanLook",
-        "lean",
-        "checkWatch",
-        "checkWatch",
-        "lean",
-        "leanBreathe",
-        "lean",
-        "checkPhone",
-        "checkPhone",
-        "checkPhone",
-        "lean",
-        "leanLook",
-        "lean",
-        "scratchHead",
-        "lean",
-        "leanBreathe",
-        "lean"
-      ],
-      frameMs: 700,
-      loops: 1
-    };
-  }
-  if (doing === "smoking") {
-    const cig = (h, drag) => {
-      const dir = h.x >= CENTRE ? -1 : 1;
-      const tip = { x: h.x + dir * 2, y: h.y };
-      return [
-        { x: h.x + dir, y: h.y, z: "c" },
-        { x: tip.x, y: tip.y, z: "o" },
-        // the drag: the ember doubles and throws light onto the row above it
-        ...drag ? [{ x: tip.x, y: tip.y - 1, z: "o" }] : []
-      ];
-    };
-    const wisp = (h, phase) => {
-      const away = h.x >= CENTRE ? 1 : -1;
-      const x = h.x + (h.x >= CENTRE ? -2 : 2);
-      const drift = [0, 1, 1, 2];
-      return [0, 1].map((i) => ({
-        x: x + away * drift[(i + phase) % 4],
-        y: h.y - 3 - i * 2,
-        z: i === 0 ? "w" : "W"
-      }));
-    };
-    const breath = (stage) => {
-      const puff = (x, y, w, z) => Array.from({ length: w }, (_, i) => ({ x: x + i, y, z }));
-      if (stage === 0) return puff(CENTRE, 5, 3, "w");
-      if (stage === 1) return [...puff(CENTRE + 2, 5, 3, "w"), ...puff(CENTRE + 3, 4, 3, "W")];
-      if (stage === 2) {
-        return [
-          ...puff(CENTRE + 4, 4, 4, "w"),
-          ...puff(CENTRE + 4, 3, 4, "W"),
-          ...puff(CENTRE + 6, 2, 3, "W")
-        ];
-      }
-      return [...puff(CENTRE + 6, 2, 4, "W"), ...puff(CENTRE + 7, 1, 3, "W")];
-    };
-    const smokeFrame = (pose, opts = {}) => {
-      const hand = handAt(a, 1, pose);
-      return (m) => {
-        let out = stamp(m, [...arm(a, -1, ARM.pocket, farArm), ...arm(a, 1, pose, armOpts)]);
-        out = stamp(out, cig(hand, opts.drag ?? false));
-        if (opts.phase !== void 0) out = stamp(out, wisp(hand, opts.phase));
-        if (opts.exhale !== void 0) out = stamp(out, breath(opts.exhale));
-        return out;
-      };
-    };
-    b.frame("smokeRest", (f) => front("legsApart")(f).map(smokeFrame(ARM.rest, { phase: 0 })));
-    b.frame(
-      "smokeRestB",
-      (f) => front("legsApart")(f).map(smokeFrame(ARM.rest, { phase: 2 })).map((m) => breathe(m))
-    );
-    b.frame("smokeLift", (f) => front("legsApart")(f).map(smokeFrame(ARM.toChin)));
-    b.frame("smokeDrag", (f) => front("legsApart")(f).map(smokeFrame(ARM.toMouth, { drag: true })));
-    b.frame("smokeDragB", (f) => front("legsApart")(f).map(smokeFrame(ARM.atLips, { drag: true })));
-    b.frame("smokeHold", (f) => front("legsApart")(f).map(smokeFrame(ARM.toChin)));
-    b.frame("smokeOut1", (f) => front("legsApart")(f).map(smokeFrame(ARM.toChin, { exhale: 0 })));
-    b.frame("smokeOut2", (f) => front("legsApart")(f).map(smokeFrame(ARM.rest, { exhale: 1 })));
-    b.frame("smokeOut3", (f) => front("legsApart")(f).map(smokeFrame(ARM.rest, { exhale: 2 })));
-    b.frame(
-      "smokeOut4",
-      (f) => front("legsApart")(f).map(smokeFrame(ARM.rest, { phase: 2, exhale: 3 }))
-    );
-    b.frame(
-      "smokeFlick",
-      (f) => front("legsApart")(f).map((m) => {
-        const hand = handAt(a, 1, ARM.rest);
-        let out = smokeFrame(ARM.rest, { phase: 3 })(m);
-        out = stamp(out, [
-          { x: hand.x - 1, y: hand.y + 3, z: "W" },
-          { x: hand.x - 2, y: hand.y + 6, z: "W" }
-        ]);
-        return out;
-      })
-    );
-    actions.smoke = {
-      frames: [
-        "smokeRest",
-        "smokeRestB",
-        "smokeLift",
-        "smokeDrag",
-        "smokeDragB",
-        "smokeDragB",
-        "smokeHold",
-        "smokeOut1",
-        "smokeOut2",
-        "smokeOut3",
-        "smokeOut4",
-        "smokeRest",
-        "smokeRestB",
-        "smokeFlick",
-        "smokeRest",
-        "smokeRestB",
-        "smokeRest"
-      ],
-      frameMs: 420,
-      loops: 1
-    };
-    actions.smokeTalk = {
-      frames: ["smokeRest", "smokeRestB", "smokeLift", "smokeRest", "smokeRestB", "smokeRest"],
-      frameMs: 360,
-      loops: 1,
-      interruptible: true
-    };
-  }
-  if (doing === "phoning") {
-    const handset = (h) => {
-      const dir = h.x >= CENTRE ? -1 : 1;
-      const cells = [];
-      for (let dy = -3; dy <= 1; dy++) {
-        cells.push({ x: h.x, y: h.y + dy, z: dy === -3 ? "c" : "n" });
-        cells.push({ x: h.x + dir, y: h.y + dy, z: "n" });
-      }
-      return cells;
-    };
-    const call = (free) => (m) => {
-      const hand = handAt(a, 1, ARM.toEar);
-      const holding2 = arm(a, 1, ARM.toEar, armOpts);
-      let out = stamp(m, arm(a, -1, free, farArm));
-      out = stamp(out, holding2);
-      out = stamp(out, handset(hand));
-      out = stamp(out, holding2.slice(-4));
-      return out;
-    };
-    b.frame("callUp", (f) => front("legs")(f).map(call(ARM.pocket)));
-    b.variant("callBreathe", "callUp", (m) => breathe(m));
-    b.frame("callTalkA", (f) => front("legs")(f).map(call(ARM.talk)));
-    b.frame("callTalkB", (f) => front("legs")(f).map(call(ARM.talkWide)));
-    b.frame("callShrug", (f) => front("legs")(f).map(call(ARM.shrug)));
-    b.frame(
-      "callPace",
-      (f) => front("legsWeight")(f).map(call(ARM.pocket)).map((m) => sway(m, 1))
-    );
-    b.variant("callNod", "callUp", (m) => bow(m, 1));
-    b.variant("callAway", "callUp", (m) => mirrorHead(m));
-    b.frame("callDown", (f) => front("legs")(f).map(withArms(ARM.pocket, ARM.toChin)));
-    b.frame(
-      "callCheck",
-      (f) => front("legs")(f).map(withArms(ARM.pocket, ARM.hold)).map((m) => bow(m, 1))
-    );
-    actions.call = {
-      frames: [
-        "callUp",
-        "callBreathe",
-        "callTalkA",
-        "callUp",
-        "callNod",
-        "callUp",
-        "callTalkB",
-        "callTalkA",
-        "callUp",
-        "callPace",
-        "callBreathe",
-        "callAway",
-        "callUp",
-        "callShrug",
-        "callUp",
-        "callNod",
-        "callBreathe",
-        "callUp"
-      ],
-      frameMs: 460,
-      loops: 1
-    };
-    actions.hangUp = {
-      frames: ["callUp", "callNod", "callDown", "callCheck", "callCheck", "stand"],
-      frameMs: 380,
-      loops: 1
-    };
-    actions.callTalk = {
-      frames: ["callUp", "callNod", "callTalkA", "callUp", "callBreathe"],
-      frameMs: 360,
-      loops: 1,
-      interruptible: true
-    };
-  }
-  if (doing === "washing") {
-    const FLOOR = a.floorY;
-    const mop = (headX, wet) => {
-      const grip = handAt(a, 1, ARM.workLow);
-      const cells = [
-        ...stroke(grip.x, grip.y - 4, headX + 1, FLOOR - 3, "n", 1),
-        // the head: a flat pad, wider than the handle, sitting on the floor
-        ...[-2, -1, 0, 1, 2].map((dx) => ({ x: headX + dx, y: FLOOR - 2, z: "c" })),
-        ...[-3, -2, -1, 0, 1, 2, 3].map((dx) => ({ x: headX + dx, y: FLOOR - 1, z: "c" })),
-        ...[-3, -2, -1, 0, 1, 2, 3].map((dx) => ({ x: headX + dx, y: FLOOR, z: "n" }))
-      ];
-      for (const x of wet) cells.push({ x, y: FLOOR, z: "v" });
-      return cells;
-    };
-    const wash = (headX, wet, lean) => (m) => {
-      let out = stamp(m, arm(a, 1, ARM.gripHigh, { ...farArm, at: a.shoulderL }));
-      out = stamp(out, mop(headX, wet));
-      out = stamp(out, arm(a, 1, ARM.gripHigh, { ...farArm, at: a.shoulderL }).slice(-6));
-      out = stamp(out, arm(a, 1, ARM.gripLow, armOpts));
-      return lean === 0 ? out : sway(out, lean);
-    };
-    b.frame("washOut", (f) => front("legsApart")(f).map(wash(20, [8, 10, 13], 1)));
-    b.frame("washMidA", (f) => front("legsApart")(f).map(wash(16, [8, 10, 19, 21], 0)));
-    b.frame("washIn", (f) => front("legsApart")(f).map(wash(6, [12, 15, 18, 20], -1)));
-    b.frame("washMidB", (f) => front("legsApart")(f).map(wash(11, [5, 7, 18, 21], 0)));
-    b.frame(
-      "washWring",
-      (f) => front("legsApart")(f).map((m) => {
-        let out = stamp(m, arm(a, 1, ARM.gripHigh, { ...farArm, at: a.shoulderL }));
-        out = stamp(out, mop(13, []));
-        out = stamp(out, arm(a, 1, ARM.gripLow, armOpts));
-        out = stamp(out, [
-          { x: 12, y: FLOOR - 5, z: "v" },
-          { x: 15, y: FLOOR - 4, z: "v" }
-        ]);
-        return out;
-      }).map((m) => bow(m, 1))
-    );
-    b.variant("washWringB", "washWring", (m) => breathe(m));
-    b.frame(
-      "washStand",
-      (f) => front("legsApart")(f).map((m) => {
-        let out = stamp(m, arm(a, -1, ARM.back, farArm));
-        out = stamp(out, mop(17, [8, 11, 14]));
-        return stamp(out, arm(a, 1, ARM.gripHigh, armOpts));
-      })
-    );
-    b.variant("washStandB", "washStand", (m) => raiseChin(m));
-    b.frame(
-      "washBrow",
-      (f) => front("legsApart")(f).map((m) => {
-        let out = stamp(m, arm(a, 1, ARM.gripHigh, { ...farArm, at: a.shoulderL }));
-        out = stamp(out, mop(6, [10, 13, 16]));
-        return stamp(out, arm(a, 1, ARM.toFace, armOpts));
-      })
-    );
-    const stroke1 = ["washMidA", "washOut", "washMidA", "washIn", "washMidB"];
-    actions.wash = {
-      frames: [
-        ...stroke1,
-        ...stroke1,
-        "washStand",
-        "washStandB",
-        "washWring",
-        "washWringB",
-        "washWring",
-        "washStand",
-        ...stroke1,
-        "washBrow",
-        "washStandB"
-      ],
-      frameMs: 380,
-      loops: 1
-    };
-    actions.work = actions.wash;
-    actions.wring = {
-      frames: ["washStand", "washWring", "washWringB", "washWring", "washWringB", "washStand"],
-      frameMs: 400,
-      loops: 1
-    };
-    actions.rest = {
-      frames: ["washStand", "washStandB", "washStand", "washBrow", "washStand", "washStandB"],
-      frameMs: 620,
-      loops: 1
-    };
-    actions.talkAtWork = {
-      frames: ["washStand", "washStandB", "talkA", "washStand", "talkC", "washStandB"],
-      frameMs: 340,
-      loops: 1,
-      interruptible: true
-    };
-  }
-  for (const [id, def] of Object.entries(actions)) b.action(id, def);
-  const built = b.build();
-  const trim = TRIM[height];
-  const frames = trim ? Object.fromEntries(
-    Object.entries(built.frames).map(([name, map]) => [name, shorten(map, trim)])
-  ) : built.frames;
-  const idleAction = spec.reactions?.idle ?? (doing === "working" ? "work" : doing === "serving" ? "serve" : doing === "running" ? "run" : doing === "lifting" ? "lift" : doing === "washing" ? "wash" : doing === "phoning" ? "call" : doing === "sitting" ? "sit" : doing === "leaning" || doing === "waiting" ? "lean" : doing === "smoking" ? "smoke" : "idle");
-  return {
-    ...built,
-    frames,
-    id: spec.id,
-    name: spec.name,
-    idleAction,
-    reactions: {
-      onTalk: spec.reactions?.onTalk ?? (doing === "sitting" ? "sitTalk" : doing === "working" || doing === "washing" ? "talkAtWork" : doing === "serving" ? "serveTalk" : doing === "smoking" ? "smokeTalk" : doing === "phoning" ? "callTalk" : "talk"),
-      onNotice: spec.reactions?.onNotice ?? "notice",
-      idle: idleAction
-    },
-    lines: spec.lines ?? [],
-    look
-  };
-}
 
-// src/engine/ui/AudioHud.tsx
+// src/engine/ui/AnimalActor.tsx
 var import_react4 = __toESM(require_react(), 1);
 
-// src/engine/ui/FpsMeter.tsx
+// src/engine/ui/AudioHud.tsx
 var import_react5 = __toESM(require_react(), 1);
 
-// src/engine/ui/NpcActor.tsx
+// src/engine/ui/FpsMeter.tsx
 var import_react6 = __toESM(require_react(), 1);
 
-// src/game/apartment/npcs.ts
-var NPCS = {
-  /** The stairwell, every morning. From Poltava, and homesick with it. */
-  natalia: createNpc({
-    id: "pani-natalia",
-    name: "Pani Natalia",
-    build: "slim",
-    height: "short",
-    doing: "washing",
-    look: {
-      skin: "fair",
-      hair: "grey",
-      hairStyle: "bun",
-      hat: "kerchief",
-      hatColour: "sky",
-      top: "jumper",
-      topColour: "teal",
-      bottom: "trousers",
-      bottomColour: "navy",
-      shoes: "boots",
-      shoeColour: "black",
-      accent: "apron",
-      accentColour: "cream",
-      prop: "mop"
-    },
-    lines: [
-      "\u0417\u043D\u043E\u0432\u0443 \u0445\u0442\u043E\u0441\u044C \u043D\u0430\u0441\u043B\u0456\u0434\u0438\u0432 \u043F\u043E \u0441\u0432\u0456\u0436\u043E\u043C\u0443...",
-      "\u0412\u0434\u043E\u043C\u0430 \u0437\u0430\u0440\u0430\u0437 \u0430\u0431\u0440\u0438\u043A\u043E\u0441\u0438. \u0410 \u0442\u0443\u0442 \u2014 \u0441\u0445\u043E\u0434\u0438.",
-      "\u0414\u043E\u043D\u0435\u0447\u043A\u0430 \u0434\u0437\u0432\u043E\u043D\u0438\u043B\u0430. \u041A\u0430\u0436\u0435, \u0432\u0441\u0435 \u0434\u043E\u0431\u0440\u0435. \u041A\u0430\u0436\u0435.",
-      "\u0429\u0435 \u0434\u0432\u0430 \u043F\u043E\u0432\u0435\u0440\u0445\u0438, \u0456 \u0447\u0430\u0439."
-    ]
-  }),
-  /** By the Octavia, one cigarette into a bad week. */
-  marek: createNpc({
-    id: "pan-marek",
-    name: "Pan Marek",
-    build: "stout",
-    height: "short",
-    doing: "smoking",
-    look: {
-      skin: "tan",
-      hair: "grey",
-      hairStyle: "receding",
-      face: "moustache",
-      top: "jacket",
-      topColour: "charcoal",
-      bottom: "jeans",
-      bottomColour: "denim",
-      shoes: "boots",
-      shoeColour: "brown",
-      accent: "vest",
-      accentColour: "hiVis",
-      prop: "cigarette"
-    },
-    lines: [
-      "Kurwa, znowu kto\u015B zaj\u0105\u0142 moje miejsce.",
-      "Osiemna\u015Bcie lat na tym parkingu. Osiemna\u015Bcie.",
-      "Zim\u0105 to auto wstaje gorzej ni\u017C ja."
-    ]
-  }),
-  /** The one outside the klatka, permanently quitting on Monday. */
-  smoker: createNpc({
-    id: "smoker",
-    name: "S\u0105siad",
-    build: "regular",
-    height: "average",
-    doing: "smoking",
-    look: {
-      skin: "fair",
-      hair: "black",
-      hairStyle: "crop",
-      face: "stubble",
-      top: "hoodie",
-      topColour: "charcoal",
-      bottom: "jeans",
-      bottomColour: "charcoal",
-      shoes: "trainers",
-      shoeColour: "black",
-      prop: "cigarette"
-    },
-    lines: ["Rzucam od poniedzia\u0142ku.", "...Nie pytaj od kt\xF3rego.", "\u0141adny wiecz\xF3r, nie?"]
-  }),
-  /** The bench by block 14 is hers, and the pigeons know it. */
-  babcia: createNpc({
-    id: "babcia",
-    name: "Babcia Krysia",
-    build: "stout",
-    height: "short",
-    doing: "sitting",
-    look: {
-      skin: "pale",
-      hair: "white",
-      hairStyle: "bun",
-      face: "old",
-      hat: "kerchief",
-      hatColour: "maroon",
-      top: "coat",
-      topColour: "plum",
-      bottom: "skirt",
-      bottomColour: "charcoal",
-      shoes: "shoes",
-      shoeColour: "black",
-      accent: "shawl",
-      accentColour: "grey",
-      prop: "bag"
-    },
-    lines: [
-      "Za moich czas\xF3w tu by\u0142o pole.",
-      "Ty jeste\u015B ten z czternastki? Wysoki wyros\u0142e\u015B.",
-      "Nie karm ich chlebem. Kasz\u0105."
-    ]
-  }),
-  /** Outside the shop, on the phone to somebody who is not listening either. */
-  caller: createNpc({
-    id: "caller",
-    name: "S\u0105siad z telefonem",
-    build: "regular",
-    height: "average",
-    doing: "phoning",
-    look: {
-      skin: "olive",
-      hair: "black",
-      hairStyle: "receding",
-      head: "square",
-      brow: "heavy",
-      nose: "hook",
-      mouth: "set",
-      face: "stubble",
-      top: "jacket",
-      topColour: "brick",
-      bottom: "jeans",
-      bottomColour: "denim",
-      shoes: "shoes",
-      shoeColour: "brown",
-      propColour: "charcoal"
-    },
-    lines: [
-      "...no i m\xF3wi\u0119 jej: nie moja sprawa.",
-      "Halo? Halo. Nic nie s\u0142ycha\u0107.",
-      "Dobra, oddzwoni\u0119. Oddzwoni\u0119!"
-    ]
-  }),
-  /** Żabka, night shift, philosophical about it. */
-  zbyszek: createNpc({
-    id: "zbyszek",
-    name: "Pan Zbyszek",
-    build: "regular",
-    height: "short",
-    doing: "waiting",
-    look: {
-      skin: "fair",
-      hair: "grey",
-      hairStyle: "receding",
-      top: "shirt",
-      topColour: "green",
-      bottom: "trousers",
-      bottomColour: "charcoal",
-      shoes: "shoes",
-      shoeColour: "black",
-      accent: "lanyard",
-      accentColour: "green"
-    },
-    lines: ["Kawa czy energetyk? Bo to r\xF3\u017Cne filozofie.", "O tej porze to ju\u017C tylko my dwaj."]
-  }),
-  /** The cellar gym, four decades of squats, one opinion about your hips. */
-  trener: createNpc({
-    id: "trener",
-    name: "Trener",
-    build: "stout",
-    height: "short",
-    doing: "standing",
-    look: {
-      skin: "tan",
-      hair: "grey",
-      hairStyle: "crop",
-      face: "moustache",
-      hat: "cap",
-      hatColour: "navy",
-      top: "tracksuit",
-      topColour: "teal",
-      bottom: "tracksuit",
-      bottomColour: "charcoal",
-      shoes: "trainers",
-      shoeColour: "white",
-      accent: "lanyard",
-      accentColour: "mustard",
-      prop: "clipboard"
-    },
-    lines: [
-      "Plecy proste. Zawsze proste.",
-      "Ta gira jest starsza od ciebie i nigdy nie narzeka\u0142a.",
-      "Odpoczynek to cz\u0119\u015B\u0107 serii. Nie wstyd."
-    ]
-  }),
-  /** The square, with a bag of kasza and a full census of the pigeons. */
-  golebiarka: createNpc({
-    id: "golebiarka",
-    name: "Pani Go\u0142\u0119biarka",
-    build: "slim",
-    height: "short",
-    doing: "standing",
-    look: {
-      skin: "pale",
-      hair: "white",
-      hairStyle: "bun",
-      face: "old",
-      hat: "kerchief",
-      hatColour: "plum",
-      top: "coat",
-      topColour: "olive",
-      bottom: "skirt",
-      bottomColour: "brown",
-      shoes: "boots",
-      shoeColour: "black",
-      accent: "scarf",
-      accentColour: "maroon",
-      prop: "shopping"
-    },
-    lines: ["Ten siwy to Zbyszek. Po prezesie.", "Go\u0142\u0105b wszystko widzi. Dlatego tak patrzy."]
-  }),
-  /** InPost, a hundred and twenty parcels, four hours left. */
-  courier: createNpc({
-    id: "courier",
-    name: "Kurier",
-    build: "regular",
-    height: "short",
-    doing: "walking",
-    look: {
-      skin: "olive",
-      hair: "black",
-      hairStyle: "crop",
-      hat: "cap",
-      hatColour: "mustard",
-      top: "jacket",
-      topColour: "mustard",
-      bottom: "workpants",
-      bottomColour: "charcoal",
-      shoes: "trainers",
-      shoeColour: "black",
-      accent: "backpack",
-      accentColour: "charcoal",
-      prop: "shopping"
-    },
-    lines: ["Kovtun? Nie? To nie podpisujesz.", "Apka m\xF3wi, \u017Ce dam rad\u0119."]
-  }),
-  /** Żabka at 2am, sesja, energy drinks, unshakeable optimism. */
-  student: createNpc({
-    id: "student",
-    name: "Student",
-    build: "slim",
-    height: "average",
-    doing: "standing",
-    look: {
-      skin: "fair",
-      hair: "chestnut",
-      hairStyle: "curly",
-      top: "hoodie",
-      topColour: "maroon",
-      bottom: "jeans",
-      bottomColour: "denim",
-      shoes: "trainers",
-      shoeColour: "white",
-      accent: "backpack",
-      accentColour: "forest",
-      prop: "phone"
-    },
-    lines: ["Kolokwium o \xF3smej.", "Spanie jest dla ludzi po sesji."]
-  }),
-  /** Waiting outside the shop for someone who said two minutes. */
-  waiting: createNpc({
-    id: "waiting-man",
-    name: "Czekaj\u0105cy",
-    build: "regular",
-    height: "short",
-    doing: "waiting",
-    look: {
-      skin: "tan",
-      hair: "brown",
-      hairStyle: "short",
-      face: "stubble",
-      top: "shirt",
-      topColour: "navy",
-      bottom: "trousers",
-      bottomColour: "grey",
-      shoes: "shoes",
-      shoeColour: "brown",
-      accent: "tie",
-      accentColour: "maroon"
-    },
-    lines: ["Czekam na \u017Con\u0119. Dwie minuty, powiedzia\u0142a.", "Czterdzie\u015Bci minut temu."]
-  }),
-  /** Behind the Żabka counter at whatever hour you turn up. */
-  clerk: createNpc({
-    id: "zabka-clerk",
-    name: "Pani z \u017Babki",
-    build: "regular",
-    height: "short",
-    doing: "serving",
-    look: {
-      skin: "fair",
-      hair: "chestnut",
-      hairStyle: "ponytail",
-      top: "shirt",
-      topColour: "green",
-      bottom: "trousers",
-      bottomColour: "charcoal",
-      shoes: "trainers",
-      shoeColour: "white",
-      accent: "lanyard",
-      accentColour: "white"
-    },
-    lines: ["Dzie\u0144 dobry. Reklam\xF3wka?", "Kawa dzi\u015B dobrze idzie.", "Paragon w \u015Brodku."]
-  }),
-  /** Somebody in front of you in the queue, deciding. */
-  shopper: createNpc({
-    id: "zabka-customer",
-    name: "Klient",
-    build: "slim",
-    height: "short",
-    doing: "waiting",
-    look: {
-      skin: "olive",
-      hair: "black",
-      hairStyle: "undercut",
-      top: "hoodie",
-      topColour: "navy",
-      texture: "worn",
-      bottom: "jeans",
-      bottomColour: "denim",
-      shoes: "trainers",
-      shoeColour: "grey",
-      prop: "shopping"
-    },
-    lines: ["...a jednak wezm\u0119 t\u0119 drug\u0105.", "Zaraz, gdzie ja mam kart\u0119."]
-  }),
-  /** Reception at the gym: a fob, a smile, and the playlist is hers. */
-  kasia: createNpc({
-    id: "gym-kasia",
-    name: "Kasia",
-    build: "slim",
-    height: "short",
-    doing: "serving",
-    look: {
-      skin: "fair",
-      hair: "blond",
-      hairStyle: "ponytail",
-      top: "tshirt",
-      topColour: "black",
-      bottom: "tracksuit",
-      bottomColour: "black",
-      shoes: "trainers",
-      shoeColour: "white",
-      accent: "lanyard",
-      accentColour: "red"
-    },
-    lines: ["Karnet poprosz\u0119.", "Szatnia po prawej.", "Playlista moja, uprzedzam."]
-  }),
-  /** Treadmill two, twenty minutes in, watching the street go past. */
-  runner: createNpc({
-    id: "gym-runner",
-    name: "Biegacz",
-    build: "slim",
-    height: "average",
-    doing: "running",
-    look: {
-      skin: "tan",
-      hair: "black",
-      hairStyle: "crop",
-      top: "tank",
-      topColour: "sky",
-      bottom: "shorts",
-      bottomColour: "charcoal",
-      shoes: "trainers",
-      shoeColour: "red"
-    },
-    lines: ["...", "Jeszcze dwa kilometry."]
-  }),
-  /** Under the rack, between sets, considering the universe. */
-  lifter: createNpc({
-    id: "gym-lifter",
-    name: "Pakerz",
-    build: "stout",
-    height: "short",
-    doing: "lifting",
-    look: {
-      skin: "tan",
-      hair: "brown",
-      hairStyle: "shaved",
-      face: "beard",
-      top: "tank",
-      topColour: "maroon",
-      bottom: "shorts",
-      bottomColour: "black",
-      shoes: "trainers",
-      shoeColour: "black",
-      accent: "belt",
-      accentColour: "brown"
-    },
-    lines: ["Jeszcze jedna.", "Oddychaj, to po\u0142owa roboty."]
-  }),
-  /** Café Orbita, behind the machine, one eye on the queue. */
-  barista: createNpc({
-    id: "cafe-barista",
-    name: "Barista",
-    build: "slim",
-    height: "short",
-    doing: "serving",
-    look: {
-      skin: "olive",
-      hair: "black",
-      hairStyle: "topknot",
-      face: "stubble",
-      top: "shirt",
-      topColour: "denim",
-      texture: "check",
-      bottom: "jeans",
-      bottomColour: "charcoal",
-      shoes: "trainers",
-      shoeColour: "white",
-      accent: "apron",
-      accentColour: "charcoal"
-    },
-    lines: ["Flat white? Zaraz b\u0119dzie.", "Ziarno dzi\u015B etiopskie.", "Na miejscu czy na wynos?"]
-  }),
-  /** Somebody crossing the square who has somewhere to be. */
-  walker: createNpc({
-    id: "district-walker",
-    name: "Przechodzie\u0144",
-    build: "regular",
-    height: "short",
-    doing: "walking",
-    look: {
-      skin: "pale",
-      hair: "brown",
-      hairStyle: "curtains",
-      top: "coat",
-      topColour: "olive",
-      bottom: "trousers",
-      bottomColour: "charcoal",
-      shoes: "shoes",
-      shoeColour: "brown",
-      accent: "scarf",
-      accentColour: "maroon",
-      prop: "umbrella"
-    },
-    lines: ["Przepraszam.", "Zimno dzi\u015B, nie?"]
-  })
-};
-var NPC_LIST = Object.values(NPCS);
-var NPC_BY_OBJECT = Object.fromEntries(
-  NPC_LIST.map((npc) => [npc.id, npc])
-);
+// src/engine/ui/NpcActor.tsx
+var import_react7 = __toESM(require_react(), 1);
 
-// ../../../../tmp/claude-1000/-home-ivan-development-ivasik-k7-github-io/f21320c1-0d84-4730-a980-08806e2699a4/scratchpad/probe/heads.ts
-var names = Object.keys(NPCS);
-var COLS = 6;
-for (let i = 0; i < names.length; i += COLS) {
-  const group = names.slice(i, i + COLS);
-  console.log(group.map((n) => n.padEnd(11)).join(" "));
-  const maps = group.map((n) => {
-    const c = NPCS[n];
-    return (c.frames.stand ?? c.frames[Object.keys(c.frames)[0]]).slice(0, 9);
-  });
-  for (let r = 0; r < 9; r++) {
-    console.log(maps.map((m) => (m[r] ?? "").slice(5, 19).replace(/\./g, " ").padEnd(11)).join("|"));
+// src/game/apartment/player.ts
+var HEAD = [
+  "........................",
+  "..........kkkkkkK.......",
+  ".........KhhhhhhK.......",
+  ".........mHhhhHhh.......",
+  ".........mHsysses.......",
+  ".........mSssssss.......",
+  "..........Sssffs........"
+];
+var TORSO = [
+  "......TmmmtttttttT......",
+  "...TmmttttttttttttttT...",
+  "...TmtttttttttttttttT...",
+  "...TttttttttttttttttT...",
+  "...TttttttttttttttttT...",
+  "....TttttttttttttttT....",
+  "....TttttttttttttttT....",
+  ".....TttttttttttttT.....",
+  ".....TttttttmmmmttT.....",
+  ".....TttttttmmmmttT.....",
+  "......TttttttttttT......",
+  "......TttttttttttT......",
+  "......qppppppppppq......"
+];
+var LEGS_STAND2 = [
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qpp....ppq.......",
+  ".......qpp....ppq.......",
+  ".......qpp....ppq.......",
+  ".......qpp....ppq.......",
+  ".......spp....pps.......",
+  ".......bbb....bbb.......",
+  "......bbbb....bbbb......",
+  "......BBBB....BBBB......"
+];
+var LEGS_STRIDE2 = [
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  ".....qpppp..ppppq.......",
+  ".....qpppp...ppppq......",
+  "....qpppp....ppppq......",
+  "....qppp......pppq......",
+  "....qppp......pppq......",
+  "...qppp........pppq.....",
+  "...qppp........pppq.....",
+  "...qppp........pppq.....",
+  "..qppp..........pppq....",
+  "..qppp..........pppq....",
+  "..qpp............ppq....",
+  "..qpp............ppq....",
+  "..spp............pps....",
+  "..bbb............bbb....",
+  ".bbbb............bbbb...",
+  ".BBBB............BBBB..."
+];
+var LEGS_PASS2 = [
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qppQQpppppq.......",
+  "......qppQQpppppq.......",
+  ".......qpQQppppq........",
+  ".......qpQQppppq........",
+  ".......qpQQpppq.........",
+  ".......qpQQpppq.........",
+  ".......qpQ.pppq.........",
+  ".......qpQ.pppq.........",
+  ".......qpQ.ppq..........",
+  ".......qpQ.ppq..........",
+  "........qQ.ppq..........",
+  "........qQ.ppq..........",
+  "........sQ.pps..........",
+  "........bb.bbb..........",
+  ".......bbb.bbbb.........",
+  ".......BBB.BBBB........."
+];
+var LEGS_STRIDE_LOW = [
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qpppp..ppppq......",
+  ".....qpppp...ppppq......",
+  ".....qppp.....pppq......",
+  "....qppp......pppq......",
+  "....qppp.......pppq.....",
+  "....qppp.......pppq.....",
+  "...qppp.........pppq....",
+  "...qppp.........pppq....",
+  "...qpp...........ppq....",
+  "...qpp...........ppq....",
+  "...qpp...........ppq....",
+  "...qpp...........ppq....",
+  "...spp...........pps....",
+  "...bbb...........bbb....",
+  "..bbbb...........bbbb...",
+  "..BBBB...........BBBB..."
+];
+var LEGS_BENT2 = [
+  "........................",
+  "........................",
+  "......qppppppppppq......",
+  ".....qppppppppppppq.....",
+  ".....qppppppppppppq.....",
+  ".....qpppppppppppq......",
+  ".....qppppp..ppppq......",
+  "....qppppp....ppppq.....",
+  "....qpppp......pppq.....",
+  "....qppp.......pppq.....",
+  "....qppp.......pppq.....",
+  "....qppp.......pppq.....",
+  "....qpp.........ppq.....",
+  "....qpp.........ppq.....",
+  "....spp.........pps.....",
+  "....bbb.........bbb.....",
+  "...bbbb.........bbbb....",
+  "...BBBB.........BBBB...."
+];
+var LEGS_SIT = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "......qppppppppppq......",
+  "......qpppppppppppppq...",
+  "......qppppppppppppppq..",
+  "......qppppppppppppppq..",
+  "................qppppq..",
+  "................qppppq..",
+  "................qppppq..",
+  "................qpppq...",
+  "................qpppq...",
+  "................qpppq...",
+  "................spps....",
+  "................bbbb....",
+  "...............bbbbbb...",
+  "...............BBBBBB..."
+];
+var LEGS_TIPTOE2 = [
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qpp....ppq.......",
+  ".......qpp....ppq.......",
+  ".......qpp....ppq.......",
+  ".......qpp....ppq.......",
+  ".......spp....pps.......",
+  ".......bbb....bbb.......",
+  ".......bb......bb......."
+];
+var LEGS_KNEEL = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......ppp....ppp.......",
+  "....qqppp...qppp........",
+  "..ppppp...ppppp.........",
+  "..bbb.....bbb...........",
+  "..BBB.....BBB..........."
+];
+var BACK_HEAD = [
+  "........................",
+  ".........KkkkkkkK.......",
+  ".........HhhhhhhH.......",
+  ".........hhhhhhhh.......",
+  ".........hhhhhhhh.......",
+  ".........HhhhhhhH.......",
+  "..........Ssssss........"
+];
+var BACK_TORSO = [
+  "......TtttmmmmtttT......",
+  "...TtttttmmmmmmtttttT...",
+  "...TtttttmMMMMmtttttT...",
+  "...TttttttMMMMttttttT...",
+  "...TttttttttttttttttT...",
+  "....TttttttttttttttT....",
+  "....TttttttttttttttT....",
+  ".....TttttttttttttT.....",
+  ".....TttttttttttttT.....",
+  "......TttttttttttT......",
+  "......TttttttttttT......",
+  "......TttttttttttT......",
+  "......qppppppppppq......"
+];
+var BACK_LEGS_KNEEL = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  "......bqppp..pppqb......",
+  ".....bBqppp..pppqBb.....",
+  ".....BBqppp..pppqBB.....",
+  ".......qppp..pppq......."
+];
+var BACK_TORSO_BARE = [
+  "......SssssssssssS......",
+  "...SsyyssssssssssyysS...",
+  "...SsyyssssssssssyysS...",
+  "...SsssssssSSsssssssS...",
+  "...SsssssssSSsssssssS...",
+  "....SssssssSSssssssS....",
+  "....SssssssSSssssssS....",
+  ".....SsssssSSsssssS.....",
+  ".....SssssssssssssS.....",
+  "......SssssssssssS......",
+  "......SssssssssssS......",
+  "......SssssssssssS......",
+  "......SssssssssssS......"
+];
+var BACK_LEGS_BARE = [
+  "......SssssssssssS......",
+  "......SssssssssssS......",
+  "......Sssss..ssssS......",
+  "......Sssss..ssssS......",
+  "......Sssss..ssssS......",
+  "......Sssss..ssssS......",
+  ".......Ssss..sssS.......",
+  ".......Ssss..sssS.......",
+  ".......Ssss..sssS.......",
+  ".......Ssss..sssS.......",
+  ".......Sss....ssS.......",
+  ".......Sss....ssS.......",
+  ".......Sss....ssS.......",
+  ".......Sss....ssS.......",
+  ".......sss....sss.......",
+  ".......sss....sss.......",
+  "......ssss....ssss......",
+  "......SSSS....SSSS......"
+];
+var waterRows = (off) => Array.from({ length: 32 }, (_, i) => (i + off) % 2 === 0 ? "c...c...c" : ".........");
+var LEGS_IDLE_SHIFT = [
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppqq......",
+  ".......qppp..qpppq......",
+  ".......qpp....qppq......",
+  ".......qpp....qppq......",
+  ".......qpp.....ppq......",
+  ".......qpp.....ppq......",
+  ".......spp.....pps......",
+  ".......bbb.....bbb......",
+  "......bbbb.....bbbb.....",
+  "......BBBB.....BBBB....."
+];
+var P = {
+  farArm: {
+    r: 8,
+    c: 2,
+    rows: ["Tt", "Tt", "TS", "SS", "SS", "SS", ".S", ".S", "SS", "SS", ".S", ".S", ".S", ".S"]
+  },
+  armDown: {
+    r: 8,
+    c: 19,
+    rows: [
+      "ttt",
+      "ttt",
+      "tss",
+      "sys",
+      "sys",
+      "sss",
+      ".ss",
+      ".ss",
+      "sss",
+      "sss",
+      ".ss",
+      ".ss",
+      ".sS",
+      ".SS"
+    ]
+  },
+  farArmFwd: {
+    r: 8,
+    c: 3,
+    rows: ["Tt", "Tt", "TS", "SS", ".S", ".S", "SS", "SS", ".S", ".S"]
+  },
+  farArmBack: {
+    r: 8,
+    c: 1,
+    rows: [".Tt", ".Tt", "TS.", "SS.", "S..", "S..", "S..", "S..", "S..", "S.."]
+  },
+  armSwingFwd: {
+    r: 8,
+    c: 20,
+    rows: ["tt.", "tt.", "ss.", "ss.", "ss.", ".ss", ".ss", ".ss", ".ss", ".sS"]
+  },
+  armSwingBack: {
+    r: 8,
+    c: 15,
+    rows: [
+      "...ttt",
+      "...ttt",
+      "..tss.",
+      "..sss.",
+      ".sss..",
+      ".ss...",
+      "ss....",
+      "ss....",
+      "sS....",
+      "S....."
+    ]
+  },
+  armReach: {
+    r: 6,
+    c: 18,
+    rows: ["...ss", "..sss", ".sss.", "ttt..", "ttt.."]
+  },
+  armUpBoth: {
+    r: 2,
+    c: 4,
+    rows: [
+      "s...............s",
+      "s...............s",
+      "S...............s",
+      "S...............s",
+      "t...............t",
+      "tt.............tt"
+    ]
+  },
+  armPhone: {
+    r: 5,
+    c: 17,
+    rows: ["...cc", "..sss", ".sss.", "tss..", "tt..."]
+  },
+  armMug: { r: 10, c: 18, rows: [".ccc", ".sss", "sss.", "tt.."] },
+  armMugUp: {
+    r: 6,
+    c: 16,
+    rows: ["..ccc", "..sss", "..ss.", ".ss..", "tt..."]
+  },
+  // forearms converging to clasped hands at the waist
+  handsFold: {
+    r: 12,
+    c: 3,
+    rows: [
+      "SS..............ss",
+      "SSS............sss",
+      ".SSs........ssss..",
+      "..sssssssssss.....",
+      "...ssssssss......."
+    ]
+  },
+  armGuardHigh: {
+    r: 6,
+    c: 16,
+    rows: ["..sss", ".sss.", "tss..", "ttt..", "tt..."]
+  },
+  armGuardLow: {
+    r: 10,
+    c: 17,
+    rows: ["ssss", "sss.", "tt..", "t..."]
+  },
+  cigLean: { r: 9, c: 19, rows: ["ttt", "tss", "sss", ".sc", "..o"] },
+  // the smoke cycle: cig at the hip, halfway up, and at the lips
+  armCigDown: {
+    r: 8,
+    c: 19,
+    rows: [
+      "ttt",
+      "ttt",
+      "tss",
+      "sys",
+      "sys",
+      "sss",
+      ".ss",
+      ".ss",
+      "sss",
+      "sss",
+      ".ss",
+      ".ss",
+      ".sc",
+      "..o"
+    ]
+  },
+  armCigHalf: {
+    r: 7,
+    c: 17,
+    rows: ["....", "ss..", "ssco", "ts..", "tt..", "tt.."]
+  },
+  // the guitar, slung across the body: honeyed top (w/W), dark neck rising
+  // forward to the headstock, soundhole toward the bridge. Drawn over the
+  // shirt; the fretting hand and the strumming arm patch on top of it.
+  guitarBody: {
+    r: 7,
+    c: 5,
+    rows: [
+      "................nnR",
+      "...............WWn.",
+      "..............WW...",
+      ".............WW....",
+      "............WW.....",
+      "...........WW......",
+      ".WwwwwwwwwWW.......",
+      "Wwwwwwwwwwwww......",
+      "WwwwnnwwwwwRw......",
+      "Wwwwwwwwwwwww......",
+      "WWwwwwwwwwwwW......",
+      ".WWWWWWWWWWWW......"
+    ]
+  },
+  // fretting hand gripping the neck just under the headstock (patched LAST,
+  // over both the neck and the strumming arm, so the fingers stay visible)
+  gtrFret: { r: 8, c: 20, rows: ["ss", "sS"] },
+  // one position lower — the chord change
+  gtrFretLow: { r: 10, c: 18, rows: ["ss", "sS"] },
+  // strumming arm at the top of the stroke, hand over the upper bout
+  gtrStrumUp: {
+    r: 8,
+    c: 10,
+    rows: [
+      "........ttt",
+      "........tt.",
+      ".........s.",
+      "........s..",
+      ".....sss...",
+      ".ssss......"
+    ]
+  },
+  // and swept through to the lower bout
+  gtrStrumDown: {
+    r: 8,
+    c: 10,
+    rows: [
+      "........ttt",
+      "........tt.",
+      ".........s.",
+      "........s..",
+      "........s..",
+      ".......s...",
+      ".....ss....",
+      "..sss......",
+      ".ss........"
+    ]
+  },
+  // back view: both arms hanging at the silhouette edges
+  backArms: {
+    r: 8,
+    c: 2,
+    rows: [
+      "tt................tt",
+      "tt................tt",
+      "ts................st",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".S................S."
+    ]
+  },
+  // back view: elbows tuck in, forearms vanish forward — hands folded in prayer
+  backArmsFold: {
+    r: 8,
+    c: 2,
+    rows: [
+      "tt................tt",
+      "tt................tt",
+      "ts................st",
+      ".ss..............ss.",
+      "..ss............ss..",
+      "...s............s..."
+    ]
+  },
+  // shower: bare arms hanging at the silhouette
+  bareArmsDown: {
+    r: 8,
+    c: 2,
+    rows: [
+      "ss................ss",
+      "ss................ss",
+      "ss................ss",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".s................s.",
+      ".S................S."
+    ]
+  },
+  // right arm up to the shower tap, left hanging
+  showerTapArm: {
+    r: 3,
+    c: 2,
+    rows: [
+      "...............ss...",
+      "...............ss...",
+      "................ss..",
+      ".................s..",
+      ".................s..",
+      "ss................s.",
+      "ss..................",
+      ".s..................",
+      ".s..................",
+      ".s..................",
+      ".s..................",
+      ".s..................",
+      ".S.................."
+    ]
+  },
+  // both hands on the head — on the clothed torso this reads as a shirt
+  // coming off over the head; on the bare one, as washing the hair
+  washHairBoth: {
+    r: 2,
+    c: 4,
+    rows: [
+      "....ss....ss....",
+      "...ss......ss...",
+      "..ss........ss..",
+      ".ss..........ss.",
+      "ss............ss",
+      "s..............s"
+    ]
+  },
+  // hands scrubbing the ribs, elbows wide
+  scrubTorso: {
+    r: 8,
+    c: 3,
+    rows: [
+      "s................s",
+      "ss..............ss",
+      ".ss............ss.",
+      "..ss..........ss..",
+      "...ss........ss..."
+    ]
+  },
+  // the towel, wrapped where a towel goes
+  towelWrap: {
+    r: 19,
+    c: 6,
+    rows: ["cccccccccccc", "cccccccccccc", ".cccccccccc."]
+  },
+  // the clothes, where clothes actually land
+  clothesPile: {
+    r: 34,
+    c: 1,
+    rows: ["..ttt", "ttttp", "tpppp"]
+  },
+  waterA: { r: 2, c: 8, rows: waterRows(0) },
+  waterB: { r: 2, c: 8, rows: waterRows(1) },
+  // pee stance: elbows out a little, forearms angling forward and down,
+  // hands vanishing in front — everything stays off-screen except posture
+  peeArms: {
+    r: 8,
+    c: 2,
+    rows: [
+      "tt................tt",
+      "tt................tt",
+      "ts................st",
+      ".ss..............ss.",
+      "..s..............s..",
+      "..ss............ss..",
+      "...s............s..."
+    ]
+  },
+  // back view, sign of the cross: right hand up beside the head (forehead)
+  backCrossHigh: {
+    r: 3,
+    c: 2,
+    rows: [
+      "...............ss...",
+      "...............ss...",
+      "................ss..",
+      "................ss..",
+      ".................s..",
+      "tt................tt",
+      "tt................tt",
+      "ts..................",
+      ".s..................",
+      ".s..................",
+      ".s..................",
+      ".s..................",
+      ".S.................."
+    ]
+  },
+  // ...elbow winging out high — the hand crosses to the far shoulder
+  backCrossL: {
+    r: 8,
+    c: 2,
+    rows: [
+      "tt................tt",
+      "tt...............sss",
+      "ts................ss",
+      ".s..................",
+      ".s..................",
+      ".s..................",
+      ".s..................",
+      ".S.................."
+    ]
+  },
+  // ...and low — the hand at the near shoulder
+  backCrossR: {
+    r: 8,
+    c: 2,
+    rows: [
+      "tt................tt",
+      "tt................tt",
+      "ts................ss",
+      ".s...............sss",
+      ".s................s.",
+      ".s..................",
+      ".s..................",
+      ".S.................."
+    ]
+  },
+  // sign of the cross — four stations of the right hand
+  crossForehead: {
+    r: 2,
+    c: 15,
+    rows: ["..ss", ".sss", ".ss.", ".ss.", "ss..", "ss..", "ts..", "tt.."]
+  },
+  crossChest: {
+    r: 8,
+    c: 12,
+    rows: ["....tt", "...tss", "..sss.", ".ss...", "ss...."]
+  },
+  crossFar: {
+    r: 8,
+    c: 4,
+    rows: [".............tt", ".........sssss.", "....sssss......", "..sss.........."]
+  },
+  crossNear: {
+    r: 8,
+    c: 13,
+    rows: ["..sst", ".sss.", "ss..."]
+  },
+  armReachHalf: {
+    r: 7,
+    c: 18,
+    rows: ["..ss", ".sss", "tss.", "tt..", "tt.."]
+  },
+  // petting the dog — final-space arms that actually reach his back
+  armPetA: {
+    r: 12,
+    c: 16,
+    rows: [
+      "tt...",
+      "ts...",
+      "ss...",
+      ".ss..",
+      ".ss..",
+      ".ss..",
+      "..ss.",
+      "..ss.",
+      "..ss.",
+      "..ss.",
+      "...ss",
+      "...ss",
+      "...ss",
+      "...ss",
+      "...ss",
+      "...ss",
+      "...sS",
+      "...SS"
+    ]
+  },
+  armPetB: {
+    r: 12,
+    c: 14,
+    rows: [
+      "..tt.",
+      "..ts.",
+      ".ss..",
+      ".ss..",
+      "ss...",
+      "ss...",
+      "ss...",
+      ".ss..",
+      ".ss..",
+      ".ss..",
+      ".ss..",
+      "..ss.",
+      "..ss.",
+      "..ss.",
+      "..ss.",
+      "..sS.",
+      "..SS."
+    ]
+  },
+  // scratch behind the ear: short fast wiggle near the dog's head
+  armScratchA: {
+    r: 12,
+    c: 15,
+    rows: [
+      "tt..",
+      "ts..",
+      "ss..",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      "..ss",
+      "..sS",
+      "..s."
+    ]
+  },
+  armScratchB: {
+    r: 12,
+    c: 15,
+    rows: [
+      "tt..",
+      "ts..",
+      "ss..",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      "..ss",
+      "..ss",
+      "..Ss",
+      "...s"
+    ]
+  },
+  // kettlebell passing the knees on its arc
+  giriaMid: {
+    r: 9,
+    c: 6,
+    rows: [
+      "t............t",
+      "s............s",
+      ".s..........s.",
+      ".s..........s.",
+      "..s........s..",
+      "..s........s..",
+      "...sGGGGGGs...",
+      "...gggggggg...",
+      "....gggggg...."
+    ]
+  },
+  // kettlebell stations in FINAL frame space (patched after pose transforms)
+  giriaFloor: {
+    r: 11,
+    c: 6,
+    rows: [
+      "s..........s",
+      "s..........s",
+      ".s........s.",
+      ".s........s.",
+      ".s........s.",
+      "..s......s..",
+      "..s......s..",
+      "..s......s..",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...sGGGGs...",
+      "....gggg....",
+      "...gggggg...",
+      "...gggggg...",
+      "....gggg...."
+    ]
+  },
+  giriaBack: {
+    r: 11,
+    c: 2,
+    rows: [
+      "........s......s",
+      ".......s......s.",
+      "......s.....s...",
+      ".....s.....s....",
+      "....s.....s.....",
+      "...s.....s......",
+      "...s....s.......",
+      "..s....s........",
+      "..s...s.........",
+      ".s...s..........",
+      ".s..s...........",
+      ".sGGs...........",
+      "gggg............",
+      "gggggg..........",
+      "gggggg..........",
+      ".gggg..........."
+    ]
+  },
+  giriaHang: {
+    r: 11,
+    c: 6,
+    rows: [
+      "s..........s",
+      "s..........s",
+      ".s........s.",
+      ".s........s.",
+      "..s......s..",
+      "..s......s..",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...s....s...",
+      "...sGGGGs...",
+      "....gggg....",
+      "...gggggg...",
+      "...gggggg...",
+      "....gggg...."
+    ]
+  },
+  giriaChest: {
+    r: 9,
+    c: 6,
+    rows: ["ssssssssssssGGGG", "ssssssssssssgggg", "............gggg", ".............gg."]
+  },
+  armCigLips: {
+    r: 5,
+    c: 16,
+    rows: ["sco", "ss.", "ss.", "ts.", "tt.", "tt."]
+  },
+  // the coal lights the face on the draw: a halo around the ember, one warm
+  // pixel on the brow and the lip — quantized light, one tier, no gradients
+  emberFace: {
+    r: 4,
+    c: 16,
+    rows: ["y.xx", "y..x", "..x."]
+  },
+  // the deep drag: the halo widens while the core burns white (smokeD swaps o→c)
+  emberFlare: {
+    r: 4,
+    c: 16,
+    rows: ["yyxx", "y.xx", ".xx."]
+  },
+  // the cigarette smokes itself at the hip — a thin curl, two phases so it
+  // wavers between frames the way the water alternates in the shower
+  wispA: {
+    r: 9,
+    c: 21,
+    rows: [".v.", "..v", ".v.", "..v", ".v.", ".v.", "..v", ".v.", "..v", ".v."]
+  },
+  wispB: {
+    r: 9,
+    c: 21,
+    rows: ["..v", ".v.", "..v", ".v.", "..v", "..v", ".v.", "..v", ".v.", "..v"]
+  },
+  // the exhale: dense at the lips, then dispersed and climbing
+  puffA: {
+    r: 1,
+    c: 16,
+    rows: ["..vv...", ".vvvv..", "..vvv..", "...vv..", "....v.."]
+  },
+  puffB: {
+    r: 0,
+    c: 17,
+    rows: [".v.v.v.", "v.vvv.v", ".v.v.v.", "...v...", "......."]
+  },
+  // kettlebell, two-handed: arms straight down to the bell between the knees,
+  // then swung out to chest height on the way up
+  giriaLow: {
+    r: 9,
+    c: 4,
+    rows: [
+      "t..............t",
+      "s..............s",
+      "s..............s",
+      ".s............s.",
+      ".s............s.",
+      "..s..........s..",
+      "..s..........s..",
+      "..s..........s..",
+      "..s..........s..",
+      "...sGGGGGGGGs...",
+      "....gggggggg....",
+      "....gggggggg....",
+      ".....gggggg....."
+    ]
+  },
+  giriaHigh: {
+    r: 6,
+    c: 14,
+    rows: ["....ss..", "...sGGs.", "..sgggg.", "tssgggg.", "tt.gg..."]
+  },
+  // barbell across the frame: bar R with plates P, full 24 columns
+  barRack: {
+    r: 10,
+    c: 0,
+    rows: ["PP..RRRRRRRRRRRRRRRR..PP", "PP....................PP"]
+  },
+  barUp: {
+    r: 1,
+    c: 0,
+    rows: ["PP..RRRRRRRRRRRRRRRR..PP", "PP....................PP"]
+  },
+  armsRack: {
+    r: 10,
+    c: 4,
+    rows: ["s..............s", "s..............s", "t..............t", "t..............t"]
+  },
+  armsUp: {
+    r: 2,
+    c: 5,
+    rows: [
+      "s............s",
+      "s............s",
+      "s............s",
+      "S............s",
+      "t............t",
+      "tt..........tt"
+    ]
   }
-  console.log("");
+};
+var LYING_A = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "..hhhh...........uuu....",
+  ".hhhhhh..uuuuuuuuuuuu...",
+  ".hssssh.uuuuuuuuuuuuuu..",
+  ".hsSsShuuuuuuuuuuuuuuuu.",
+  ".hsssshuuussssuuuuuuuuU.",
+  "..ssss.uuuuuuuuuuuuuuuU.",
+  "......Uuuuuuuuuuuuuuuu..",
+  "......Uuuuuuuuuuuuuuuu..",
+  ".....UUuuuuuuuuuuuuuuU..",
+  ".....UUUUUUUUUUUUUUUUU..",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................"
+];
+var LYING_B = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "..hhhh...uuuuu...uuu....",
+  ".hhhhhh.uuuuuuuuuuuuu...",
+  ".hssssh.uuuuuuuuuuuuuu..",
+  ".hsSsShuuuuuuuuuuuuuuuu.",
+  ".hsssshuuussssuuuuuuuuU.",
+  "..ssss.uuuuuuuuuuuuuuuU.",
+  "......Uuuuuuuuuuuuuuuu..",
+  "......Uuuuuuuuuuuuuuuu..",
+  ".....UUuuuuuuuuuuuuuuU..",
+  ".....UUUUUUUUUUUUUUUUU..",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................"
+];
+var LYING_SIDE = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "..hhhh......uuu..uuu....",
+  ".hhhhhh..uuuuuuuuuuuu...",
+  ".hhhssh.uuuuuuuuuuuuuu..",
+  ".hhssShuuuuuuuuuuuuuuuu.",
+  ".hhssshuuuuuuuuuuuuuuuU.",
+  "..sss..uuuuuuuuuuuuuuuU.",
+  "......Uuuuuuuuuuuuuuuu..",
+  "......Uuuuuuuuuuuuuuuu..",
+  ".....UUuuuuuuuuuuuuuuU..",
+  ".....UUUUUUUUUUUUUUUUU..",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................"
+];
+var LYING_SIT = [
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "...hhhh.................",
+  "..hhhhhh................",
+  "..hssssh................",
+  "..hseseh................",
+  "..hssssh................",
+  "...ssss.................",
+  "..tttttt................",
+  ".tttttttt...............",
+  ".tttttttt...............",
+  ".stttttts...............",
+  ".stttttts...............",
+  ".stttttts...............",
+  "..s....s................",
+  "..uuuuuuuuuuuuuuuuuuuu..",
+  ".uuuuuuuuuuuuuuuuuuuuU..",
+  ".uuuuuuuuuuuuuuuuuuuuU..",
+  ".UUUUUUUUUUUUUUUUUUUUU..",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................"
+];
+function bowHead(map, depth = 1, top = 0) {
+  const width = map[0]?.length ?? 24;
+  const empty = ".".repeat(width);
+  const before = map.slice(0, top);
+  const head = map.slice(top, top + 7);
+  const after = map.slice(top + 7);
+  return [
+    ...before,
+    ...Array.from({ length: depth }, () => empty),
+    ...head.slice(0, head.length - depth),
+    ...after
+  ];
+}
+function dropBody(map, depth) {
+  const width = map[0]?.length ?? 24;
+  const empty = ".".repeat(width);
+  const body = map.slice(0, 20 - depth);
+  const legs = map.slice(20);
+  const dropped = [...Array.from({ length: depth }, () => empty), ...body];
+  const overlapTop = map.slice(20 - depth, 20);
+  const merged = legs.map((legRow, i) => {
+    if (i >= depth) return legRow;
+    const bodyRow = overlapTop[i] ?? empty;
+    return legRow.split("").map((ch, c) => ch === "." || ch === " " ? bodyRow[c] ?? "." : ch).join("");
+  });
+  return [...dropped, ...merged];
+}
+function raiseChin(map, top = 0) {
+  const width = map[0]?.length ?? 24;
+  const empty = ".".repeat(width);
+  const before = map.slice(0, top);
+  const head = map.slice(top, top + 7);
+  const after = map.slice(top + 7);
+  return [...before, ...head.slice(1), empty, ...after];
+}
+var b = createCharacter({ palette: PLAYER_PALETTE, cell: 2, walkSpeed: 72 });
+b.part("head", HEAD).part("torso", TORSO).part("legsStand", LEGS_STAND2).part("legsStride", LEGS_STRIDE2).part("legsPass", LEGS_PASS2).part("legsStrideLow", LEGS_STRIDE_LOW).part("legsBent", LEGS_BENT2).part("legsSit", LEGS_SIT).part("legsKneel", LEGS_KNEEL).part("backHead", BACK_HEAD).part("backTorso", BACK_TORSO).part("backLegsKneel", BACK_LEGS_KNEEL).part("backTorsoBare", BACK_TORSO_BARE).part("backLegsBare", BACK_LEGS_BARE).part("legsIdleShift", LEGS_IDLE_SHIFT).part("legsTiptoe", LEGS_TIPTOE2);
+var base = (legs) => (f) => f.stack("head", "torso", legs).patch(P.farArm);
+b.frame("stand", (f) => base("legsStand")(f).patch(P.armDown));
+b.variant("idleB", "stand", (m) => dropBody(m, 1));
+b.variant("blink", "stand", (m) => replaceColor(m, "e", "s"));
+b.variant("lookBack", "stand", (m) => mirrorRows(m, 0, 6));
+b.frame(
+  "leanIdle",
+  (f) => f.stack("head", "torso", "legsIdleShift").patch(P.farArm).patch(P.armSwingBack)
+);
+b.frame("stretchA", (f) => base("legsStand")(f).patch(P.armUpBoth));
+b.frame("stretchB", (f) => base("legsTiptoe")(f).patch(P.armUpBoth));
+b.frame(
+  "squat",
+  (f) => base("legsBent")(f).patch(P.armDown).map((m) => dropBody(m, 2))
+);
+b.frame(
+  "stride",
+  (f) => f.stack("head", "torso", "legsStride").patch(P.farArmFwd).patch(P.armSwingBack)
+);
+b.frame("pass", (f) => base("legsPass")(f).patch(P.armDown));
+b.frame(
+  "strideLow",
+  (f) => f.stack("head", "torso", "legsStrideLow").patch(P.farArmBack).patch(P.armSwingFwd).map((m) => dropBody(m, 1))
+);
+b.frame(
+  "reach",
+  (f) => base("legsStand")(f).map((m) => bowHead(m)).patch(P.armReach)
+);
+b.frame(
+  "sit",
+  (f) => f.stack("head", "torso", "legsSit").patch(P.farArm).patch(P.armDown).map((m) => dropBody(m, 4))
+);
+b.variant("sitBack", "sit", (m) => bowHead(dropBody(m, 1), 1, 5));
+b.frame(
+  "sitSlouch",
+  (f) => f.stack("head", "torso", "legsSit").patch(P.farArm).map((m) => bowHead(dropBody(m, 5), 2, 5)).patch({ r: 14, c: 15, rows: ["tt.", "ss.", "ss.", ".ss", ".ss", ".sS"] })
+);
+b.frame(
+  "sitCross",
+  (f) => f.stack("head", "torso", "legsSit").patch(P.farArm).patch(P.armDown).map((m) => dropBody(m, 4)).patch({ r: 27, c: 6, rows: ["....ppppp", "pppppp...", "bb......."] })
+);
+b.frame("bedLie", (f) => f.raw(LYING_A));
+b.frame("bedLieB", (f) => f.raw(LYING_B));
+b.frame("bedSide", (f) => f.raw(LYING_SIDE));
+b.frame("bedSitUp", (f) => f.raw(LYING_SIT));
+b.frame(
+  "crouch",
+  (f) => base("legsBent")(f).patch(P.armDown).map((m) => dropBody(m, 2))
+);
+b.variant("crouchB", "crouch", (m) => bowHead(m, 1, 2));
+b.frame(
+  "swingSetup",
+  (f) => f.stack("head", "torso", "legsBent").map((m) => bowHead(dropBody(m, 2), 2, 2)).patch(P.giriaFloor)
+);
+b.frame(
+  "swingHike",
+  (f) => f.stack("head", "torso", "legsBent").map((m) => bowHead(dropBody(m, 2), 2, 2)).patch(P.giriaBack)
+);
+b.frame(
+  "swingDown",
+  (f) => f.stack("head", "torso", "legsBent").patch(P.giriaLow).map((m) => bowHead(dropBody(m, 2), 1, 2))
+);
+b.frame("swingUp", (f) => f.stack("head", "torso", "legsStand").patch(P.giriaChest));
+b.frame(
+  "pressRack",
+  (f) => f.stack("head", "torso", "legsStand").patch(P.armsRack).patch(P.barRack)
+);
+b.frame(
+  "pressDip",
+  (f) => f.stack("head", "torso", "legsBent").patch(P.armsRack).patch(P.barRack).map((m) => dropBody(m, 2))
+);
+b.frame("pressUp", (f) => f.stack("head", "torso", "legsStand").patch(P.armsUp).patch(P.barUp));
+b.frame("samboA", (f) => base("legsStride")(f).patch(P.armGuardHigh));
+b.frame(
+  "samboB",
+  (f) => base("legsBent")(f).patch(P.armGuardLow).map((m) => dropBody(m, 2))
+);
+b.frame(
+  "samboC",
+  (f) => base("legsBent")(f).patch(P.armGuardHigh).map((m) => dropBody(m, 2))
+);
+b.frame("phoneA", (f) => base("legsStand")(f).patch(P.armPhone));
+b.variant("phoneB", "phoneA", (m) => bowHead(m));
+b.frame("drinkA", (f) => base("legsStand")(f).patch(P.armMug));
+b.frame("drinkB", (f) => base("legsStand")(f).patch(P.armMugUp));
+b.variant("drinkD", "drinkB", (m) => raiseChin(m));
+b.frame("crossA", (f) => base("legsStand")(f).patch(P.crossForehead));
+b.frame("crossB", (f) => base("legsStand")(f).patch(P.crossChest));
+b.frame("crossC", (f) => base("legsStand")(f).patch(P.crossFar));
+b.frame("crossD", (f) => base("legsStand")(f).patch(P.crossNear));
+b.frame(
+  "kneel",
+  (f) => f.stack("head", "torso", "legsKneel").patch(P.farArm).patch(P.handsFold).map((m) => dropBody(m, 6))
+);
+b.variant("kneelBow", "kneel", (m) => bowHead(m, 1, 6));
+b.variant("kneelDeep", "kneel", (m) => bowHead(m, 2, 6));
+b.frame("backStand", (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.backArms));
+b.frame(
+  "backPray",
+  (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.backArmsFold).map((m) => bowHead(m, 1))
+);
+b.frame(
+  "backCrossHead",
+  (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.backCrossHigh)
+);
+b.frame("backCrossL", (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.backCrossL));
+b.frame("backCrossR", (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.backCrossR));
+b.frame(
+  "backKneel",
+  (f) => f.stack("backHead", "backTorso", "backLegsKneel").patch(P.backArmsFold).map((m) => dropBody(m, 6))
+);
+b.variant("backKneelBow", "backKneel", (m) => bowHead(m, 1, 6));
+b.variant("backKneelDeep", "backKneel", (m) => bowHead(m, 2, 6));
+b.frame(
+  "undress",
+  (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.washHairBoth).map((m) => bowHead(m, 1))
+);
+var bareHead = (m) => replaceColor(replaceColor(m, "k", "h"), "K", "H");
+b.frame(
+  "showerIdle",
+  (f) => f.stack("backHead", "backTorsoBare", "backLegsBare").map(bareHead).patch(P.bareArmsDown).patch(P.clothesPile)
+);
+b.frame(
+  "showerTap",
+  (f) => f.stack("backHead", "backTorsoBare", "backLegsBare").map(bareHead).patch(P.showerTapArm).patch(P.clothesPile)
+);
+b.frame(
+  "washHairA",
+  (f) => f.stack("backHead", "backTorsoBare", "backLegsBare").map(bareHead).patch(P.washHairBoth).patch(P.clothesPile).map((m) => bowHead(m, 1)).patch(P.waterA)
+);
+b.frame(
+  "washHairB",
+  (f) => f.stack("backHead", "backTorsoBare", "backLegsBare").map(bareHead).patch(P.washHairBoth).patch(P.clothesPile).patch(P.waterB)
+);
+b.frame(
+  "scrubA",
+  (f) => f.stack("backHead", "backTorsoBare", "backLegsBare").map(bareHead).patch(P.scrubTorso).patch(P.clothesPile).patch(P.waterA)
+);
+b.variant("scrubB", "scrubA", (m) => bowHead(m, 1));
+b.frame(
+  "rinse",
+  (f) => f.stack("backHead", "backTorsoBare", "backLegsBare").map(bareHead).patch(P.bareArmsDown).patch(P.clothesPile).map((m) => raiseChin(m)).patch(P.waterB)
+);
+b.frame(
+  "towelOut",
+  (f) => f.stack("backHead", "backTorsoBare", "backLegsBare").map(bareHead).patch(P.bareArmsDown).patch(P.towelWrap)
+);
+b.frame("peeStand", (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.peeArms));
+b.variant("peeBow", "peeStand", (m) => bowHead(m, 1));
+b.variant("peeUp", "peeStand", (m) => raiseChin(m));
+b.frame("peeShift", (f) => f.stack("backHead", "backTorso", "legsIdleShift").patch(P.peeArms));
+b.frame(
+  "peeFlush",
+  (f) => f.stack("backHead", "backTorso", "legsStand").patch(P.backArmsFold).map((m) => bowHead(m, 1))
+);
+b.frame("leanA", (f) => base("legsStand")(f).patch(P.cigLean));
+b.variant("leanB", "leanA", (m) => bowHead(m));
+b.frame("reachHalf", (f) => base("legsStand")(f).patch(P.armReachHalf));
+b.frame(
+  "petA",
+  (f) => f.stack("head", "torso", "legsBent").patch(P.farArm).map((m) => bowHead(dropBody(m, 2), 1, 2)).patch(P.armPetA)
+);
+b.frame(
+  "petB",
+  (f) => f.stack("head", "torso", "legsBent").patch(P.farArm).map((m) => bowHead(dropBody(m, 2), 1, 2)).patch(P.armPetB)
+);
+b.frame(
+  "scratchA",
+  (f) => f.stack("head", "torso", "legsBent").patch(P.farArm).map((m) => bowHead(dropBody(m, 2), 1, 2)).patch(P.armScratchA)
+);
+b.frame(
+  "scratchB",
+  (f) => f.stack("head", "torso", "legsBent").patch(P.farArm).map((m) => bowHead(dropBody(m, 2), 2, 2)).patch(P.armScratchB)
+);
+b.frame(
+  "ruffle",
+  (f) => f.stack("head", "torso", "legsBent").map((m) => bowHead(dropBody(m, 2), 2, 2)).patch(P.armPetA).patch({
+    r: 14,
+    c: 6,
+    rows: [
+      "s..",
+      "s..",
+      ".s.",
+      ".s.",
+      ".s.",
+      ".ss",
+      ".ss",
+      "..s",
+      "..s",
+      "..s",
+      "..s",
+      "..s",
+      "..s",
+      "..s",
+      "..S"
+    ]
+  })
+);
+b.frame(
+  "swingMid",
+  (f) => f.stack("head", "torso", "legsBent").patch(P.giriaMid).map((m) => dropBody(m, 1))
+);
+b.variant("drinkC", "drinkA", (m) => bowHead(m));
+b.variant("phoneC", "phoneA", (m) => mirrorRows(m, 0, 6));
+b.frame(
+  "phoneD",
+  (f) => f.stack("head", "torso", "legsIdleShift").patch(P.farArm).patch(P.armPhone)
+);
+b.frame(
+  "gtrDown",
+  (f) => f.stack("head", "torso", "legsStand").patch(P.guitarBody).patch(P.gtrStrumDown).patch(P.gtrFret)
+);
+b.frame(
+  "gtrUp",
+  (f) => f.stack("head", "torso", "legsStand").patch(P.guitarBody).patch(P.gtrStrumUp).patch(P.gtrFret)
+);
+b.frame(
+  "gtrChord",
+  (f) => f.stack("head", "torso", "legsStand").patch(P.guitarBody).patch(P.gtrStrumUp).patch(P.gtrFretLow)
+);
+b.frame(
+  "gtrShift",
+  (f) => f.stack("head", "torso", "legsIdleShift").patch(P.guitarBody).patch(P.gtrStrumDown).patch(P.gtrFret)
+);
+b.variant("gtrNodA", "gtrDown", (m) => bowHead(m));
+b.variant("gtrNodB", "gtrUp", (m) => bowHead(m));
+b.variant("gtrRing", "gtrUp", (m) => raiseChin(m));
+b.frame("smokeA", (f) => base("legsStand")(f).patch(P.armCigDown).patch(P.wispA));
+b.frame("smokeA2", (f) => base("legsStand")(f).patch(P.armCigDown).patch(P.wispB));
+b.frame("smokeB", (f) => base("legsStand")(f).patch(P.armCigHalf));
+b.frame("smokeC", (f) => base("legsStand")(f).patch(P.armCigLips).patch(P.emberFace));
+b.frame(
+  "smokeD",
+  (f) => base("legsStand")(f).patch(P.armCigLips).patch(P.emberFlare).map((m) => replaceColor(m, "o", "c"))
+);
+b.variant("smokeE", "smokeA", (m) => bowHead(m));
+b.frame(
+  "smokeF",
+  (f) => base("legsStand")(f).patch(P.armCigHalf).map((m) => raiseChin(m)).patch(P.puffA)
+);
+b.frame(
+  "smokeF2",
+  (f) => base("legsStand")(f).patch(P.armCigHalf).map((m) => raiseChin(m)).patch(P.puffB)
+);
+b.frame(
+  "smokeH",
+  (f) => f.stack("head", "torso", "legsIdleShift").patch(P.farArm).patch(P.armCigDown).patch(P.wispB)
+);
+b.walkCycle(...WALK_CYCLE);
+var ACTION_OVERRIDES = {
+  ...ACTIONS,
+  use: { frames: ["reachHalf", "reach", "reach", "reachHalf"], frameMs: 150, loops: 1 },
+  sit: {
+    frames: [
+      "crouch",
+      "sit",
+      "sit",
+      "sitBack",
+      "sitBack",
+      "sitCross",
+      "sitCross",
+      "sitBack",
+      "sit"
+    ],
+    frameMs: 520,
+    loops: 1
+  },
+  lay: {
+    frames: [
+      "crouch",
+      "sit",
+      "bedSitUp",
+      "bedLie",
+      "bedLieB",
+      "bedLie",
+      "bedLieB",
+      "bedSide",
+      "bedSide",
+      "bedLie",
+      "bedLieB",
+      "bedLie",
+      "bedSitUp",
+      "sit"
+    ],
+    frameMs: 560,
+    loops: 1
+  },
+  pet: {
+    frames: [
+      "crouch",
+      "petA",
+      "petB",
+      "petA",
+      "petB",
+      "scratchA",
+      "scratchB",
+      "scratchA",
+      "scratchB",
+      "scratchA",
+      "petA",
+      "ruffle",
+      "ruffle",
+      "petB",
+      "crouchB"
+    ],
+    frameMs: 270,
+    loops: 1,
+    interruptible: true
+  },
+  drink: {
+    frames: ["drinkA", "drinkB", "drinkD", "drinkD", "drinkB", "drinkC", "drinkA"],
+    frameMs: 420,
+    loops: 2
+  },
+  // Żabka counter rituals — the mug zone doubles as a paper cup and a bun
+  coffee: {
+    frames: ["drinkA", "drinkB", "drinkD", "drinkB", "drinkD", "drinkC", "drinkA"],
+    frameMs: 460,
+    loops: 2
+  },
+  // Alchemia's machines — all built from frames the rig already owns
+  run: {
+    frames: ["strideLow", "pass", "stride", "pass"],
+    frameMs: 150,
+    loops: 8,
+    interruptible: true
+  },
+  cycle: {
+    frames: ["crouch", "crouchB", "crouch", "crouchB"],
+    frameMs: 220,
+    loops: 5,
+    interruptible: true
+  },
+  stretch: {
+    frames: [
+      "stretchA",
+      "stretchB",
+      "stretchB",
+      "stretchA",
+      "leanIdle",
+      "stretchA",
+      "stretchB",
+      "stretchA"
+    ],
+    frameMs: 420,
+    loops: 1,
+    interruptible: true
+  },
+  pull: {
+    frames: ["reach", "stretchB", "reach", "stretchB", "reach"],
+    frameMs: 380,
+    loops: 2,
+    interruptible: true
+  },
+  squat: {
+    frames: ["stand", "crouch", "crouch", "stand"],
+    frameMs: 340,
+    loops: 4,
+    interruptible: true
+  },
+  deadlift: {
+    frames: ["crouchB", "crouch", "stand", "stand", "crouch", "crouchB"],
+    frameMs: 380,
+    loops: 3,
+    interruptible: true
+  },
+  hotdog: {
+    frames: ["drinkA", "drinkC", "drinkA", "drinkC", "drinkA", "drinkB", "drinkC", "drinkA"],
+    frameMs: 380,
+    loops: 1
+  },
+  call: {
+    frames: [
+      "phoneA",
+      "phoneB",
+      "phoneA",
+      "phoneD",
+      "phoneD",
+      "phoneC",
+      "phoneD",
+      "phoneA",
+      "phoneB",
+      "phoneA"
+    ],
+    frameMs: 900,
+    loops: 2,
+    interruptible: true
+  },
+  swing: {
+    frames: [
+      "swingSetup",
+      "swingHike",
+      "swingDown",
+      "swingMid",
+      "swingUp",
+      "swingMid",
+      "swingDown",
+      "swingHike",
+      "swingDown",
+      "swingMid",
+      "swingUp",
+      "swingMid",
+      "swingDown",
+      "swingHike",
+      "swingDown",
+      "swingMid",
+      "swingUp",
+      "swingMid",
+      "swingDown",
+      "swingSetup"
+    ],
+    frameMs: 280,
+    loops: 1,
+    interruptible: true
+  },
+  press: {
+    frames: ["pressRack", "pressDip", "pressUp", "pressUp", "pressDip", "pressRack"],
+    frameMs: 360,
+    loops: 2
+  },
+  sambo: {
+    frames: ["samboA", "samboC", "samboB", "samboC", "samboA", "samboB"],
+    frameMs: 260,
+    loops: 2
+  },
+  // the whole rite, in the correct projection: a glance up at the icon, then
+  // he turns INTO the scene (back to the camera), crosses himself — forehead,
+  // chest, shoulder to shoulder — folds his hands, goes down on both knees,
+  // bows three times and holds the deepest one, rises, crosses himself again
+  // and turns back out.
+  pray: {
+    frames: [
+      "lookBack",
+      "backStand",
+      "backCrossHead",
+      "backStand",
+      "backCrossR",
+      "backCrossL",
+      "backStand",
+      "backPray",
+      "backPray",
+      "backKneel",
+      "backKneelBow",
+      "backKneelDeep",
+      "backKneelDeep",
+      "backKneelDeep",
+      "backKneelBow",
+      "backKneel",
+      "backPray",
+      "backCrossHead",
+      "backCrossR",
+      "backCrossL",
+      "backStand",
+      "lookBack",
+      "stand"
+    ],
+    frameMs: 460,
+    loops: 1,
+    interruptible: true
+  },
+  // settle — raise — draw (coal lights the face) — deep drag (flare) — hold —
+  // lower — exhale with the chin up, twice as the puff climbs — the cigarette
+  // smokes itself at the hip — weight to the other foot — a look at the street
+  smoke: {
+    frames: [
+      "smokeA",
+      "smokeB",
+      "smokeC",
+      "smokeD",
+      "smokeD",
+      "smokeC",
+      "smokeB",
+      "smokeF",
+      "smokeF2",
+      "smokeA",
+      "smokeA2",
+      "smokeH",
+      "smokeA2",
+      "smokeE"
+    ],
+    frameMs: 400,
+    loops: 2,
+    interruptible: true
+  },
+  // the full wash: undress over the head, tap on, hair, ribs, rinse with the
+  // chin up, tap off, towel, dressed again. Water alternates per frame.
+  shower: {
+    frames: [
+      "backStand",
+      "undress",
+      "undress",
+      "showerIdle",
+      "showerTap",
+      "washHairA",
+      "washHairB",
+      "washHairA",
+      "washHairB",
+      "scrubA",
+      "scrubB",
+      "scrubA",
+      "washHairA",
+      "washHairB",
+      "rinse",
+      "rinse",
+      "showerTap",
+      "towelOut",
+      "towelOut",
+      "undress",
+      "backStand",
+      "lookBack"
+    ],
+    frameMs: 380,
+    loops: 1,
+    interruptible: true
+  },
+  // stance — patience — the ceiling stare — shift — flush. Off-screen where it
+  // counts, on-screen where it's funny.
+  pee: {
+    frames: [
+      "backStand",
+      "peeStand",
+      "peeBow",
+      "peeStand",
+      "peeUp",
+      "peeUp",
+      "peeStand",
+      "peeShift",
+      "peeStand",
+      "peeBow",
+      "peeFlush",
+      "peeFlush",
+      "backStand",
+      "lookBack"
+    ],
+    frameMs: 420,
+    loops: 1,
+    interruptible: true
+  },
+  // the whole performance: lift it off the wall, settle, two bars with the
+  // eyes on the strings, the groove taking the head, a chord change, weight
+  // to the back foot, the last chord rung out with the chin up — and back
+  // on its hook. SFX strums are timed to these frames in the handler.
+  strum: {
+    frames: [
+      "reachHalf",
+      "reach",
+      "gtrDown",
+      "gtrDown",
+      "gtrUp",
+      "gtrDown",
+      "gtrUp",
+      "gtrDown",
+      "gtrNodB",
+      "gtrNodA",
+      "gtrNodB",
+      "gtrNodA",
+      "gtrChord",
+      "gtrUp",
+      "gtrDown",
+      "gtrUp",
+      "gtrShift",
+      "gtrNodB",
+      "gtrNodA",
+      "gtrDown",
+      "gtrRing",
+      "gtrRing",
+      "gtrDown",
+      "reachHalf"
+    ],
+    frameMs: 320,
+    loops: 1,
+    interruptible: true
+  }
+};
+for (const [id, def] of Object.entries(ACTION_OVERRIDES)) {
+  b.action(id, def);
+}
+var PLAYER = b.build();
+
+// ../../../../tmp/wk.ts
+var want = ["stand", "stride", "strideLow", "pass"];
+var ruler = "0123456789012345678901234".slice(0, 24);
+console.log("   " + want.map((w) => w.padEnd(25)).join(""));
+console.log("   " + want.map(() => ruler + " ").join(""));
+for (let r = 18; r < 38; r++) {
+  console.log(
+    String(r).padStart(2) + " " + want.map((w) => ((PLAYER.frames[w] ?? [])[r] ?? "").replace(/\./g, " ").padEnd(25)).join("")
+  );
 }
 /*! Bundled license information:
 

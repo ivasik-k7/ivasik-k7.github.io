@@ -1,0 +1,459 @@
+We need to perform a major production-quality overhaul of the NPC, character monologue, and dialogue systems.
+
+This should be treated as a **system-level improvement**, not a simple UI restyling.
+
+The goal is to make the entire interaction layer feel like one cohesive, polished, production-ready game system while simultaneously improving performance substantially without sacrificing visual quality, responsiveness, animation smoothness, or immersion.
+
+---
+
+# 1. NPC & Character Monologues — HUD Integration
+
+Rework both NPC and character monologue presentation so they are visually and behaviorally aligned with the existing HUD style.
+
+The monologue system should feel like a native part of the HUD rather than an independent UI component.
+
+Review and improve:
+
+* typography;
+* spacing;
+* hierarchy;
+* positioning;
+* animation;
+* transitions;
+* timing;
+* visibility;
+* interaction feedback;
+* background treatment;
+* borders/panels;
+* pixel-art styling;
+* lighting;
+* visual effects;
+* readability;
+* responsive behavior.
+
+The result should be consistent across:
+
+* NPC monologues;
+* player/character monologues;
+* contextual thoughts;
+* ambient character comments;
+* other short-form character text.
+
+Do not simply copy existing HUD elements.
+
+Extract the underlying visual language and create a coherent interaction component specifically designed for character speech/thought presentation.
+
+---
+
+# 2. Dialogue Trees — Full Visual & UX Rework
+
+Perform the same level of redesign for dialogue trees.
+
+Dialogue trees should use the same visual language as the HUD and monologue system.
+
+However, they should also have their own hierarchy appropriate for longer interactions.
+
+Review:
+
+* dialogue panel;
+* speaker identification;
+* portraits/character representation where available;
+* dialogue text;
+* player responses;
+* selectable choices;
+* selected/hover states;
+* disabled choices;
+* choice transitions;
+* dialogue progression;
+* typing/reveal effects;
+* animations;
+* contextual actions;
+* exit/cancel behavior;
+* state transitions;
+* scene integration.
+
+Make dialogue feel like a polished game interaction system rather than a generic dialogue box.
+
+---
+
+# 3. Enrich Dialogue Mechanics to Production Level
+
+Do not stop at visual improvements.
+
+Significantly expand the underlying dialogue mechanics wherever the existing architecture allows.
+
+Investigate and implement useful capabilities such as:
+
+* branching dialogue;
+* nested dialogue branches;
+* conditional choices;
+* requirements for dialogue options;
+* relationship/state-dependent dialogue;
+* flags;
+* persistent dialogue state;
+* one-time dialogue;
+* repeatable dialogue;
+* contextual dialogue;
+* location-dependent dialogue;
+* character-state-dependent dialogue;
+* quest/state integration;
+* item/inventory requirements;
+* reputation/relationship requirements;
+* consequences;
+* delayed consequences;
+* alternate endings;
+* dialogue events;
+* scripted actions;
+* animation triggers;
+* character reactions;
+* scene/environment reactions;
+* dialogue interruption;
+* dialogue resume;
+* dialogue history;
+* skip;
+* fast-forward;
+* replay where appropriate.
+
+Do not implement arbitrary complexity just for the sake of complexity.
+
+First inspect the existing architecture and determine which mechanics naturally fit the project.
+
+---
+
+# 4. Dialogue Authoring & Developer Experience
+
+Consider the dialogue system from the perspective of someone who has to create and maintain a large amount of game content.
+
+Identify opportunities to make dialogue easier to author, debug, and extend.
+
+Where appropriate, support concepts such as:
+
+* reusable dialogue nodes;
+* reusable conditions;
+* reusable actions;
+* dialogue metadata;
+* named states/flags;
+* validation;
+* missing-reference detection;
+* unreachable-node detection;
+* invalid branch detection;
+* debugging tools;
+* dialogue preview;
+* dialogue simulation;
+* quick testing;
+* forced branch selection in developer mode.
+
+Recommend additional features if you identify architectural improvements that would materially improve the development workflow.
+
+---
+
+# 5. Character & NPC Reactions
+
+Dialogue should not exist independently from the characters.
+
+Where supported, connect dialogue states to character presentation.
+
+For example:
+
+* facial/emotional changes;
+* idle changes;
+* gestures;
+* looking at the speaker;
+* animation triggers;
+* movement;
+* reactions to specific dialogue choices;
+* environmental reactions.
+
+Transitions should be natural and consistent with the character animation system.
+
+Avoid characters appearing visually disconnected from what they are saying.
+
+---
+
+# 6. Production-Ready Interaction Quality
+
+Review the entire interaction lifecycle:
+
+1. Player approaches NPC.
+2. Interaction becomes available.
+3. Interaction starts.
+4. NPC/character presentation changes appropriately.
+5. Dialogue appears.
+6. Choices become available.
+7. Player selects a choice.
+8. Character reacts.
+9. Dialogue progresses.
+10. State/consequences are applied.
+11. Dialogue ends.
+12. Player returns to normal gameplay.
+
+Every transition should be intentional and polished.
+
+Look specifically for:
+
+* input conflicts;
+* accidental double activation;
+* skipped dialogue;
+* stuck dialogue states;
+* UI remaining visible after dialogue ends;
+* animation conflicts;
+* interaction locking;
+* incorrect focus;
+* race conditions;
+* state desynchronization;
+* dialogue reopening unexpectedly;
+* incorrect branch selection.
+
+---
+
+# 7. Independent Multi-Agent Audit
+
+Before performing major optimization, run an **independent multi-agent performance audit**.
+
+Use multiple independent agents/review perspectives.
+
+Each agent should investigate different categories of performance problems, including:
+
+### Rendering
+
+* unnecessary rendering;
+* excessive redraws;
+* expensive visual effects;
+* lighting overhead;
+* pixel rendering overhead;
+* canvas/DOM complexity;
+* unnecessary compositing;
+* excessive transparency;
+* expensive shaders/effects where applicable.
+
+### Game Loop
+
+* unnecessary per-frame work;
+* excessive polling;
+* duplicated updates;
+* expensive calculations;
+* redundant state synchronization;
+* poorly scheduled work;
+* excessive animation processing.
+
+### React/UI
+
+Where applicable:
+
+* unnecessary component re-renders;
+* unstable references;
+* excessive context updates;
+* expensive derived state;
+* unnecessary DOM updates;
+* large component trees;
+* inefficient list rendering.
+
+### Animation
+
+* unnecessary animation loops;
+* duplicated animation state;
+* expensive animation calculations;
+* inactive animation processing;
+* animations continuing when not visible;
+* excessive interpolation/update frequency.
+
+### Assets
+
+* unnecessary asset loading;
+* duplicate assets;
+* oversized assets;
+* inefficient loading;
+* assets loaded before needed;
+* memory retention;
+* unnecessary decoding.
+
+### Memory
+
+Look for:
+
+* leaks;
+* abandoned listeners;
+* timers;
+* animation frames;
+* subscriptions;
+* cached objects;
+* retained scene data;
+* excessive allocations.
+
+### Scene Management
+
+Investigate:
+
+* unnecessary active systems;
+* hidden scenes still consuming resources;
+* inactive NPCs still updating;
+* off-screen objects;
+* unnecessary collision/interactions;
+* location/scene lifecycle problems.
+
+### Dialogue / Interaction
+
+Investigate whether the new dialogue and monologue systems introduce:
+
+* excessive state updates;
+* unnecessary re-renders;
+* redundant event listeners;
+* animation overhead;
+* memory growth;
+* expensive condition evaluation.
+
+---
+
+# 8. Performance Edge Cases
+
+The audit must explicitly test edge cases.
+
+Examples:
+
+* many NPCs on screen;
+* many animated characters;
+* multiple simultaneous interactions;
+* long dialogue trees;
+* rapid dialogue selection;
+* repeatedly opening/closing dialogue;
+* rapidly changing scenes;
+* fast travel;
+* returning to previously visited locations;
+* Developer Mode active;
+* HUD + dialogue + animations simultaneously;
+* low-end hardware;
+* different viewport sizes;
+* long-running sessions.
+
+Do not optimize only for the normal gameplay path.
+
+---
+
+# 9. Optimization Phase
+
+After the independent audit, consolidate the findings into a prioritized optimization plan.
+
+Classify issues by:
+
+* severity;
+* performance impact;
+* implementation complexity;
+* regression risk.
+
+Then implement the highest-value optimizations.
+
+The optimization must **not reduce perceived game quality**.
+
+Do not solve performance problems by simply:
+
+* removing visual effects;
+* reducing animation quality;
+* disabling interactions;
+* lowering visual fidelity;
+* removing NPCs;
+* reducing functionality;
+* making the UI less sophisticated.
+
+Prefer architectural and computational optimizations.
+
+---
+
+# 10. Preserve Smoothness & Quality
+
+After optimization, explicitly verify:
+
+* animation smoothness;
+* input responsiveness;
+* HUD responsiveness;
+* dialogue transitions;
+* character movement;
+* scene transitions;
+* lighting;
+* pixel rendering;
+* visual effects;
+* interaction feedback.
+
+The game should feel at least as smooth as before, ideally noticeably better.
+
+---
+
+# 11. Iterative Review
+
+Do not assume the first audit is sufficient.
+
+After implementing the initial optimization pass:
+
+1. Run another independent performance review.
+2. Compare performance before/after.
+3. Identify remaining bottlenecks.
+4. Look for regressions.
+5. Identify newly exposed bottlenecks.
+6. Optimize further.
+7. Repeat until additional optimization would have negligible benefit or unacceptable complexity.
+
+Similarly, perform a second UX review of the dialogue system after implementation.
+
+Ask:
+
+> Does this now feel like a complete production dialogue system, or does it still feel like an upgraded prototype?
+
+Fix whatever remains.
+
+---
+
+# 12. Proactively Recommend Features
+
+During the entire implementation, actively look for additional features that would materially improve the product.
+
+Do not limit yourself to the requirements in this prompt.
+
+If you identify valuable improvements related to:
+
+* dialogue;
+* NPC interaction;
+* character behavior;
+* HUD;
+* accessibility;
+* developer tooling;
+* content authoring;
+* animation;
+* state management;
+* performance;
+* debugging;
+* UX;
+
+recommend them and, when appropriate, implement them.
+
+Prioritize features that provide meaningful value rather than feature bloat.
+
+---
+
+# 13. Final Validation
+
+Before declaring the work complete, perform a final production-readiness review.
+
+Verify:
+
+* NPC monologues use the HUD design language;
+* character monologues use the same system;
+* dialogue trees are visually consistent;
+* dialogue interactions are polished;
+* branching works correctly;
+* state/conditions work correctly;
+* dialogue consequences work correctly;
+* animations and reactions are synchronized;
+* interactions do not conflict with gameplay;
+* edge cases are handled;
+* Developer Mode can debug dialogue;
+* no obvious memory leaks remain;
+* unnecessary per-frame work has been eliminated;
+* scene transitions remain smooth;
+* performance is improved;
+* visual quality is preserved;
+* no major regressions were introduced.
+
+The final result should feel like a **production-ready interaction framework**, not a collection of individually improved components.
+
+Most importantly:
+
+**Do not optimize by making the game simpler. Optimize the implementation so that the game can remain rich, animated, interactive, and visually polished while using resources intelligently.**

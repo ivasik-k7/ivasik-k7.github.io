@@ -1,0 +1,1416 @@
+Так. Тут я б не ставив агенту задачу «оптимізуй код». Це занадто вузько. Тобі потрібен **engine architecture audit + modernization program**, причому з вимогою зберегти існуючі сильні сторони та перетворити код із game-specific implementation на **reusable, public-quality 2D game engine/framework**.
+
+Нижче промпт, який я б дав сильному coding/research agent. Він спеціально змушує його спочатку **зрозуміти систему цілком**, потім провести аудит, сформувати architecture target, і лише після цього змінювати код.
+
+# Mission: Industrial-Grade Game Engine Architecture Audit, Modernization, and Public-Release Preparation
+
+You are acting as a **principal game-engine architect, senior TypeScript engineer, performance engineer, and open-source maintainer**.
+
+Your task is NOT simply to optimize the existing codebase.
+
+Your task is to deeply analyze the current engine, identify architectural weaknesses, eliminate accidental complexity, improve performance and scalability, strengthen extensibility and reusability, and evolve the existing engine into a **high-quality, general-purpose, reusable 2D game engine/framework** suitable for eventual public release.
+
+The goal is an **industrial revolution, not a revolution**:
+
+> Preserve what is already working well.
+> Do not rewrite the system merely for ideological reasons.
+> Improve the architecture incrementally but substantially.
+> Extract general-purpose capabilities from existing game-specific implementations.
+> Make the engine easier to extend, test, profile, reuse, document, and eventually publish.
+
+The final result should feel like a mature engine that has undergone a major internal engineering upgrade while retaining continuity with the current codebase.
+
+---
+
+# 1. First Principle: Understand Before Changing
+
+Before modifying meaningful amounts of code, perform a **comprehensive architectural reconnaissance**.
+
+Do not begin by applying isolated optimizations.
+
+First understand:
+
+* the complete runtime lifecycle;
+* boot sequence;
+* module initialization;
+* scene lifecycle;
+* rendering pipeline;
+* asset loading;
+* sprite/animation system;
+* entity/actor architecture;
+* NPC architecture;
+* game loop;
+* scheduling/timers;
+* input;
+* camera;
+* collision;
+* world representation;
+* UI integration;
+* React integration;
+* state management;
+* event systems;
+* dialogue/narrative systems;
+* audio;
+* save/load;
+* developer tooling;
+* debugging facilities;
+* profiling;
+* data registries;
+* caching;
+* memory ownership;
+* cleanup/disposal;
+* extensibility mechanisms;
+* build/deployment architecture.
+
+Build a mental model of the engine before proposing major changes.
+
+Do not assume that an existing implementation is bad merely because it is unconventional.
+
+---
+
+# 2. Existing Performance Context
+
+A previous production performance audit has already identified several important issues.
+
+Use these findings as **baseline evidence**, not as the entirety of the audit.
+
+## Previously confirmed boot problem
+
+Production build:
+
+* `createAnimal`: ~1,433 ms across 5 calls
+* `createNpc`: ~376 ms across 18 calls
+* approximately 1.8 s of sprite-rig construction
+* approximately 2,009 ms module-evaluation long frame
+* 1,125 sprite frames
+* ~1,078,896 cells constructed during boot
+
+Root cause:
+
+* module-scope eager enumeration of NPC/animal registries;
+* developer-only studios imported statically;
+* dev tooling forcing production-time asset/rigger construction.
+
+A fix has already been implemented:
+
+* lazy NPC/animal registries;
+* cached lazy rig construction;
+* developer studios loaded through `React.lazy`.
+
+Measured result:
+
+* `EngineGame` chunk: 876 KB → ~572 KB
+* studios split into separate chunks
+* longest blocking frame: ~2,009 ms → ~777–1,060 ms
+* FCP: ~2.8–4.9 s → ~1.3–1.9 s
+
+This was not a controlled A/B benchmark, so treat the exact delta cautiously, but the mechanism has been confirmed.
+
+## Other confirmed performance findings
+
+### District DOM explosion
+
+District currently mounts approximately:
+
+* 7,785 hidden `<rect>` elements;
+* approximately 9,377 total DOM nodes;
+* thousands of sprite-frame elements that are never displayed.
+
+An A/B experiment showed:
+
+* mounting only `idleFrame` + `walkCycle`
+* DOM reduction ~75%
+* rectangle reduction ~81%
+* district scene entry approximately 1,031 ms → 220 ms
+
+This is considered a high-confidence optimization.
+
+### Per-NPC React animation
+
+NPCs currently use per-NPC `setInterval` + React state for animation.
+
+Measured while standing still:
+
+* ~1,000–1,600 `<rect>` elements reconstructed per second;
+* ~23–32 React commits/sec in NPC-heavy scenes;
+* significant DOM mutation churn.
+
+The intended architectural direction is to move animation advancement away from React state and onto the existing game/atlas/rAF rendering path.
+
+### Full-rate processing behind menus
+
+NPC animation and monologues continue running while a fullscreen menu is open.
+
+An existing `playing` prop can potentially be used to suspend visual updates.
+
+### Monologue layout thrashing
+
+`NpcMonologue` performs layout reads such as `offsetWidth` for individual typed characters.
+
+Measured:
+
+* approximately 853 ms of forced layout over 20 seconds in District.
+
+This is compounded by the excessive District DOM.
+
+### Dead assets
+
+Two declared webfonts are never actually applied and produce approximately 157 KB of dead distribution assets.
+
+### Memory/leak health
+
+Stress testing showed:
+
+* 96 travels;
+* 48 dialogues;
+* 32 menus;
+* repeated GC between samples;
+* heap stable;
+* DOM node count stable;
+* listener count stable;
+* timer count stable.
+
+Therefore, do NOT invent a memory-leak problem where none exists.
+
+The existing refs-over-state design is working:
+
+* `GameRuntime`: ~0 renders/sec while standing;
+* ~1.2–3.5 renders/sec while walking;
+* `EngineGame`: ~0 renders/sec during gameplay;
+* inline runtime configuration does not cascade renders.
+
+Other confirmed healthy mechanisms include:
+
+* artKey gating;
+* paletteKey pinning;
+* DOM-cache write skipping;
+* promote();
+* owned timers;
+* FX pooling;
+* actor off-camera bounds checks;
+* PlayerStudio improvements;
+* DialogueBox typewriter improvements.
+
+These existing strengths must be preserved.
+
+---
+
+# 3. The Actual Goal
+
+The goal is to evolve the current engine from:
+
+> a capable game-specific runtime
+
+toward:
+
+> a reusable, scalable, extensible, well-architected 2D game engine/framework.
+
+It should eventually be possible for an external developer to use the engine for projects that are NOT copies of the current game.
+
+Potential future use cases may include:
+
+* pixel-art RPGs;
+* top-down games;
+* narrative games;
+* life simulations;
+* tactical games;
+* adventure games;
+* management games;
+* visual novels with interactive worlds;
+* small simulation-heavy games;
+* 2D action games;
+* educational interactive applications;
+* experimental/prototype games.
+
+Do not overgeneralize prematurely.
+
+The engine should become **general through good abstractions**, not through massive configuration systems.
+
+---
+
+# 4. Architecture Audit
+
+Perform a systematic audit across the following dimensions.
+
+For each area:
+
+1. Describe the current architecture.
+2. Identify strengths.
+3. Identify weaknesses.
+4. Identify accidental coupling.
+5. Identify inappropriate responsibilities.
+6. Identify scalability limitations.
+7. Identify reusable abstractions.
+8. Identify game-specific code that should move out of the engine.
+9. Propose improvements.
+10. Classify each improvement by:
+
+* impact;
+* implementation complexity;
+* risk;
+* performance benefit;
+* API compatibility impact;
+* migration difficulty.
+
+---
+
+# 5. Core Architecture
+
+Evaluate whether the engine has clean separation between:
+
+* engine core;
+* game runtime;
+* simulation;
+* rendering;
+* presentation;
+* UI;
+* content/data;
+* developer tools.
+
+Aim toward something conceptually similar to:
+
+```text
+Engine Core
+│
+├── Time
+├── Game Loop
+├── Scheduler
+├── Events
+├── Input
+├── Scene Management
+├── Entity Lifecycle
+├── Resource Management
+├── Serialization
+├── Configuration
+└── Diagnostics
+```
+
+```text
+Rendering
+│
+├── Renderer abstraction
+├── Sprite system
+├── Atlas system
+├── Animation
+├── Camera
+├── Layers
+├── Culling
+├── Effects
+└── Batching
+```
+
+```text
+Gameplay / Simulation
+│
+├── Entities
+├── Components / behaviors where appropriate
+├── NPC systems
+├── AI
+├── World systems
+├── Relationships
+├── Events
+└── Game-specific mechanics
+```
+
+```text
+Presentation
+│
+├── HUD
+├── Dialogue
+├── Menus
+├── Inventory
+├── Character UI
+└── React integration
+```
+
+Do NOT blindly introduce ECS.
+
+Evaluate whether ECS, component-based entities, traditional OO entities, data-oriented systems, or a hybrid architecture is appropriate.
+
+Prefer the simplest architecture that scales.
+
+---
+
+# 6. React Boundary
+
+Perform an explicit audit of the React boundary.
+
+React must NOT become the game loop.
+
+Determine precisely which state belongs in:
+
+* React;
+* engine runtime;
+* simulation;
+* renderer;
+* external stores;
+* immutable configuration/data.
+
+The intended principle is:
+
+> React owns UI state and UI presentation.
+> The engine owns real-time simulation and rendering state.
+
+Identify every place where this boundary is currently violated.
+
+Particularly investigate:
+
+* animation state;
+* NPC movement;
+* sprite frame state;
+* camera state;
+* high-frequency coordinates;
+* timers;
+* effects;
+* physics;
+* input;
+* per-frame state.
+
+Propose a clean public API between the engine and React.
+
+---
+
+# 7. Rendering Architecture
+
+Deeply audit the current rendering system.
+
+Investigate:
+
+* SVG vs Canvas vs WebGL tradeoffs;
+* current `PixelSprite`;
+* `AtlasSprite`;
+* sprite sheets;
+* frame representation;
+* rasterization;
+* batching;
+* texture reuse;
+* DOM node count;
+* offscreen objects;
+* culling;
+* camera transforms;
+* z-order;
+* layers;
+* dirty rendering;
+* animation updates;
+* render invalidation;
+* off-camera actors;
+* hidden elements;
+* viewport clipping.
+
+Do not automatically replace SVG.
+
+Determine where SVG is appropriate and where Canvas/WebGL would provide meaningful benefits.
+
+The desired system should permit multiple rendering strategies where practical.
+
+For example:
+
+```text
+Renderer
+├── DOM/SVG renderer
+├── Canvas renderer
+└── future WebGL renderer
+```
+
+Only introduce this abstraction if it is genuinely useful and does not become needless framework machinery.
+
+---
+
+# 8. Asset and Resource Architecture
+
+Audit the complete asset lifecycle:
+
+```text
+source asset
+→ import
+→ decode
+→ transform
+→ atlas/sprite representation
+→ cache
+→ runtime use
+→ disposal
+```
+
+Investigate:
+
+* eager loading;
+* lazy loading;
+* lazy rig construction;
+* caching;
+* duplicate asset construction;
+* memory retention;
+* invalidation;
+* preloading;
+* scene-level resource ownership;
+* resource lifetime;
+* developer-only assets;
+* production asset isolation.
+
+The engine should make it difficult to accidentally recreate thousands of sprite objects during boot.
+
+---
+
+# 9. Entity / Actor Architecture
+
+Analyze the current actor model.
+
+Determine whether:
+
+* actor lifecycle is well-defined;
+* entities have clear ownership;
+* actor state is separated from presentation;
+* movement is separated from rendering;
+* animation is separated from gameplay;
+* NPC logic is reusable;
+* actor configuration is data-driven;
+* actors can be spawned/despawned safely;
+* actors can be pooled;
+* actors can be culled;
+* actors can be serialized;
+* actors can be extended without modifying engine internals.
+
+Identify whether the current architecture is too tightly coupled to NPCs, animals, or the current game.
+
+---
+
+# 10. Animation System
+
+Design a robust animation architecture.
+
+It should ideally support concepts such as:
+
+```text
+AnimationClip
+AnimationState
+AnimationController
+AnimationPlayer
+FrameSequence
+LoopMode
+PlaybackRate
+Blend/transition where justified
+```
+
+But do not over-engineer.
+
+Investigate:
+
+* animation timing;
+* frame selection;
+* state transitions;
+* animation events;
+* direction;
+* speed;
+* pause;
+* resume;
+* deterministic updates;
+* fixed vs variable timestep;
+* renderer integration.
+
+Critically ensure animation does not require React re-renders.
+
+---
+
+# 11. Game Loop and Timing
+
+Audit the game loop.
+
+Investigate:
+
+* rAF;
+* fixed timestep;
+* variable timestep;
+* accumulator model;
+* simulation/render separation;
+* timer drift;
+* background tab behavior;
+* throttling;
+* pause;
+* slow machines;
+* frame spikes;
+* deterministic simulation.
+
+Determine whether the engine should support:
+
+```text
+update(delta)
+fixedUpdate()
+render(alpha)
+```
+
+or a simpler model.
+
+Do not introduce a fixed timestep merely because it is theoretically elegant.
+
+Use the requirements of the actual engine.
+
+---
+
+# 12. Scene Architecture
+
+Audit scene lifecycle.
+
+A scene should ideally have explicit lifecycle semantics:
+
+```text
+create
+load
+enter
+start
+update
+render
+pause
+resume
+exit
+destroy
+```
+
+Determine which lifecycle phases currently exist implicitly.
+
+Look for:
+
+* duplicated cleanup;
+* hidden initialization;
+* global state;
+* scene-to-scene coupling;
+* resources that survive unnecessarily;
+* scene-specific hacks.
+
+Make scene transitions predictable and safe.
+
+---
+
+# 13. Dependency Injection and Services
+
+Audit global dependencies.
+
+Look for:
+
+* singleton abuse;
+* module-level mutable state;
+* hidden dependencies;
+* registries;
+* implicit imports;
+* circular dependencies;
+* direct access to browser APIs;
+* hard-coded services.
+
+Determine whether a lightweight engine context/container is justified.
+
+Do not introduce enterprise-style dependency injection for its own sake.
+
+The goal is:
+
+> explicit dependencies + testability + replaceability.
+
+---
+
+# 14. Event System
+
+Evaluate whether the engine needs a first-class event bus.
+
+Investigate:
+
+* typed events;
+* event ownership;
+* subscriptions;
+* cleanup;
+* event ordering;
+* synchronous vs asynchronous events;
+* debugging;
+* memory safety.
+
+Avoid a global untyped event emitter.
+
+If an event system exists or is needed, make it strongly typed.
+
+---
+
+# 15. Input System
+
+Create a reusable abstraction for:
+
+* keyboard;
+* mouse;
+* pointer;
+* touch;
+* gamepad where appropriate.
+
+Separate:
+
+```text
+physical input
+      ↓
+input mapping
+      ↓
+actions
+      ↓
+gameplay
+```
+
+This should allow external games to define actions such as:
+
+```text
+moveUp
+moveDown
+attack
+interact
+pause
+inventory
+```
+
+without coupling gameplay to `KeyboardEvent.code`.
+
+---
+
+# 16. Camera and World Coordinates
+
+Audit:
+
+* world coordinates;
+* screen coordinates;
+* camera coordinates;
+* tile coordinates;
+* transforms;
+* scaling;
+* pixel-perfect rendering;
+* viewport;
+* zoom;
+* camera follow;
+* camera bounds.
+
+Define explicit coordinate conventions.
+
+Avoid hidden conversions scattered across components.
+
+---
+
+# 17. Collision and Spatial Queries
+
+Evaluate current collision architecture.
+
+Determine whether the engine should provide reusable primitives such as:
+
+* AABB;
+* circle;
+* tile collision;
+* trigger volumes;
+* ray/line queries;
+* spatial hash/grid;
+* broad-phase queries.
+
+Do not implement a physics engine unless justified.
+
+The goal is a reusable 2D collision/query foundation.
+
+---
+
+# 18. Culling and Spatial Partitioning
+
+The existing audit shows:
+
+* 21–74% of wide-scene live elements can be off-camera.
+
+Investigate the existing CullBox/CullStrip architecture and why it currently has no callers.
+
+Determine whether the engine should provide:
+
+* viewport culling;
+* spatial hash;
+* quadtree;
+* grid partition;
+* chunk-based worlds.
+
+Use measured complexity and expected world sizes.
+
+Do not introduce a quadtree simply because it sounds sophisticated.
+
+---
+
+# 19. Data-Driven Architecture
+
+This is extremely important for eventual public release.
+
+Investigate which current systems should be driven by data rather than hardcoded logic.
+
+Potential candidates:
+
+* entities;
+* NPC definitions;
+* animations;
+* items;
+* dialogue;
+* locations;
+* events;
+* quests;
+* schedules;
+* stats;
+* configuration.
+
+Determine appropriate formats:
+
+* TypeScript;
+* JSON;
+* YAML;
+* generated typed data;
+* hybrid.
+
+Preserve type safety.
+
+---
+
+# 20. Serialization and Save System
+
+Audit save/load architecture.
+
+Determine whether game state can be serialized cleanly.
+
+Investigate:
+
+* versioning;
+* migrations;
+* schema validation;
+* circular references;
+* runtime-only state;
+* asset references;
+* entity IDs;
+* backward compatibility.
+
+A public-quality engine should not make save systems an afterthought.
+
+---
+
+# 21. Error Handling
+
+Audit failure modes.
+
+Determine behavior for:
+
+* missing asset;
+* invalid sprite frame;
+* missing NPC;
+* corrupted save;
+* invalid dialogue;
+* invalid scene;
+* failed resource load;
+* malformed configuration;
+* renderer failure.
+
+Create useful diagnostics instead of silent failure.
+
+---
+
+# 22. Diagnostics and Developer Experience
+
+A public engine needs first-class diagnostics.
+
+Investigate whether the engine should expose:
+
+* FPS;
+* frame time;
+* update time;
+* render time;
+* entity count;
+* visible entity count;
+* draw calls;
+* DOM node count;
+* texture count;
+* asset memory;
+* active timers;
+* event subscriptions;
+* scene;
+* current camera;
+* system timings.
+
+Consider a development-only diagnostics overlay.
+
+It should have effectively zero production overhead when disabled.
+
+---
+
+# 23. Testing Architecture
+
+Audit testability.
+
+Introduce or improve:
+
+* unit tests;
+* simulation tests;
+* renderer tests;
+* serialization tests;
+* scene lifecycle tests;
+* deterministic game-loop tests;
+* asset loader tests;
+* regression tests for performance-critical behavior.
+
+Where possible, make core simulation runnable without:
+
+* browser;
+* DOM;
+* React;
+* renderer.
+
+This is a major architectural quality goal.
+
+---
+
+# 24. Public API Design
+
+Imagine that an external developer installs the engine.
+
+Ask:
+
+> What would they need to import?
+
+The public API should be intentionally small.
+
+Avoid exposing internal implementation details.
+
+Consider:
+
+```ts
+import {
+  Engine,
+  Scene,
+  Entity,
+  Sprite,
+  Animation,
+  Camera,
+  Input,
+  Scheduler
+} from "..."
+```
+
+But do NOT blindly use these names.
+
+Derive the API from the actual architecture.
+
+Clearly separate:
+
+```text
+public API
+internal implementation
+developer/debug API
+```
+
+Use explicit `public.ts` / package entrypoints where appropriate.
+
+---
+
+# 25. Package Architecture
+
+Evaluate whether the project should eventually become a package ecosystem.
+
+Potential structure:
+
+```text
+packages/
+├── core
+├── renderer
+├── renderer-svg
+├── renderer-canvas
+├── assets
+├── input
+├── audio
+├── ui-react
+├── devtools
+└── examples
+```
+
+Do not split into packages merely for aesthetic reasons.
+
+Only create package boundaries where they improve:
+
+* dependency isolation;
+* reuse;
+* testing;
+* versioning;
+* tree-shaking;
+* public API clarity.
+
+---
+
+# 26. React Integration
+
+React should ideally become an adapter/integration layer.
+
+Evaluate APIs such as:
+
+```tsx
+<GameProvider engine={engine}>
+  <GameCanvas />
+  <HUD />
+</GameProvider>
+```
+
+or equivalent architecture.
+
+The exact API should emerge from the audit.
+
+The important principle is:
+
+> React must not own the high-frequency game loop.
+
+---
+
+# 27. Performance Engineering
+
+Create a formal performance model.
+
+Establish budgets for:
+
+### Boot
+
+* first contentful paint;
+* first interactive frame;
+* long tasks;
+* asset construction.
+
+### Runtime
+
+* 60 FPS target;
+* frame budget ~16.67 ms;
+* update budget;
+* render budget;
+* UI budget.
+
+### Scene transition
+
+* scene initialization;
+* resource loading;
+* DOM creation;
+* renderer setup.
+
+### Memory
+
+* heap;
+* DOM;
+* textures;
+* caches;
+* event listeners;
+* timers.
+
+Measure before and after every significant optimization.
+
+Do not optimize based on intuition.
+
+---
+
+# 28. Architecture Smells to Hunt Aggressively
+
+Search specifically for:
+
+* circular dependencies;
+* module-level side effects;
+* hidden initialization;
+* global mutable state;
+* god classes;
+* god modules;
+* excessive React coupling;
+* renderer/gameplay coupling;
+* game-specific code inside engine abstractions;
+* duplicate abstractions;
+* dead code;
+* unused exports;
+* unused dependencies;
+* duplicate hooks;
+* duplicated caches;
+* implicit cleanup;
+* accidental eager work;
+* unnecessary allocations;
+* per-frame object creation;
+* per-frame React state;
+* DOM churn;
+* forced synchronous layout;
+* unnecessary serialization;
+* unnecessary abstraction layers.
+
+---
+
+# 29. Avoid Cargo-Cult Engineering
+
+This is critical.
+
+Do NOT introduce:
+
+* ECS because "real engines use ECS";
+* dependency injection containers because "enterprise architecture";
+* event buses everywhere;
+* dozens of interfaces;
+* unnecessary factories;
+* unnecessary generics;
+* excessive design patterns;
+* WebGL because it sounds faster;
+* multiple renderer backends without a real need;
+* microservices;
+* massive package fragmentation.
+
+Every architectural change must have a reason grounded in:
+
+* scalability;
+* maintainability;
+* extensibility;
+* performance;
+* testability;
+* reuse;
+* developer experience.
+
+---
+
+# 30. Preserve Existing Strengths
+
+Explicitly protect:
+
+* refs-over-state architecture;
+* stable GameRuntime rendering;
+* stable EngineGame rendering;
+* resource caching;
+* palette caching;
+* artKey gating;
+* DOM write skipping;
+* FX pooling;
+* actor bounds checks;
+* timer ownership;
+* leak-free lifecycle;
+* existing working atlas architecture;
+* existing player rendering;
+* existing dialogue typewriter improvements.
+
+Do not regress these.
+
+---
+
+# 31. Backward Compatibility
+
+Prefer incremental migrations.
+
+Avoid a massive "delete everything and rebuild" approach.
+
+Where practical:
+
+```text
+old API
+   ↓
+compatibility adapter
+   ↓
+new internal architecture
+```
+
+Then gradually migrate callers.
+
+The final architecture should be cleaner without requiring a single catastrophic rewrite.
+
+---
+
+# 32. Deliverables
+
+Before major implementation, produce an architecture report containing:
+
+## A. Current Architecture Map
+
+Show:
+
+* major modules;
+* dependencies;
+* runtime lifecycle;
+* data flow;
+* rendering flow;
+* React boundary.
+
+## B. Architecture Scorecard
+
+Score approximately 0–10:
+
+* modularity;
+* extensibility;
+* reusability;
+* performance;
+* testability;
+* maintainability;
+* API quality;
+* separation of concerns;
+* resource management;
+* developer experience;
+* public-release readiness.
+
+Explain every score.
+
+## C. Critical Findings
+
+Rank:
+
+* P0;
+* P1;
+* P2;
+* P3.
+
+Do not inflate priorities.
+
+## D. Target Architecture
+
+Describe what the engine should look like after modernization.
+
+## E. Migration Plan
+
+Break implementation into independently verifiable phases.
+
+Example:
+
+```text
+Phase 0 — Baseline
+Phase 1 — Boot/resource architecture
+Phase 2 — Rendering architecture
+Phase 3 — Animation architecture
+Phase 4 — Entity/runtime architecture
+Phase 5 — Scene lifecycle
+Phase 6 — Input/camera/collision
+Phase 7 — Diagnostics
+Phase 8 — Testing
+Phase 9 — Public API
+Phase 10 — Packaging/documentation
+```
+
+Adjust this based on the actual codebase.
+
+## F. Risk Register
+
+For every major change:
+
+* risk;
+* affected systems;
+* rollback strategy;
+* regression tests.
+
+---
+
+# 33. Implementation Rules
+
+Once the architecture plan is approved internally by your own analysis, begin implementation.
+
+For every substantial change:
+
+1. Explain why it exists.
+2. Make the smallest coherent change.
+3. Run tests/typecheck/build.
+4. Run relevant performance benchmark.
+5. Verify no regression.
+6. Continue.
+
+Do not perform hundreds of unrelated edits in one pass.
+
+Keep the repository buildable throughout the modernization.
+
+---
+
+# 34. Performance Regression Harness
+
+Where practical, create reusable benchmarks for:
+
+* boot;
+* cold scene entry;
+* warm scene entry;
+* NPC-heavy scene;
+* idle NPCs;
+* walking NPCs;
+* dialogue;
+* menus;
+* travel;
+* asset loading;
+* sprite construction.
+
+The engine should eventually have a repeatable performance baseline.
+
+---
+
+# 35. Public Release Preparation
+
+Think beyond the current game.
+
+Evaluate:
+
+* README;
+* architecture documentation;
+* getting started guide;
+* API documentation;
+* examples;
+* minimal example game;
+* TypeScript declarations;
+* package exports;
+* semantic versioning;
+* changelog;
+* contribution guidelines;
+* license;
+* issue templates;
+* development setup;
+* CI;
+* test coverage;
+* build artifacts.
+
+Do not create all documentation immediately.
+
+First make the architecture stable enough to document.
+
+---
+
+# 36. Definition of Success
+
+The modernization is successful when:
+
+### Architecture
+
+The engine has clear boundaries and responsibilities.
+
+### Performance
+
+High-frequency gameplay does not depend on React reconciliation or DOM churn.
+
+### Extensibility
+
+Adding a new gameplay system does not require modifying unrelated engine systems.
+
+### Reusability
+
+The engine can support games substantially different from the current project.
+
+### Testability
+
+Core systems can run independently of the browser and UI.
+
+### Resource Management
+
+Assets are loaded, cached, reused, and disposed predictably.
+
+### Rendering
+
+Rendering cost scales with visible complexity rather than unnecessary DOM representation.
+
+### Developer Experience
+
+A developer can understand the engine and build a new project without understanding the original game.
+
+### Public API
+
+Internal implementation details are not accidentally exposed as public contracts.
+
+### Maintainability
+
+The engine has fewer hidden dependencies, fewer special cases, and fewer game-specific assumptions.
+
+### Performance Engineering
+
+There are repeatable measurements and regression detection rather than subjective "it feels faster."
+
+---
+
+# 37. Most Important Strategic Principle
+
+Do not confuse:
+
+> "make the current game faster"
+
+with:
+
+> "make the engine better."
+
+The current performance work is important, but the larger objective is to identify which parts of the current codebase are **accidental consequences of the first game** and transform them into clean, reusable engine primitives.
+
+For example:
+
+```text
+Current:
+NpcActor
+
+Potential engine concept:
+Actor / Entity / Character
+
+Current:
+NpcMonologue
+
+Potential:
+Dialogue / TextPresentation system
+
+Current:
+NPC schedule
+
+Potential:
+Scheduler / Behavior / Activity system
+
+Current:
+PixelSprite
+
+Potential:
+Sprite / Animation / Renderer abstraction
+
+Current:
+District
+
+Potential:
+Scene / World / Map
+
+Current:
+NPC registry
+
+Potential:
+Resource/entity registry
+
+Current:
+GameRuntime
+
+Potential:
+Engine runtime
+```
+
+Do this carefully.
+
+Do NOT blindly rename classes.
+
+Extract abstractions only when their behavior genuinely generalizes.
+
+---
+
+# 38. Final Instruction
+
+Treat this as a **serious engine modernization project**, not a code cleanup task.
+
+Be skeptical.
+
+Measure.
+
+Profile.
+
+Trace dependencies.
+
+Challenge existing assumptions.
+
+Preserve proven architecture.
+
+Remove accidental complexity.
+
+Prefer simple, composable primitives.
+
+Avoid premature abstraction.
+
+Avoid unnecessary rewrites.
+
+When you discover something that is already architecturally strong, explicitly say so and leave it alone.
+
+When you discover a weakness, explain its root cause rather than merely patching its symptom.
+
+When proposing a new abstraction, explain:
+
+* what problem it solves;
+* why the current architecture cannot solve it cleanly;
+* what its API should be;
+* how it scales;
+* how it will be tested;
+* how existing code migrates to it;
+* what complexity it introduces.
+
+The desired outcome is not merely a faster version of the current game.
+
+The desired outcome is:
+
+> **a significantly more mature, performant, modular, extensible, reusable, testable, and publicly shareable 2D game engine — evolved from the existing codebase through disciplined engineering rather than a destructive rewrite.**
+
+Start with reconnaissance and architecture analysis.
+
+Do not begin with broad code modifications until you have established the current architecture, the major weaknesses, the target architecture, and a prioritized modernization roadmap.

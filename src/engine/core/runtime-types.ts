@@ -188,6 +188,31 @@ export type RuntimeStats = {
   heapMb: number | null;
   spriteMode: "dom" | "canvas";
   mountedFrames: number;
+  /**
+   * What the character is doing this instant. Sampled in the loop into a ref
+   * rather than into React state: a developer overlay that re-rendered the
+   * tree every time the frame changed would measure its own overhead rather
+   * than the game's.
+   */
+  live: LiveState;
+};
+
+/** The animation state of the player, as of the last simulated frame. */
+export type LiveState = {
+  /** the frame actually on screen */
+  frame: string;
+  /** the frame shown on the tick before, so a transition is visible as a pair */
+  prevFrame: string;
+  /** the running action, if any */
+  action: string | null;
+  /** 0..1 through that action, or 0 when nothing is running */
+  actionProgress: number;
+  /** why the current frame was chosen */
+  source: "forced" | "action" | "walk" | "idle";
+  moving: boolean;
+  facing: 1 | -1;
+  x: number;
+  scene: string;
 };
 
 /* -------------------------------------------------------------------- api */
@@ -201,6 +226,25 @@ export type RuntimeApi<W extends AnyWorld> = {
   getWorld(): W;
   updateWorld(patch: Partial<W> | ((w: W) => W)): void;
   getStats(): RuntimeStats;
+  /**
+   * The animation state right now, without the debug HUD having to be up.
+   * `getStats` only fills in while debug sampling runs; this is always live
+   * and costs a struct copy.
+   */
+  getLive(): LiveState;
+  /**
+   * Play an action by name, the way an interaction handler would. Developer
+   * tooling needs this to exercise a pose without hunting for the object in
+   * the world that happens to trigger it.
+   */
+  startAction(id: string): void;
+  /** Stop whatever action is running and hand control back to walk/idle. */
+  stopAction(): void;
+  /**
+   * Pin one frame on screen, ignoring walk, idle and actions alike, so a pose
+   * can be studied still. `null` releases it.
+   */
+  holdFrame(frame: string | null): void;
   saveNow(): void;
 };
 

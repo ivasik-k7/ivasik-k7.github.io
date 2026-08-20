@@ -1996,13 +1996,7 @@ function ZabkaEffects({
         className="pointer-events-none absolute inset-0"
       >
         {s.clerk === "counter" ? (
-          <NpcActor
-            npc={NPCS.clerk}
-            x={590}
-            facing={-1}
-            cropBelow={TILL + 2}
-            action={dialogueOpen ? NPCS.clerk.reactions.onTalk : undefined}
-          />
+          <NpcActor npc={NPCS.clerk} x={590} facing={-1} cropBelow={TILL + 2} />
         ) : null}
         {s.customer === "paying" ? (
           /* at the till, in front of the counter, waiting for the terminal */

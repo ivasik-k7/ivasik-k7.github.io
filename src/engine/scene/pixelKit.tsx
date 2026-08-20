@@ -619,6 +619,19 @@ const GLYPHS: Record<string, string[]> = {
   "<": ["001", "010", "100", "010", "001"],
   "*": ["101", "010", "111", "010", "101"],
   ")": ["10", "01", "01", "01", "10"],
+  /**
+   * Square brackets. Absent until now, which meant the menu's `[ESC] BACK`
+   * fell through to the space glyph and rendered as `ESC  BACK` with two
+   * unexplained holes in it. Two cells wide, like the round brackets.
+   */
+  "[": ["11", "10", "10", "10", "11"],
+  "]": ["11", "01", "01", "01", "11"],
+  /**
+   * A real middle dot, one cell wide, sitting at x-height. It used to be
+   * folded to a full stop, so `v0.1.0 · a1b2c3d` came out with a period
+   * loose on the baseline between the two halves.
+   */
+  "·": ["0", "0", "1", "0", "0"],
   "+": ["000", "010", "111", "010", "000"],
   "!": ["1", "1", "1", "0", "1"],
   "?": ["111", "001", "011", "000", "010"],
@@ -654,7 +667,22 @@ const ACCENTS: Record<string, { base: string; mark: "above" | "acute" | "below" 
 
 /** Lit pixels, run-length merged along each row. Accented letters add one rect. */
 /** Characters the font spells differently from the string that arrives. */
-const FOLD: Record<string, string> = { "−": "-", "–": "-", "—": "-", "’": "'", "·": ".", "•": "." };
+const FOLD: Record<string, string> = { "−": "-", "–": "-", "—": "-", "’": "'", "•": "·" };
+
+/**
+ * Say so, once per character, when a string asks for a glyph the font has not
+ * got. Without this a missing character is drawn as a blank cell and looks
+ * exactly like deliberate letterspacing — which is how `[ESC] BACK` shipped as
+ * `ESC  BACK` and nobody noticed.
+ */
+const warned = new Set<string>();
+function warnMissingGlyph(ch: string, text: string) {
+  if (warned.has(ch)) return;
+  warned.add(ch);
+  console.warn(
+    `[pixelFont] no glyph for ${JSON.stringify(ch)} — drawn blank in ${JSON.stringify(text)}`,
+  );
+}
 
 export function textRects(text: string, x: number, y: number, gap = 1): Rect[] {
   const out: Rect[] = [];
@@ -664,6 +692,7 @@ export function textRects(text: string, x: number, y: number, gap = 1): Rect[] {
     const acc = ACCENTS[raw];
     const ch = acc ? acc.base : raw;
     const rows = GLYPHS[ch] ?? GLYPHS[" "];
+    if (import.meta.env.DEV && !GLYPHS[ch] && ch !== " ") warnMissingGlyph(ch, text);
     const w = rows[0].length;
     if (acc) {
       if (acc.mark === "above") out.push([cx + 1, y - 2, 1, 1]);

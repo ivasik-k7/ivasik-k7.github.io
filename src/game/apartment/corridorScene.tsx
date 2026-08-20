@@ -2585,16 +2585,17 @@ function CorridorEffects({
    * at the bucket, a rest on the handle — and a conversation interrupts all of
    * it, because a person stops working to talk to you.
    */
+  // No dialogue branch here any more: talking to her is published by the
+  // runtime and picked up by the actor itself, so this only has to say what
+  // she is doing when nobody is talking to her.
   const natalia =
     s.natalia === "away"
       ? null
-      : dialogueOpen
-        ? NPCS.natalia.reactions.onTalk
-        : s.natalia === "wring"
-          ? "wring"
-          : s.natalia === "rest"
-            ? "rest"
-            : "work";
+      : s.natalia === "wring"
+        ? "wring"
+        : s.natalia === "rest"
+          ? "rest"
+          : "work";
 
   return (
     <>

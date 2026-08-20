@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { mumble, voiceFor } from "@/engine";
+import { mumble, SpeechPanel, SpeechTail, SpeechText, voiceFor } from "@/engine";
 
 /**
  * Ambient monologue: an NPC mutters to nobody in particular.
@@ -92,7 +92,6 @@ export function NpcMonologue({
   offsetY?: number;
 }) {
   const [line, setLine] = useState<string | null>(null);
-  const [shown, setShown] = useState(0);
   const [bob, setBob] = useState(0);
   const [halfWidth, setHalfWidth] = useState(0);
   const lastIndex = useRef(-1);
@@ -101,6 +100,7 @@ export function NpcMonologue({
   const still = useReducedMotion();
 
   // ---- the cycle: wait, take the floor, speak, give it back ----------------
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restart the cycle when reduced motion changes, though the body no longer reads it
   useEffect(() => {
     if (muted) {
       setLine(null);
@@ -125,7 +125,6 @@ export function NpcMonologue({
         lastIndex.current = index;
         const text = lines[index];
         setLine(text);
-        setShown(still ? text.length : 0);
         mumble(text, voiceFor(speaker));
         // long lines get longer on screen; short ones don't linger
         const dwell = 1800 + text.length * 48;
@@ -147,13 +146,11 @@ export function NpcMonologue({
     };
   }, [lines, speaker, muted, still]);
 
-  // ---- the typewriter ------------------------------------------------------
-  useEffect(() => {
-    if (!line || still) return;
-    if (shown >= line.length) return;
-    const t = window.setTimeout(() => setShown((n) => n + 1), 26);
-    return () => window.clearTimeout(t);
-  }, [line, shown, still]);
+  // The typewriter lives in `SpeechText` now. It used to chain a `setTimeout`
+  // per character, which loses time whenever the main thread is busy — walking
+  // made the text visibly crawl, because every dropped timer was a dropped
+  // letter. The replacement derives the letter count from elapsed wall time on
+  // an animation frame, so a busy frame skips ahead instead of falling behind.
 
   // ---- one whole pixel of bob, never a fraction ---------------------------
   useEffect(() => {
@@ -166,46 +163,27 @@ export function NpcMonologue({
   }, [line, still]);
 
   // ---- measure, so the bubble can stay inside the scene -------------------
+  // Measured once per line, not once per letter. Keyed on `shown` this read
+  // `offsetWidth` — a forced synchronous layout — for every character typed,
+  // which in the district cost 853 ms over twenty idle seconds because the
+  // layout it forced was of a nine-thousand-node scene. The bubble is sized by
+  // its longest line, so measuring the finished text is also the correct answer.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure when the bubble reappears
   useLayoutEffect(() => {
     if (!line || !boxRef.current) return;
     setHalfWidth(boxRef.current.offsetWidth / 2 / scale);
-  }, [line, shown, scale]);
+  }, [line, scale]);
 
   if (!line) return <AnimatePresence />;
 
   // one game pixel, in CSS px
   const u = Math.max(1, Math.round(scale));
   const font = Math.max(9, Math.round(3 * scale));
-  const nameFont = Math.max(7, Math.round(2.25 * scale));
   const lead = font + u * 2;
 
   // no smoothing, no ligatures, no hinting games — let it alias
-  const crisp = {
-    WebkitFontSmoothing: "none",
-    MozOsxFontSmoothing: "unset",
-    textRendering: "optimizeSpeed",
-    fontVariantLigatures: "none",
-  } as React.CSSProperties;
 
   // a two-step staircase at every corner, cut in whole pixels
-  const chamfer = [
-    `${u * 2}px 0`,
-    `calc(100% - ${u * 2}px) 0`,
-    `calc(100% - ${u}px) ${u}px`,
-    `100% ${u * 2}px`,
-    `100% calc(100% - ${u * 2}px)`,
-    `calc(100% - ${u}px) calc(100% - ${u}px)`,
-    `calc(100% - ${u * 2}px) 100%`,
-    `${u * 2}px 100%`,
-    `${u}px calc(100% - ${u}px)`,
-    `0 calc(100% - ${u * 2}px)`,
-    `0 ${u * 2}px`,
-    `${u}px ${u}px`,
-  ].join(", ");
-  const clip = `polygon(${chamfer})`;
-  // one-pixel scanlines across the fill, the same trick the scenes use
-  const scan = `repeating-linear-gradient(180deg, rgba(232,230,224,0.055) 0px, rgba(232,230,224,0.055) ${u}px, rgba(0,0,0,0) ${u}px, rgba(0,0,0,0) ${u * 2}px)`;
 
   // shifted off the head, then clamped into the scene; the trail stays over it
   const pad = 4;
@@ -213,11 +191,7 @@ export function NpcMonologue({
   if (sceneWidth && halfWidth > 0) {
     cx = Math.min(Math.max(cx, halfWidth + pad), sceneWidth - halfWidth - pad);
   }
-  const tailOffset = Math.round((x - cx) * scale);
   /** how far the bubble floats above the head, in game px */
-  const gap = Math.max(3, -offsetY);
-
-  const typing = shown < line.length;
 
   return (
     <AnimatePresence>
@@ -235,157 +209,31 @@ export function NpcMonologue({
         exit={{ opacity: 0, y: -u }}
         transition={{ duration: still ? 0 : 0.16, ease: "linear" }}
       >
-        {/* the frame: border layer, chamfered, with the fill inset one pixel */}
-        <div
-          ref={boxRef}
-          style={{
-            clipPath: clip,
-            background: "rgba(232,230,224,0.32)",
-            padding: u,
-            maxWidth: Math.round(52 * scale),
-          }}
-        >
-          <div
-            className="text-center font-mono text-parchment/90"
-            style={{
-              ...crisp,
-              clipPath: clip,
-              backgroundColor: "rgba(11,14,20,0.92)",
-              backgroundImage: scan,
-              boxShadow: `inset 0 ${u}px 0 rgba(232,230,224,0.10)`,
-              padding: `${u}px ${u * 2}px`,
-              fontSize: font,
-              lineHeight: `${lead}px`,
-              letterSpacing: 0,
-            }}
+        {/* the same riveted plate as the clock and the interact chip, with the
+            speaker on the title plate that straddles the top edge — a
+            character speaking is the game speaking, and it comes out of the
+            game's own furniture rather than a lookalike built next to it */}
+        <div ref={boxRef}>
+          <SpeechPanel
+            u={u}
+            tone="say"
+            rivets={false}
+            maxWidth={Math.round(52 * scale)}
+            title={showSpeaker ? speaker.toUpperCase() : undefined}
           >
-            {still ? line : line.slice(0, shown)}
-            {typing ? (
-              <span
-                aria-hidden="true"
-                className="ml-px inline-block align-baseline bg-parchment/85"
-                style={{ width: u, height: font - u }}
-              />
-            ) : (
-              <span
-                aria-hidden="true"
-                className="ml-1 inline-block align-baseline"
-                style={{ width: u * 3, height: u * 2 }}
-              >
-                <span className="block bg-signal/70" style={{ width: u * 3, height: u }} />
-                <span
-                  className="block bg-signal/70"
-                  style={{ width: u, height: u, marginLeft: u }}
-                />
-              </span>
-            )}
-          </div>
+            <SpeechText
+              key={line}
+              text={line}
+              done={still}
+              u={u}
+              pace={1.45}
+              fontSize={font}
+              lineHeight={lead}
+              className="font-mono text-parchment/90"
+            />
+          </SpeechPanel>
         </div>
-
-        {/* the nameplate, riding the top border */}
-        {showSpeaker ? (
-          <div
-            className="absolute whitespace-nowrap font-mono text-signal/85 uppercase"
-            style={{
-              ...crisp,
-              left: u * 3,
-              top: -(nameFont + u * 3),
-              clipPath: clip,
-              backgroundColor: "rgba(11,14,20,0.94)",
-              border: `${u}px solid rgba(232,230,224,0.28)`,
-              padding: `${u}px ${u * 2}px`,
-              fontSize: nameFont,
-              lineHeight: `${nameFont}px`,
-              letterSpacing: "0.16em",
-            }}
-          >
-            {speaker}
-          </div>
-        ) : null}
-
-        {/* the tail: three pixel steps down, then a thought trail leaning back
-            toward the head it came out of — it is a mutter, not a shout */}
-        <div
-          className="absolute"
-          style={{
-            left: "50%",
-            bottom: -gap * u,
-            height: gap * u,
-            transform: `translateX(${tailOffset - u * 2.5}px)`,
-          }}
-        >
-          {/* the outline steps */}
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              width: u * 5,
-              height: u,
-              background: "rgba(232,230,224,0.32)",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              left: u,
-              top: u,
-              width: u * 3,
-              height: u,
-              background: "rgba(232,230,224,0.32)",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              left: u * 2,
-              top: u * 2,
-              width: u,
-              height: u,
-              background: "rgba(232,230,224,0.32)",
-            }}
-          />
-          {/* the fill, so the outline reads continuously into the bubble */}
-          <div
-            style={{
-              position: "absolute",
-              left: u,
-              top: 0,
-              width: u * 3,
-              height: u,
-              background: "rgba(11,14,20,0.92)",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              left: u * 2,
-              top: u,
-              width: u,
-              height: u,
-              background: "rgba(11,14,20,0.92)",
-            }}
-          />
-          {/* and the dots closing the rest of the distance */}
-          {Array.from({ length: Math.max(0, Math.floor((gap - 3) / 2)) }, (_, i) => {
-            const step = 3 + i * 2;
-            if (step >= gap) return null;
-            return (
-              <div
-                key={`tr${step}`}
-                style={{
-                  position: "absolute",
-                  left: u * 2 + Math.round((i + 1) * 0.6 * u),
-                  top: step * u,
-                  width: u,
-                  height: u,
-                  background: "rgba(232,230,224,0.28)",
-                  opacity: 1 - i * 0.22,
-                }}
-              />
-            );
-          })}
-        </div>
+        <SpeechTail u={u} tone="say" />
       </motion.div>
     </AnimatePresence>
   );

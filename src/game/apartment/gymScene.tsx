@@ -2156,7 +2156,6 @@ function GymEffects({
             facing={1}
             /* the reception top is at y=100; nothing below it is visible */
             cropBelow={102}
-            action={dialogueOpen ? NPCS.kasia.reactions.onTalk : undefined}
           />
         ) : null}
         {who.runner ? (

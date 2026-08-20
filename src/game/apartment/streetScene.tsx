@@ -7452,36 +7452,18 @@ function StreetEffects({
         preserveAspectRatio="none"
         className="pointer-events-none absolute inset-0"
       >
-        {s.smoker !== "away" ? (
-          <NpcActor
-            npc={NPCS.smoker}
-            x={254}
-            facing={1}
-            action={dialogueOpen ? NPCS.smoker.reactions.onTalk : undefined}
-          />
-        ) : null}
+        {s.smoker !== "away" ? <NpcActor npc={NPCS.smoker} x={254} facing={1} /> : null}
         {s.babcia !== "away" ? (
-          <NpcActor
-            npc={NPCS.babcia}
-            x={800}
-            facing={1}
-            shadow={false}
-            action={dialogueOpen ? NPCS.babcia.reactions.onTalk : undefined}
-          />
+          <NpcActor npc={NPCS.babcia} x={800} facing={1} shadow={false} />
         ) : null}
         {s.heniek ? (
           <NpcActor
             npc={NPCS.waiting}
+            objId="waiting-man"
             /* he steps to the kerb when the bus is finally coming */
             x={s.bus === "arriving" ? 502 : 496}
             facing={1}
-            action={
-              dialogueOpen
-                ? NPCS.waiting.reactions.onTalk
-                : s.bus === "arriving"
-                  ? "notice"
-                  : undefined
-            }
+            action={s.bus === "arriving" ? "notice" : undefined}
           />
         ) : null}
       </svg>

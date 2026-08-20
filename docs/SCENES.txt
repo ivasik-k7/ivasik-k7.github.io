@@ -1,0 +1,672 @@
+Create a new production-quality scene:
+
+`trainStation.tsx`
+
+representing **Gdańsk Przymorze-Uniwersytet SKM station**, followed by a separate interactive:
+
+`trainScene`
+
+The experience should be grounded in a believable Gdańsk environment and should feel like a natural extension of the existing game world.
+
+Use the existing `streetScene` as the **technical and visual reference** for scene architecture, composition, pixel-art treatment, lighting, scale, character rendering, environmental detail, animation, interaction patterns, and overall quality.
+
+Do not simply copy `streetScene`. Use it to understand the project's established visual language and scene conventions.
+
+---
+
+# 1. Station Scene — `trainStation.tsx`
+
+Build a complete SKM station environment representing the **Przymorze-Uniwersytet** area.
+
+The player should immediately understand that they are standing on a real urban railway platform in Gdańsk.
+
+The scene should contain:
+
+* railway platform;
+* tracks;
+* platform edge;
+* SKM infrastructure;
+* station signage;
+* shelters;
+* benches;
+* lamps;
+* poles;
+* railway equipment;
+* electrical infrastructure;
+* advertisements/posters;
+* bins;
+* small architectural details;
+* pavement markings;
+* platform safety markings;
+* environmental clutter;
+* distant buildings;
+* realistic urban background.
+
+Do not make the platform unnaturally clean or empty.
+
+It should feel like a real station that people actually use.
+
+---
+
+# 2. Gdańsk Visual Identity
+
+The location should be clearly recognizable as **Gdańsk**, rather than a generic railway station.
+
+The surrounding environment should communicate the Przymorze/Oliva urban landscape.
+
+A major visual landmark should be the **Alchemia office complex / Alchemia towers** visible in the background.
+
+The towers should have:
+
+* appropriate proportions;
+* recognizable silhouette;
+* believable distance;
+* atmospheric perspective;
+* appropriate lighting;
+* correct visual scale relative to the station.
+
+Do not place them unrealistically close to the platform.
+
+They should feel like distant urban architecture visible beyond the station.
+
+Add other background buildings and urban elements so the towers do not look like isolated sprites.
+
+---
+
+# 3. Station Composition
+
+Build the scene in distinct depth layers:
+
+### Foreground
+
+The player, platform details, benches, signs, lamps, objects and other interactive elements.
+
+### Midground
+
+Tracks, railway infrastructure, waiting passengers and approaching trains.
+
+### Background
+
+Urban landscape, buildings, vegetation, roads and the Alchemia towers.
+
+### Far background
+
+Gdańsk skyline and atmospheric elements.
+
+Use depth, occlusion, lighting and perspective to prevent the scene from feeling flat.
+
+---
+
+# 4. Platform Population
+
+The station should not feel deserted.
+
+Add several NPCs waiting on the platform.
+
+They should have varied behavior.
+
+Examples:
+
+* standing and checking their phone;
+* sitting on a bench;
+* looking toward the tracks;
+* talking to another person;
+* walking along the platform;
+* checking the timetable;
+* waiting near the doors when the train arrives;
+* casually looking around.
+
+NPCs should not all perform the same animation simultaneously.
+
+Use the existing character/NPC systems wherever possible.
+
+Their behavior should be subtle and believable.
+
+---
+
+# 5. Ambient Station Animation
+
+The station should be alive even when no train is present.
+
+Consider subtle animation such as:
+
+* people moving;
+* flags/posters moving slightly;
+* subtle lighting;
+* distant traffic;
+* environmental particles;
+* birds;
+* small background movement;
+* electronic signage;
+* occasional platform activity.
+
+Keep ambient animation restrained.
+
+The goal is realism and atmosphere, not visual noise.
+
+---
+
+# 6. Initial Train Activity
+
+Before the player can interact with a train, there should be normal railway activity.
+
+At appropriate intervals, an SKM train should appear in the environment and travel through the scene.
+
+This first train does **not necessarily need to be interactive**.
+
+It should function as environmental storytelling and establish that this is an active railway.
+
+The train should:
+
+1. appear from the appropriate direction;
+2. approach the station/track;
+3. move naturally through the scene;
+4. produce appropriate visual/audio feedback;
+5. continue toward its destination;
+6. disappear into the distance.
+
+The train should not simply teleport into existence.
+
+Use smooth acceleration and deceleration.
+
+---
+
+# 7. Train Going Toward Sopot
+
+At least one environmental train should visually communicate travel toward **Sopot**.
+
+The player does not necessarily need to board this first train.
+
+The purpose is to make the railway environment feel operational and establish the direction of travel.
+
+Make the train movement convincing:
+
+* correct relative scale;
+* believable speed;
+* motion consistency;
+* natural entrance/exit;
+* appropriate sound/effects if supported;
+* subtle environmental reaction.
+
+---
+
+# 8. Interactive Train Event
+
+After the player has spent some time on the platform, an **interactive modern Gdańsk SKM train** should arrive.
+
+This should be a deliberate gameplay event.
+
+Do not make the interactive train immediately available the moment the scene loads.
+
+The player should have time to:
+
+* explore;
+* observe the environment;
+* interact with the station;
+* watch normal train traffic;
+* experience the atmosphere.
+
+Then the interactive train arrives.
+
+---
+
+# 9. Modern SKM Train
+
+The interactive train should visually resemble a modern **Gdańsk SKM train**.
+
+Pay attention to:
+
+* train proportions;
+* carriage geometry;
+* windows;
+* doors;
+* headlights;
+* exterior details;
+* interior visibility;
+* railway markings;
+* appropriate colors/materials;
+* pantograph/roof equipment where visible;
+* realistic carriage connections.
+
+Use the project's pixel-art style while retaining enough detail for the train to be immediately recognizable.
+
+Do not create a generic metro train.
+
+---
+
+# 10. Train Arrival Sequence
+
+The arrival should be fully animated.
+
+Sequence:
+
+1. distant train becomes visible;
+2. train approaches;
+3. speed decreases;
+4. train enters the station;
+5. train stops;
+6. doors become interactive;
+7. passengers may enter/exit;
+8. player can approach a valid door;
+9. interaction becomes available.
+
+The player should be able to understand when boarding is possible through visual feedback rather than an unexplained UI state.
+
+---
+
+# 11. Train Interaction Zones
+
+Do **not** make the entire train clickable.
+
+Define specific interaction zones.
+
+The primary interaction zones should be:
+
+* carriage doors.
+
+Potentially support other meaningful interaction points if appropriate, but keep the interaction model spatially believable.
+
+The player should have to physically approach a door.
+
+When close enough:
+
+* show the appropriate interaction indicator;
+* highlight the valid interaction zone;
+* allow boarding.
+
+Do not allow boarding from arbitrary locations along the train.
+
+---
+
+# 12. Boarding Transition
+
+Boarding should have a dedicated transition.
+
+Avoid an abrupt scene replacement.
+
+The player should:
+
+1. approach the train door;
+2. interact;
+3. play an appropriate boarding animation;
+4. transition into the carriage;
+5. enter `trainScene`.
+
+Use lighting/audio/environment transitions where appropriate.
+
+The transition should feel like the player physically entered the train.
+
+---
+
+# 13. `trainScene`
+
+Create a separate scene:
+
+`trainScene`
+
+This should represent the **interior of a moving SKM carriage**.
+
+This scene is extremely important.
+
+It should feel different from normal static locations while remaining part of the same game world.
+
+---
+
+# 14. Train Interior
+
+Create a believable modern train carriage interior containing:
+
+* seats;
+* rows of seats;
+* windows;
+* doors between carriages;
+* handrails;
+* poles;
+* overhead elements;
+* luggage/utility areas where appropriate;
+* information displays;
+* route information;
+* interior lighting;
+* carriage walls;
+* floor;
+* small realistic details.
+
+The player should immediately understand:
+
+> I am sitting inside a moving Gdańsk SKM train.
+
+---
+
+# 15. Interactive Train Interior
+
+The carriage should be genuinely interactive.
+
+Allow the player to:
+
+* walk around;
+* inspect/interact with appropriate objects;
+* sit down;
+* stand up;
+* move between valid areas;
+* interact with the route/map;
+* look outside;
+* choose where to travel.
+
+Do not make every object interactive.
+
+Use meaningful interaction zones.
+
+---
+
+# 16. Sitting
+
+Implement a proper sitting interaction.
+
+The player should be able to approach a seat and interact with it.
+
+The sequence should be:
+
+1. approach seat;
+2. interaction indicator appears;
+3. player selects the seat;
+4. character transitions naturally into sitting;
+5. camera/character state adjusts appropriately;
+6. player can remain seated while the train moves;
+7. player can stand up again.
+
+Avoid instantaneous teleportation into a sitting pose.
+
+Use an appropriate transition animation if the character system supports it.
+
+---
+
+# 17. Route Selection
+
+The train should provide a special travel-selection interaction.
+
+This should be represented by a **route map displayed inside the carriage**.
+
+The map should look like a real railway route diagram integrated into the carriage.
+
+It should allow the player to choose a destination.
+
+At minimum, support the relevant Gdańsk/SKM travel directions and destinations supported by the game's world.
+
+The route map should not look like a generic game menu.
+
+It should physically exist as part of the carriage.
+
+---
+
+# 18. Map Interaction
+
+When the player interacts with the route map:
+
+* provide a clear interaction state;
+* visually emphasize stations/destinations;
+* allow the player to select a destination;
+* show the selected route;
+* confirm the choice;
+* begin the corresponding travel sequence.
+
+The interaction should preserve immersion.
+
+Prefer an in-world presentation over opening an unrelated fullscreen UI.
+
+---
+
+# 19. Moving Train Experience
+
+The train should actually feel like it is moving.
+
+This is one of the most important aspects of the scene.
+
+While inside the train:
+
+* exterior scenery should move through the windows;
+* lighting should change;
+* distant buildings should pass;
+* tracks/environment should create a sense of movement;
+* occasional tunnels/structures can alter lighting;
+* scenery should have different apparent speeds depending on distance;
+* the train should have subtle movement/rocking.
+
+Do not simply animate a generic scrolling background.
+
+Use layered parallax to create convincing travel.
+
+---
+
+# 20. Gdańsk Landscape
+
+The outside environment should represent the broader Gdańsk area.
+
+A major background motif should be the **Gdańsk shipyard / Stocznia landscape**, including recognizable cranes and industrial infrastructure where appropriate.
+
+Use:
+
+* shipyard cranes;
+* industrial buildings;
+* railway infrastructure;
+* distant urban architecture;
+* rooftops;
+* utility structures;
+* vegetation;
+* roads;
+* skyline elements.
+
+The player should occasionally see recognizable Gdańsk scenery through the train windows.
+
+---
+
+# 21. Train Movement & Landscape System
+
+Create a system that can support multiple scenery segments.
+
+For example:
+
+* station departure;
+* urban buildings;
+* railway infrastructure;
+* industrial/shipyard area;
+* distant skyline;
+* vegetation;
+* bridges;
+* tunnels;
+* next station;
+* destination arrival.
+
+Use a combination of:
+
+* parallax layers;
+* animated foreground;
+* midground movement;
+* distant background movement;
+* lighting changes.
+
+The system should be extensible so additional destinations can be added later.
+
+---
+
+# 22. Atmosphere
+
+The train journey should provide a different emotional experience from walking around the city.
+
+It should feel:
+
+* calm;
+* observational;
+* slightly melancholic;
+* urban;
+* atmospheric;
+* grounded;
+* distinctly Gdańsk.
+
+The player should be able to simply sit and watch the world pass outside.
+
+Do not overload the player with UI.
+
+Let the environment carry the experience.
+
+---
+
+# 23. Audio
+
+If the existing audio infrastructure supports it, add appropriate sounds:
+
+Station:
+
+* distant announcements;
+* railway ambience;
+* people;
+* footsteps;
+* train braking;
+* doors;
+* train departure;
+* environmental city noise.
+
+Train:
+
+* carriage ambience;
+* rolling wheels;
+* subtle vibration;
+* door sounds;
+* announcements;
+* distant passenger conversations;
+* station arrival/departure sounds.
+
+Audio should be subtle and layered.
+
+---
+
+# 24. Technical Architecture
+
+Follow the existing scene architecture.
+
+Use `streetScene` as a reference for:
+
+* scene setup;
+* rendering;
+* character placement;
+* camera;
+* interaction;
+* lighting;
+* pixel rendering;
+* animation;
+* asset management;
+* performance patterns.
+
+Reuse:
+
+* `pixelKit`;
+* `lightKit`;
+* existing NPC systems;
+* existing interaction systems;
+* existing character systems;
+* existing scene transition systems;
+* existing audio systems;
+* reusable environment components.
+
+Do not create duplicate infrastructure if the project already provides the required functionality.
+
+---
+
+# 25. Performance
+
+This scene will contain:
+
+* multiple NPCs;
+* trains;
+* animated environment;
+* lighting;
+* parallax;
+* moving scenery;
+* interactive objects.
+
+Therefore explicitly optimize it.
+
+Pay attention to:
+
+* off-screen animation;
+* inactive NPCs;
+* train rendering;
+* scenery updates;
+* unnecessary re-renders;
+* asset loading;
+* memory;
+* animation loops;
+* scene lifecycle.
+
+The train journey should remain smooth even with animated scenery outside the windows.
+
+---
+
+# 26. Independent Review
+
+After implementing the first version, perform an independent review.
+
+Compare the scene against `streetScene` and ask:
+
+* Does this look like the same game?
+* Does it look convincingly like Gdańsk?
+* Does the station feel like a real place?
+* Does the Alchemia background feel correctly integrated?
+* Do the NPCs feel natural?
+* Does the train arrival feel believable?
+* Are interaction zones intuitive?
+* Does boarding feel physical?
+* Does the train interior feel detailed?
+* Does sitting feel natural?
+* Does the route map feel like part of the train?
+* Does the train actually feel like it is moving?
+* Does the landscape look like Gdańsk?
+* Does the shipyard/crane background create the intended atmosphere?
+* Are there enough details?
+* Are there unnecessary details?
+* Is performance acceptable?
+
+Then perform another improvement pass based on the findings.
+
+---
+
+# 27. Additional Feature Discovery
+
+During implementation, proactively identify additional features that would improve this system.
+
+Examples:
+
+* train announcements;
+* destination display;
+* changing carriage lighting;
+* NPC passengers entering/exiting;
+* NPCs taking seats;
+* dynamic seat availability;
+* station arrival notifications;
+* destination previews;
+* multiple train routes;
+* different train variants;
+* weather-dependent exterior scenery;
+* time-of-day-dependent lighting;
+* window reflections;
+* passing trains;
+* railway signals;
+* platform departure boards;
+* interactive station signage.
+
+Do not add feature bloat.
+
+Recommend features that materially improve immersion, gameplay, or extensibility and implement them when appropriate.
+
+---
+
+# 28. Final Experience
+
+The complete experience should be:
+
+**Explore Gdańsk → arrive at Przymorze-Uniwersytet → wait on platform → observe station life → watch trains pass → interactive SKM arrives → approach a carriage door → board → enter trainScene → explore carriage → sit or walk → interact with route map → choose destination → train begins moving → watch Gdańsk landscapes and Stocznia cranes pass outside → arrive at destination.**
+
+The result should feel like a **fully designed game experience**, not simply two connected scenes.
+
+Prioritize realism, atmosphere, environmental storytelling, interaction quality, animation consistency, and technical quality.
+
+Use `streetScene` as the quality and architectural reference, but push the new scenes further in terms of environmental detail, interactivity, animation, and atmosphere.

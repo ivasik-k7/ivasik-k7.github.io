@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FLOOR_Y } from "../core/constants";
 import type { SpriteMap } from "../core/types";
 import type { AnimalConfig } from "../sprite/animalBuilder";
+import { useReducedMotion } from "./animationGate";
 import { PixelSprite } from "./PixelSprite";
 
 /**
@@ -43,7 +44,7 @@ export function useAnimalFrame(animal: AnimalConfig, action?: string, playing = 
   const frames = useMemo(() => def?.frames ?? ["stand"], [def]);
   const start = phaseOf(animal.id, frames.length);
   const [i, setI] = useState(start);
-  const still = useStill();
+  const still = useReducedMotion();
 
   useEffect(() => {
     setI(start);
@@ -150,17 +151,4 @@ function footprint(frame: SpriteMap): { from: number; to: number } {
     return { from, to };
   }
   return { from: 0, to: 0 };
-}
-
-function useStill() {
-  const [still, setStill] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setStill(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setStill(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return still;
 }

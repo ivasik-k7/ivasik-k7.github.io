@@ -36,7 +36,7 @@ import {
 import type {
   ActorDef,
   InputAction,
-  QualityTier,
+  LiveState,
   RuntimeApi,
   RuntimeConfig,
   RuntimeCtx,
@@ -51,14 +51,18 @@ import {
   advanceDialogue,
   chooseDialogue,
   type DialogueState,
+  type DialogueStep,
   type DialogueTree,
   dialogueAtChoices,
+  offeredChoices,
   openDialogue,
 } from "../systems/dialogue";
 import { loadGame, saveGame } from "../systems/save";
+import { AnimationGateProvider } from "../ui/animationGate";
 import { DialogueBox } from "../ui/DialogueBox";
 import { InteractPrompt, TargetMarker } from "../ui/InteractPrompt";
 import { PixelSprite } from "../ui/PixelSprite";
+import { SpeakingProvider, type SpeakingState } from "../ui/speaking";
 
 /**
  * GameRuntime — the engine's single component.
@@ -91,7 +95,6 @@ import { PixelSprite } from "../ui/PixelSprite";
 const ARRIVE_EPS = 1.2;
 const IDLE_PROMOTE_MS = 700;
 const DETECT_SAFETY_MS = 400;
-const QUALITY_VAR: Record<QualityTier, string> = { low: "0", medium: "1", high: "2" };
 
 type ActorRuntime = {
   x: number;
@@ -112,6 +115,47 @@ type SeqRun<W extends AnyWorld> = {
   cinematic: boolean;
   resolve: (ok: boolean) => void;
 };
+
+const EMPTY_FRAME_LIST: readonly string[] = [];
+
+/**
+ * The frames an actor can actually be asked to show.
+ *
+ * Every frame of every actor used to be mounted as a hidden `<g>`, on the
+ * theory that toggling `display` is cheaper than mounting on demand. It is —
+ * but the toggling only ever reaches the idle pose and the walk cycle, because
+ * that is all `stepActors` selects from unless the actor brings its own
+ * `step`. The rest was a whole sprite sheet of nodes that could never be
+ * shown: one built dog put 7 605 hidden `<rect>`s into the district and took
+ * scene entry from ~200 ms to about a second.
+ *
+ * An actor with a custom `step` can name any frame it likes, so that case
+ * still mounts everything.
+ */
+function actorFrameNames<W extends AnyWorld>(actor: ActorDef<W>): string[] {
+  if (actor.step) return Object.keys(actor.frames);
+  const names = new Set<string>([actor.idleFrame ?? "stand", ...(actor.walkCycle ?? [])]);
+  return [...names].filter((n) => actor.frames[n]);
+}
+
+/** A blink is 170 ms whatever else is happening. */
+const BLINK_MS = 170;
+/** He stands for at least this long before doing anything with it. */
+const IDLE_FLOURISH_MIN = 7000;
+const IDLE_FLOURISH_SPREAD = 9000;
+const IDLE_FLOURISHES = 3;
+
+/**
+ * Deterministic jitter — the same input always gives the same offset, so the
+ * idle is reproducible frame to frame within one beat while still being
+ * irregular across beats. `Math.random` would change the answer on every tick
+ * and make the pose flicker.
+ */
+function jitter(seed: number, span: number): number {
+  let h = Math.imul(seed | 0, 2654435761);
+  h ^= h >>> 15;
+  return Math.abs(h) % Math.max(1, span);
+}
 
 export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeConfig<W> }) {
   const { scenes, player, handlers, objectLabel } = config;
@@ -205,7 +249,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const padRef = useRef<PadState>(newPadState());
   const padPrev = useRef<PadState>(newPadState());
   const padPresentRef = useRef(false);
-  const actionRef = useRef<{ id: string; start: number; onInterrupt?: () => void } | null>(null);
+  const actionRef = useRef<{
+    id: string;
+    start: number;
+    onInterrupt?: () => void;
+    /** the frames being played on the way out, once the action is leaving */
+    leaving?: readonly string[];
+    leftAt?: number;
+  } | null>(null);
   const sceneRef = useRef(scene);
   const overlayRef = useRef<unknown>(overlay);
   const introRef = useRef(intro);
@@ -244,9 +295,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const domCache = useRef({
     scene: "",
     origin: "",
-    cam: "",
+    cam: Number.NaN,
     vis: "",
-    quality: "",
     player: "",
     mono: "",
     frame: "",
@@ -279,6 +329,18 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const worldRevRef = useRef(0);
   const inputLockRef = useRef(false);
   const forcedFrameRef = useRef<string | null>(null);
+  /**
+   * The scene's parallax layers and how much of the pan each one cancels,
+   * looked up once per scene rather than queried every frame.
+   */
+  const parallaxRef = useRef<{ el: SVGElement | HTMLElement; shift: number }[]>([]);
+  /** The scene's SVG roots, so their SMIL clocks can be stopped together. */
+  const smilRootsRef = useRef<SVGSVGElement[]>([]);
+  const smilPausedRef = useRef(false);
+  /** Shared empty list, so an action without an entry allocates nothing per frame. */
+  const EMPTY_FRAMES: readonly string[] = EMPTY_FRAME_LIST;
+  /** How long he has been standing still, and what he does about it next. */
+  const idleRef = useRef({ since: 0, nextBlink: 0, nextFlourish: 0, flourish: 0 });
   const bufferedInteractRef = useRef(0);
   const autoWalkRef = useRef<{
     x: number;
@@ -729,7 +791,11 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         spawnFx,
         queueToast,
         startDialogue: (tree) => {
-          setDialogue({ state: openDialogue(tree as DialogueTree<never>), obj });
+          const step = openDialogue(tree as DialogueTree<never>, () => makeCtx(obj));
+          if (step.kind === "continue") {
+            step.onEnter?.(makeCtx(obj));
+            setDialogue({ state: step.state, obj });
+          }
         },
         shakeCamera,
         scene: sceneRef.current,
@@ -853,34 +919,18 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     [def.width, interact, opts.autoWalkToTargets, selectTarget],
   );
 
-  // --- dialogue input ---------------------------------------------------------------------------
-  const dialogueAdvance = useCallback(() => {
-    const cur = dialogueRef.current;
-    if (!cur) return;
-    if (dialogueAtChoices(cur.state)) {
-      const step = chooseDialogue(cur.state, cur.state.choiceIndex, () => makeCtx(cur.obj));
-      if (step.kind === "continue") setDialogue({ ...cur, state: step.state });
-      else {
-        step.onEnd?.(makeCtx(cur.obj));
-        setDialogue(null);
-      }
-      return;
-    }
-    const step = advanceDialogue(cur.state);
-    if (step.kind === "continue") setDialogue({ ...cur, state: step.state });
-    else {
-      step.onEnd?.(makeCtx(cur.obj));
-      setDialogue(null);
-    }
-  }, [makeCtx]);
-
-  const dialogueChoose = useCallback(
-    (index: number) => {
-      const cur = dialogueRef.current;
-      if (!cur) return;
-      const step = chooseDialogue(cur.state, index, () => makeCtx(cur.obj));
-      if (step.kind === "continue") setDialogue({ ...cur, state: step.state });
-      else {
+  /**
+   * Apply a dialogue step. Every path in and out of a node goes through here
+   * so `onEnter` actually fires — it was declared on `DialogueNode` from the
+   * start and called from nowhere, which meant a node's entry effect silently
+   * did nothing and authors had no way to tell.
+   */
+  const applyDialogueStep = useCallback(
+    (cur: { state: DialogueState; obj: SceneObject }, step: DialogueStep) => {
+      if (step.kind === "continue") {
+        step.onEnter?.(makeCtx(cur.obj));
+        setDialogue({ ...cur, state: step.state });
+      } else {
         step.onEnd?.(makeCtx(cur.obj));
         setDialogue(null);
       }
@@ -888,10 +938,37 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     [makeCtx],
   );
 
+  // --- dialogue input ---------------------------------------------------------------------------
+  const dialogueAdvance = useCallback(() => {
+    const cur = dialogueRef.current;
+    if (!cur) return;
+    const ctx = () => makeCtx(cur.obj);
+    if (dialogueAtChoices(cur.state, ctx)) {
+      applyDialogueStep(cur, chooseDialogue(cur.state, cur.state.choiceIndex, ctx));
+      return;
+    }
+    applyDialogueStep(cur, advanceDialogue(cur.state, ctx));
+  }, [makeCtx, applyDialogueStep]);
+
+  const dialogueChoose = useCallback(
+    (index: number) => {
+      const cur = dialogueRef.current;
+      if (!cur) return;
+      applyDialogueStep(
+        cur,
+        chooseDialogue(cur.state, index, () => makeCtx(cur.obj)),
+      );
+    },
+    [makeCtx, applyDialogueStep],
+  );
+
   const dialogueMoveCursor = useCallback((delta: number) => {
     const cur = dialogueRef.current;
-    if (!cur || !dialogueAtChoices(cur.state)) return;
-    const count = cur.state.tree.nodes[cur.state.nodeId].choices?.length ?? 0;
+    const ctx = () => ctxFactoryRef.current?.(cur?.obj as SceneObject) as unknown;
+    if (!cur || !dialogueAtChoices(cur.state, ctx)) return;
+    // the cursor walks the choices actually on offer, not every authored one,
+    // or a hidden branch would leave a dead stop in the list
+    const count = offeredChoices(cur.state.tree.nodes[cur.state.nodeId], ctx).length;
     if (count === 0) return;
     setDialogue({
       ...cur,
@@ -920,6 +997,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     dialogueMoveCursor,
     fireGesture,
     menuOverlay: config.menuOverlay,
+    pauseOverlay: config.pauseOverlay,
     debugAllowed: opts.debug,
   });
   inputBag.current = {
@@ -930,6 +1008,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     dialogueMoveCursor,
     fireGesture,
     menuOverlay: config.menuOverlay,
+    pauseOverlay: config.pauseOverlay,
     debugAllowed: opts.debug,
   };
 
@@ -985,10 +1064,19 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           event.preventDefault();
           bag.cycleTarget(-1);
           break;
-        case "cancel":
-          if (seqRef.current && !seqRef.current.cinematic) cancelSequence();
+        case "cancel": {
+          // Escape is a stack: it backs out of whatever is innermost. Only when
+          // there is nothing left to back out of does it mean "pause".
+          const busy = Boolean(seqRef.current && !seqRef.current.cinematic);
+          if (busy) cancelSequence();
+          const walking = autoWalkRef.current !== null;
           cancelAutoWalkStatic(autoWalkRef);
+          if (!busy && !walking && bag.pauseOverlay !== undefined) {
+            event.preventDefault();
+            setOverlay(bag.pauseOverlay);
+          }
           break;
+        }
         case "menu":
           if (bag.menuOverlay !== undefined) {
             event.preventDefault();
@@ -1112,6 +1200,22 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   const statsRef = useRef<RuntimeStats | null>(stats);
   statsRef.current = stats;
+  /**
+   * The animation state, sampled every simulated frame. A ref and not state:
+   * the debug HUD polls it, and a developer overlay that re-rendered React on
+   * every frame change would be measuring itself rather than the game.
+   */
+  const liveRef = useRef<LiveState>({
+    frame: "stand",
+    prevFrame: "stand",
+    action: null,
+    actionProgress: 0,
+    source: "idle",
+    moving: false,
+    facing: 1,
+    x: 0,
+    scene: "",
+  });
   const atlasRef = useRef(atlas);
   atlasRef.current = atlas;
 
@@ -1237,6 +1341,25 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         overlayRef.current !== null ||
         fadingRef.current ||
         dialogueRef.current !== null;
+      /**
+       * Pausing throttled the loop and left everything else running. The scene
+       * art animates itself with SVG SMIL — smoke, flicker, blinking lights —
+       * and Blink repaints for every active `<animate>` on every frame whether
+       * or not its value changed. So with a menu or a dialogue covering the
+       * screen the game went on painting animations nobody could see; throttling
+       * the callback saved 9% and pushed paint *up*.
+       *
+       * `pauseAnimations` freezes the SMIL clock without unmounting anything,
+       * so the art resumes exactly where it stopped. Nothing is removed and
+       * nothing is simplified — it just stops running while it is invisible.
+       */
+      if (paused !== smilPausedRef.current) {
+        smilPausedRef.current = paused;
+        for (const svg of smilRootsRef.current) {
+          if (paused) svg.pauseAnimations();
+          else svg.unpauseAnimations();
+        }
+      }
       const minFrame = paused
         ? 1000 / Math.max(1, cfg.pausedHz)
         : cfg.maxFps > 0
@@ -1254,29 +1377,71 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       const act = actionRef.current;
       if (act) {
         const adef = player.actions[act.id];
-        const elapsed = now - act.start;
-        const duration = adef.frames.length * adef.frameMs * adef.loops;
-        const wantsMove =
-          keys.current.left || keys.current.right || padRef.current.left || padRef.current.right;
-        const interrupted = adef.interruptible && wantsMove && !inputLockRef.current;
-        if (elapsed >= duration || interrupted) {
-          if (interrupted) {
+        if (!adef) {
+          // An action id that does not exist used to throw here — inside the
+          // frame loop, so it threw again on the next frame and every frame
+          // after, and the game was gone. Scene data and cutscene steps both
+          // reach this by name, which makes a typo in content a hard lock.
+          // Drop the action, say so once, carry on.
+          if (import.meta.env.DEV) console.warn(`runtime: unknown action "${act.id}"`);
+          actionRef.current = null;
+          setActionUi(null);
+        } else {
+          const elapsed = now - act.start;
+          const enter = adef.enter ?? EMPTY_FRAMES;
+          const exit = adef.exit ?? EMPTY_FRAMES;
+          const enterMs = enter.length * adef.frameMs;
+          const loopMs = adef.frames.length * adef.frameMs * adef.loops;
+          const exitMs = exit.length * adef.frameMs;
+          const wantsMove =
+            keys.current.left || keys.current.right || padRef.current.left || padRef.current.right;
+          /**
+           * An interrupt does not cut on the spot any more: it stops the loop
+           * where it is and plays the way out. `abort` is there for the cases
+           * where the full exit is too long to sit through once the player has
+           * already asked to leave.
+           */
+          if (
+            !act.leaving &&
+            adef.interruptible &&
+            wantsMove &&
+            !inputLockRef.current &&
+            elapsed >= enterMs
+          ) {
+            act.leaving = adef.abort ?? exit;
+            act.leftAt = now;
             act.onInterrupt?.();
             bag.cancelQueuedToasts();
           }
-          actionRef.current = null;
-          setActionUi(null);
-          // a press that landed mid-action fires now instead of vanishing
-          if (
-            !interrupted &&
-            bufferedInteractRef.current > 0 &&
-            now - bufferedInteractRef.current <= cfg.inputBufferMs
-          ) {
-            bufferedInteractRef.current = 0;
-            bag.interact(nearRef.current);
+          if (act.leaving) {
+            const out = act.leaving;
+            const t = now - (act.leftAt ?? now);
+            if (t >= out.length * adef.frameMs) {
+              actionRef.current = null;
+              setActionUi(null);
+            } else {
+              actionFrame = out[Math.floor(t / adef.frameMs)] ?? null;
+            }
+          } else if (elapsed >= enterMs + loopMs + exitMs) {
+            actionRef.current = null;
+            setActionUi(null);
+            // a press that landed mid-action fires now instead of vanishing
+            if (
+              bufferedInteractRef.current > 0 &&
+              now - bufferedInteractRef.current <= cfg.inputBufferMs
+            ) {
+              bufferedInteractRef.current = 0;
+              bag.interact(nearRef.current);
+            }
+          } else if (elapsed < enterMs) {
+            actionFrame = enter[Math.floor(elapsed / adef.frameMs)] ?? null;
+          } else if (elapsed < enterMs + loopMs) {
+            const t = elapsed - enterMs;
+            actionFrame = adef.frames[Math.floor(t / adef.frameMs) % adef.frames.length];
+          } else {
+            const t = elapsed - enterMs - loopMs;
+            actionFrame = exit[Math.floor(t / adef.frameMs)] ?? null;
           }
-        } else {
-          actionFrame = adef.frames[Math.floor(elapsed / adef.frameMs) % adef.frames.length];
         }
       }
       if (
@@ -1512,9 +1677,54 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       const dom = domCache.current;
       const sceneEl = sceneElRef.current;
       if (sceneEl) {
-        // GPU promotion is granted while something moves and released when the
-        // frame settles — a permanent will-change holds a layer forever
+        // origin only matters while zoomed, so normal play writes it never
+        const originT = zoom === 1 ? "" : `${originX.toFixed(1)}px ${originY.toFixed(1)}px`;
+        if (originT !== dom.origin) {
+          dom.origin = originT;
+          sceneEl.style.transformOrigin = originT === "" ? "0 0" : originT;
+          domCounters.current.writes += 1;
+        }
+        /**
+         * The camera, snapped to whole device pixels.
+         *
+         * The idle "breath" is a sine of about a third of a pixel. As a float
+         * it produced a different transform string on literally every frame —
+         * measured at 60 writes a second with the player standing still — so
+         * the `!== dom.scene` guard below never once fired and the compositor
+         * re-laid the scene forever. Quantizing costs nothing and is *more*
+         * correct here anyway: this is a `crispEdges` pixel-art game, and a
+         * camera parked on a fractional pixel is what makes a still frame
+         * shimmer. The parallax write below has always rounded; this is the
+         * same rule applied to the layer that carries everything else.
+         */
+        const dpr = dprRef.current || 1;
+        const snap = (v: number) => Math.round(v * dpr) / dpr;
+        const px = snap(panX);
+        const py = snap(panY);
+        const sceneT =
+          zoom === 1
+            ? `translate3d(${px}px, ${py}px, 0)`
+            : `translate3d(${px}px, ${py}px, 0) scale(${zoom.toFixed(4)})`;
+        const sceneMoved = sceneT !== dom.scene;
+        if (sceneMoved) {
+          dom.scene = sceneT;
+          sceneEl.style.transform = sceneT;
+          domCounters.current.writes += 1;
+        } else {
+          domCounters.current.skips += 1;
+        }
+        /**
+         * GPU promotion follows whether the transform is actually changing,
+         * not whether the player is holding a key.
+         *
+         * It used to be released 700 ms after the last input — which, with a
+         * camera that moved every frame forever, meant the one element
+         * guaranteed to mutate was the one denied a compositor layer. Now a
+         * settled camera really is settled, so releasing the layer is safe,
+         * and anything that does move keeps it.
+         */
         const busy =
+          sceneMoved ||
           moving ||
           fadingRef.current ||
           seqRef.current !== null ||
@@ -1523,51 +1733,32 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           now - lastMoveAtRef.current < IDLE_PROMOTE_MS;
         promote(sceneEl, busy, promoteCache.current);
 
-        // origin only matters while zoomed, so normal play writes it never
-        const originT = zoom === 1 ? "" : `${originX.toFixed(1)}px ${originY.toFixed(1)}px`;
-        if (originT !== dom.origin) {
-          dom.origin = originT;
-          sceneEl.style.transformOrigin = originT === "" ? "0 0" : originT;
-          domCounters.current.writes += 1;
-        }
-        // the scene container is compositor-promoted, so its fractional
-        // transform is cheap; write it only when it changed
-        const sceneT =
-          zoom === 1
-            ? `translate3d(${panX}px, ${panY}px, 0)`
-            : `translate3d(${panX}px, ${panY}px, 0) scale(${zoom.toFixed(4)})`;
-        if (sceneT !== dom.scene) {
-          dom.scene = sceneT;
-          sceneEl.style.transform = sceneT;
-          domCounters.current.writes += 1;
-        } else {
-          domCounters.current.skips += 1;
-        }
-        // --cam drives SVG parallax groups, which repaint on change in
-        // browsers without composited SVG transforms — quantize to whole
-        // logical pixels so a settled camera stops invalidating them
-        const camV = String(scrollable ? Math.round(-panX / scale) : 0);
+        /**
+         * Parallax. Written straight onto the layer elements, quantized to
+         * whole logical pixels so a settled camera stops touching them at all.
+         *
+         * This used to publish a `--cam` custom property on the scene root and
+         * let the layers read it in a `calc()`. Custom properties inherit, so
+         * that invalidated the computed style of every node in the scene on
+         * every pan — `UpdateLayoutTree` measured 326 ms standing still and
+         * 1572 ms walking, which was the frame rate.
+         */
+        const camV = scrollable ? Math.round(-panX / scale) : 0;
         if (camV !== dom.cam) {
           dom.cam = camV;
-          sceneEl.style.setProperty("--cam", camV);
-          domCounters.current.writes += 1;
+          for (const layer of parallaxRef.current) {
+            layer.el.style.transform = `translateX(${(camV * layer.shift).toFixed(2)}px)`;
+          }
+          domCounters.current.writes += parallaxRef.current.length;
         }
-        // the slice of world on screen, for <CullBox> and for art that wants to
-        // shed off-camera detail in CSS alone
+        // the slice of world on screen, for <CullBox> and anything else that
+        // shrinks its work to what is actually in frame
         const visX0 = (originX + (0 - originX - panX) / zoom) / scale;
         const visX1 = (originX + (viewW - originX - panX) / zoom) / scale;
         const visV = `${Math.floor(visX0)} ${Math.ceil(visX1)}`;
         if (visV !== dom.vis) {
           dom.vis = visV;
-          sceneEl.style.setProperty("--vis-x0", String(Math.floor(visX0)));
-          sceneEl.style.setProperty("--vis-x1", String(Math.ceil(visX1)));
           band.set(visX0, visX1);
-          domCounters.current.writes += 1;
-        }
-        const qV = QUALITY_VAR[gov.tier];
-        if (qV !== dom.quality) {
-          dom.quality = qV;
-          sceneEl.style.setProperty("--quality", qV);
         }
       }
 
@@ -1598,25 +1789,78 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       }
 
       // --- player frame -------------------------------------------------------
-      // idle life: breathing, blinks, and every ~11s a flourish
+      /**
+       * Standing about.
+       *
+       * The old program was three wall-clock modulos — `now % 1700` for the
+       * breath, `now % 4200` for the blink, `now % 11000` for a flourish. Three
+       * problems came out of that, all of them visible:
+       *
+       *  – the blink derived from `stand` and the out-breath from `stand` minus
+       *    a pixel, so every blink bounced the whole body up and back down;
+       *  – the flourish was keyed to the wall clock rather than to how long he
+       *    had actually been standing, so stopping at the wrong moment made him
+       *    stretch overhead 200 ms later, and it fired during conversations;
+       *  – and being modulo, it was perfectly regular. Metronomic idles are the
+       *    single clearest tell that a character is a sprite rather than a person.
+       *
+       * What replaced it: breath and blink run on the same clock so a blink
+       * takes the breath's current pose rather than resetting it, the intervals
+       * are jittered from a cheap hash so no two are the same length, and the
+       * flourish waits on real idle time and never runs while the game is paused.
+       */
       let idleFrame = "stand";
       if (!moving && !actionFrame) {
-        const breath = now % 1700 < 850 ? "stand" : "idleB";
-        idleFrame = now % 4200 < 170 ? "blink" : breath;
-        const IDLE_SPAN = 11000;
-        const idlePhase = now % IDLE_SPAN;
-        if (idlePhase > 8000) {
-          const flourish = Math.floor(now / IDLE_SPAN) % 2;
-          const ft = idlePhase - 8000;
-          if (def.idleLean) {
-            idleFrame = ft < 2600 ? "leanIdle" : breath;
-          } else if (flourish === 0) {
-            idleFrame =
-              ft < 500 ? "stretchA" : ft < 1900 ? "stretchB" : ft < 2400 ? "stretchA" : breath;
+        const idle = idleRef.current;
+        if (idle.since === 0) {
+          idle.since = now;
+          idle.nextBlink = now + 2200 + jitter(now, 3200);
+          idle.nextFlourish = now + IDLE_FLOURISH_MIN + jitter(now + 1, IDLE_FLOURISH_SPREAD);
+        }
+        // the breath: down for a beat, up for a beat, the beat itself drifting
+        const cycle = 1500 + jitter(Math.floor(now / 3400), 500);
+        const out = now % cycle < cycle * 0.52;
+        const breath = out ? "stand" : "idleB";
+
+        if (now >= idle.nextBlink) {
+          if (now >= idle.nextBlink + BLINK_MS) {
+            idle.nextBlink = now + 1800 + jitter(now, 4200);
           } else {
-            idleFrame = ft < 1600 ? "lookBack" : breath;
+            // blink at whatever height the breath has him: the lids close, the
+            // ribs do not jump
+            const lowBlink = out ? "blink" : "blinkLow";
+            idleFrame = player.frames[lowBlink] ? lowBlink : "blink";
           }
         }
+        if (idleFrame === "stand") idleFrame = breath;
+
+        if (!paused && now >= idle.nextFlourish) {
+          const ft = now - idle.nextFlourish;
+          const pick = idle.flourish;
+          const done = (ms: number) => {
+            if (ft >= ms) {
+              idle.flourish = (pick + 1 + (jitter(now, 3) % 2)) % IDLE_FLOURISHES;
+              idle.nextFlourish = now + IDLE_FLOURISH_MIN + jitter(now, IDLE_FLOURISH_SPREAD);
+              return true;
+            }
+            return false;
+          };
+          if (def.idleLean) {
+            if (!done(2600)) idleFrame = "leanIdle";
+          } else if (pick === 0) {
+            if (!done(2400)) {
+              idleFrame = ft < 500 ? "stretchA" : ft < 1900 ? "stretchB" : "stretchA";
+            }
+          } else if (pick === 1) {
+            if (!done(1600)) idleFrame = "lookBack";
+          } else {
+            // the shortest one: weight off one foot and back, which is what
+            // people actually do while they are waiting for nothing
+            if (!done(2000)) idleFrame = ft < 1000 ? "idleB" : breath;
+          }
+        }
+      } else {
+        idleRef.current.since = 0;
       }
       let frame =
         forcedFrameRef.current ??
@@ -1624,6 +1868,35 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         (moving
           ? player.walkCycle[Math.floor(p.walkDist / 16) % player.walkCycle.length]
           : idleFrame);
+
+      {
+        const live = liveRef.current;
+        if (live.frame !== frame) {
+          live.prevFrame = live.frame;
+          live.frame = frame;
+        }
+        const running = actionRef.current;
+        const rdef = running ? player.actions[running.id] : null;
+        live.action = running?.id ?? null;
+        live.actionProgress = rdef
+          ? Math.min(
+              1,
+              (now - (running?.start ?? now)) /
+                (rdef.frames.length * rdef.frameMs * rdef.loops || 1),
+            )
+          : 0;
+        live.source = forcedFrameRef.current
+          ? "forced"
+          : actionFrame
+            ? "action"
+            : moving
+              ? "walk"
+              : "idle";
+        live.moving = moving;
+        live.facing = p.facing as 1 | -1;
+        live.x = Math.round(p.x);
+        live.scene = sceneRef.current;
+      }
 
       const atlasSprite = bag.atlas;
       if (atlasSprite) {
@@ -1779,6 +2052,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             heapMb: heapMb(),
             spriteMode: bag.atlas ? "canvas" : "dom",
             mountedFrames: Object.keys(frameRefs.current).length,
+            live: { ...liveRef.current },
           });
           sa.frames = 0;
           sa.since = now;
@@ -1864,7 +2138,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           const spec = step.travel as { scene: string; spawnX?: number };
           bag.travel(spec.scene, spec.spawnX);
         } else if ("dialogue" in step) {
-          setDialogue({ state: openDialogue(step.dialogue as DialogueTree<never>), obj });
+          const open = openDialogue(
+            step.dialogue as DialogueTree<never>,
+            () => ctxFactoryRef.current?.(obj) as unknown,
+          );
+          if (open.kind === "continue") {
+            open.onEnter?.(ctxFactoryRef.current?.(obj) as unknown);
+            setDialogue({ state: open.state, obj });
+          }
         } else if ("sound" in step) {
           soundRef.current?.(String(step.sound));
         } else if ("do" in step) {
@@ -1925,8 +2206,29 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   // --- imperative handle -------------------------------------------------------------------
   // Built from a ref bag and handed over once: a debug stats sample must never
   // re-fire onReady, and a new callback identity must not either.
-  const apiBag = useRef({ interact, travel, walkTo, runSequence, updateWorld, saveNow, scenes });
-  apiBag.current = { interact, travel, walkTo, runSequence, updateWorld, saveNow, scenes };
+  /** The rig, for the api — read through a ref so swapping it does not respawn the handle. */
+  const playerRef = useRef(player);
+  playerRef.current = player;
+  const apiBag = useRef({
+    interact,
+    travel,
+    walkTo,
+    runSequence,
+    updateWorld,
+    saveNow,
+    scenes,
+    startAction,
+  });
+  apiBag.current = {
+    interact,
+    travel,
+    walkTo,
+    runSequence,
+    updateWorld,
+    saveNow,
+    scenes,
+    startAction,
+  };
 
   useEffect(() => {
     if (!config.onReady) return;
@@ -1945,6 +2247,17 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       runSequence: (steps, o) => apiBag.current.runSequence(steps, o),
       getWorld: () => worldRef.current,
       updateWorld: (patch) => apiBag.current.updateWorld(patch),
+      getLive: () => ({ ...liveRef.current }),
+      startAction: (id: string) => {
+        if (playerRef.current.actions[id]) apiBag.current.startAction(id);
+      },
+      stopAction: () => {
+        actionRef.current = null;
+        setActionUi(null);
+      },
+      holdFrame: (frame: string | null) => {
+        forcedFrameRef.current = frame && playerRef.current.frames[frame] ? frame : null;
+      },
       getStats: () =>
         statsRef.current ?? {
           fps: 0,
@@ -1963,6 +2276,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           heapMb: heapMb(),
           spriteMode: atlasRef.current ? "canvas" : "dom",
           mountedFrames: Object.keys(frameRefs.current).length,
+          live: { ...liveRef.current },
         },
       saveNow: () => apiBag.current.saveNow(),
     };
@@ -2001,11 +2315,49 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     [SceneArt, def.width, artWorld, artKey, phase],
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: artKey stands in for world when provided
+  /**
+   * Re-find the scene's parallax layers whenever the artwork remounts. Doing
+   * it here rather than in the frame loop keeps a `querySelectorAll` out of
+   * the hot path; a scene change is the only thing that can invalidate it.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the artwork node is the trigger, not an input
+  useEffect(() => {
+    const el = sceneElRef.current;
+    parallaxRef.current = el
+      ? Array.from(el.querySelectorAll<SVGElement>("[data-parallax]")).map((node) => ({
+          el: node,
+          shift: Number(node.dataset.parallax ?? 0),
+        }))
+      : [];
+    smilRootsRef.current = el ? Array.from(el.querySelectorAll("svg")) : [];
+    // a scene that mounts while the game is paused must arrive paused too
+    if (smilPausedRef.current) for (const svg of smilRootsRef.current) svg.pauseAnimations();
+    domCache.current.cam = Number.NaN;
+  }, [sceneArtNode]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reads the world through a ref, but must recompute when the art key says the art changed
   const foregroundNode = useMemo(
     () => (Foreground ? <Foreground world={worldRef.current} phase={phase} /> : null),
     [Foreground, artWorld, artKey, phase],
   );
   const dialogueOpen = dialogue !== null;
+  /**
+   * What the character on the other side of the conversation is doing. Derived
+   * from the line on screen so a shrug lands on the sentence it belongs to,
+   * and published through context so every `NpcActor` in the scene can see it
+   * without the scene threading it down by hand.
+   */
+  const speaking = useMemo<SpeakingState | null>(() => {
+    if (!dialogue) return null;
+    const node = dialogue.state.tree.nodes[dialogue.state.nodeId];
+    const line = node?.lines[dialogue.state.lineIndex];
+    return {
+      objId: dialogue.obj.id,
+      speaker: line?.speaker,
+      act: line?.act,
+      mood: line?.mood,
+    };
+  }, [dialogue]);
   const effectsNode = useMemo(
     () =>
       Effects ? (
@@ -2072,7 +2424,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           height="100%"
           viewBox={`0 0 ${actor.width} ${actor.height}`}
         >
-          {Object.keys(actor.frames).map((key) => (
+          {actorFrameNames(actor).map((key) => (
             <g
               key={key}
               ref={(el) => {
@@ -2111,89 +2463,95 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         onPointerCancel={pointerStop}
       >
         <BandProvider store={bandRef.current}>
-          <div
-            ref={sceneElRef}
-            className="absolute top-0 left-0"
-            style={{
-              width: def.width * scale,
-              height: SCENE_HEIGHT * scale,
-              contain: "layout style",
-            }}
-          >
-            {sceneArtNode}
+          <AnimationGateProvider running={!dialogueOpen && overlay === null && !intro}>
+            <SpeakingProvider value={speaking}>
+              <div
+                ref={sceneElRef}
+                className="absolute top-0 left-0"
+                style={{
+                  width: def.width * scale,
+                  height: SCENE_HEIGHT * scale,
+                  contain: "layout style",
+                }}
+              >
+                {sceneArtNode}
 
-            {effectsNode}
+                {effectsNode}
 
-            {actorsNode}
+                {actorsNode}
 
-            {/* player */}
-            <div
-              ref={playerElRef}
-              className="pixelated absolute top-0 left-0"
-              style={{
-                width: player.width * scale,
-                height: player.height * scale,
-                zIndex: 10,
-                willChange: "transform",
-              }}
-            >
-              {playerNode}
-            </div>
+                {/* player */}
+                <div
+                  ref={playerElRef}
+                  className="pixelated absolute top-0 left-0"
+                  style={{
+                    width: player.width * scale,
+                    height: player.height * scale,
+                    zIndex: 10,
+                    willChange: "transform",
+                  }}
+                >
+                  {playerNode}
+                </div>
 
-            {/* the character's inner monologue, spoken over their head */}
-            <div
-              ref={monologueElRef}
-              className="absolute top-0 left-0 z-20"
-              style={{ willChange: "transform" }}
-            >
-              {config.renderMonologue ? (
-                config.renderMonologue(toast && !intro && !overlay ? toast : null, scale)
-              ) : (
-                <AnimatePresence>
-                  {toast && !intro && !overlay ? (
-                    <motion.div
-                      key={toast.id}
-                      aria-hidden="true"
-                      className="-translate-x-1/2 pointer-events-none absolute max-w-64 border border-parchment/25 bg-black/85 px-2 py-1 text-center font-mono text-parchment/90"
-                      style={{
-                        transform: "translate(-50%, -100%)",
-                        fontSize: Math.max(10, view.scale * 3.4),
-                        lineHeight: 1.35,
-                        width: "max-content",
-                      }}
-                      initial={{ opacity: 0, y: reduced ? 0 : 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: reduced ? 0 : -4 }}
-                      transition={{ duration: reduced ? 0.08 : 0.2 }}
-                    >
-                      {toast.text}
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              )}
-            </div>
+                {/* the character's inner monologue, spoken over their head */}
+                <div
+                  ref={monologueElRef}
+                  className="absolute top-0 left-0 z-20"
+                  style={{ willChange: "transform" }}
+                >
+                  {config.renderMonologue ? (
+                    config.renderMonologue(toast && !intro && !overlay ? toast : null, scale)
+                  ) : (
+                    <AnimatePresence>
+                      {toast && !intro && !overlay ? (
+                        <motion.div
+                          key={toast.id}
+                          aria-hidden="true"
+                          className="-translate-x-1/2 pointer-events-none absolute max-w-64 border border-parchment/25 bg-black/85 px-2 py-1 text-center font-mono text-parchment/90"
+                          style={{
+                            transform: "translate(-50%, -100%)",
+                            fontSize: Math.max(10, view.scale * 3.4),
+                            lineHeight: 1.35,
+                            width: "max-content",
+                          }}
+                          initial={{ opacity: 0, y: reduced ? 0 : 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: reduced ? 0 : -4 }}
+                          transition={{ duration: reduced ? 0.08 : 0.2 }}
+                        >
+                          {toast.text}
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  )}
+                </div>
 
-            {/* the Foreground CONTRACT: in front of the player, always. The player
+                {/* the Foreground CONTRACT: in front of the player, always. The player
                 div carries zIndex 10, so an unstyled scene Foreground (z auto)
                 would paint behind him — this wrapper makes the promise true
                 for every scene without each one remembering a z-index. */}
-            <div className="pointer-events-none absolute inset-0" style={{ zIndex: 15 }}>
-              {foregroundNode}
-            </div>
+                <div className="pointer-events-none absolute inset-0" style={{ zIndex: 15 }}>
+                  {foregroundNode}
+                </div>
 
-            {/* target markers — ride the world above the focused object */}
-            {!intro && !overlay && !dialogue
-              ? opts.showAllMarkers
-                ? targets.list.map((obj) => <TargetMarker key={obj.id} obj={obj} scale={scale} />)
-                : activeTarget && <TargetMarker obj={activeTarget} scale={scale} />
-              : null}
+                {/* target markers — ride the world above the focused object */}
+                {!intro && !overlay && !dialogue
+                  ? opts.showAllMarkers
+                    ? targets.list.map((obj) => (
+                        <TargetMarker key={obj.id} obj={obj} scale={scale} />
+                      ))
+                    : activeTarget && <TargetMarker obj={activeTarget} scale={scale} />
+                  : null}
 
-            {/* darkness (day phase / lights) */}
-            <div
-              className="pointer-events-none absolute inset-0 bg-[#0a1230] transition-opacity duration-500"
-              style={{ opacity: darkness, mixBlendMode: "multiply" }}
-            />
-          </div>
+                {/* darkness (day phase / lights) */}
+                <div
+                  className="pointer-events-none absolute inset-0 bg-[#0a1230] transition-opacity duration-500"
+                  style={{ opacity: darkness, mixBlendMode: "multiply" }}
+                />
+              </div>
+            </SpeakingProvider>
+          </AnimationGateProvider>
         </BandProvider>
 
         {/* HUD */}
@@ -2267,6 +2625,11 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         {dialogue ? (
           <DialogueBox
             state={dialogue.state}
+            makeCtx={() => makeCtx(dialogue.obj) as unknown}
+            /* the HUD is built at u=3; the panel matches it rather than
+               scaling with the viewport, or it reads lighter than the plates
+               sitting beside it */
+            u={3}
             onAdvance={dialogueAdvance}
             onChoose={dialogueChoose}
           />
@@ -2340,6 +2703,23 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                 <div>
                   band {Math.round(stats.band.x0)}–{Math.round(stats.band.x1)}
                   {stats.heapMb === null ? "" : ` · heap ${stats.heapMb}MB`}
+                </div>
+                {/* what the character is actually doing. This was sampled and
+                    plumbed all the way here and then not shown, which is why a
+                    walk cycle with a standing pose in it survived so long: you
+                    could not see the frame you were looking at. */}
+                <div className="text-signal/80">
+                  {stats.live.frame}
+                  {stats.live.prevFrame === stats.live.frame ? "" : ` ← ${stats.live.prevFrame}`} ·{" "}
+                  {stats.live.source}
+                </div>
+                <div>
+                  {stats.live.action
+                    ? `act ${stats.live.action} ${Math.round(stats.live.actionProgress * 100)}%`
+                    : stats.live.moving
+                      ? "walking"
+                      : "idle"}{" "}
+                  · {stats.live.scene} @{stats.live.x} · face {stats.live.facing > 0 ? "→" : "←"}
                 </div>
               </div>
             ))
