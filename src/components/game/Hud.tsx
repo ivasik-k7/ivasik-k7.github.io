@@ -267,29 +267,7 @@ function Deck() {
           </span>
         </div>
 
-        {/* the tracks, by name, because four names fit and a dropdown does not */}
-        <div className="flex flex-wrap gap-1">
-          {(lofiPlayer.trackNames ?? []).map((name, i) => (
-            <PixelFrame
-              key={name}
-              u={2}
-              tone={name === track?.name ? "active" : "inset"}
-              rivets={false}
-              scan={false}
-              onClick={() => lofiPlayer.next(i - (lofiPlayer.trackIndex ?? 0))}
-              ariaLabel={`Play ${name}`}
-            >
-              <span className="block" style={{ padding: "3px 5px" }}>
-                <PixelLabel
-                  text={name}
-                  px={2}
-                  fill={name === track?.name ? SIGNAL : PARCHMENT}
-                  opacity={name === track?.name ? 1 : 0.55}
-                />
-              </span>
-            </PixelFrame>
-          ))}
-        </div>
+        <TrackList />
 
         <button
           type="button"
@@ -301,6 +279,94 @@ function Deck() {
         </button>
       </div>
     </PixelFrame>
+  );
+}
+
+/**
+ * The track list.
+ *
+ * This was a wrapped row of name plates, which is the right answer for the four
+ * cassettes the deck used to hold and the wrong one for the eight it holds now,
+ * let alone twenty: the plates wrapped to five lines and made the deck taller
+ * than the flat.
+ *
+ * So it is a scrolling column, the way any music app does it — one row per
+ * track, the playing one marked and named in signal yellow, the rest quiet.
+ * Fixed height, `overflow-y: auto`, and the game's own scrollbar rather than the
+ * operating system's.
+ *
+ * Deliberately *not* virtualised. A windowed list is the correct answer above a
+ * few hundred rows and pure overhead below it: each row here is one `<button>`
+ * and one `<path>`, so a hundred tracks is two hundred nodes inside a container
+ * that clips them — cheaper than the machinery needed to avoid them. If this
+ * ever holds a thousand tracks, that is the point to add windowing, and the row
+ * height is fixed precisely so that it can be.
+ */
+const ROW_H = 18;
+
+function TrackList() {
+  const names = lofiPlayer.trackNames ?? [];
+  const current = lofiPlayer.trackIndex ?? 0;
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Keep what is playing on screen. Skipping to a track near the bottom of the
+   * list and having the highlight scroll out of view is the one thing that makes
+   * a list like this feel broken.
+   */
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const top = current * ROW_H;
+    if (top < box.scrollTop) box.scrollTop = top;
+    else if (top + ROW_H > box.scrollTop + box.clientHeight) {
+      box.scrollTop = top + ROW_H - box.clientHeight;
+    }
+  }, [current]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <PixelLabel text="TRACKS" px={2} fill={PARCHMENT} opacity={0.45} />
+        <PixelLabel text={`${names.length}`} px={2} fill={PARCHMENT} opacity={0.3} />
+      </div>
+      <div
+        ref={boxRef}
+        className="pixel-scroll flex flex-col overflow-y-auto"
+        style={{ maxHeight: ROW_H * 6, minWidth: 168 }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {names.map((name, i) => {
+          const here = i === current;
+          return (
+            <button
+              key={name}
+              type="button"
+              aria-current={here}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => lofiPlayer.playTrack(i)}
+              className="flex shrink-0 items-center gap-2 text-left"
+              style={{ height: ROW_H, paddingRight: 6 }}
+            >
+              {/* the marker column is a fixed width, so the names never shift */}
+              <span className="flex shrink-0 justify-center" style={{ width: 10 }}>
+                {here ? (
+                  <span style={{ width: 4, height: 4, background: SIGNAL }} />
+                ) : (
+                  <span style={{ width: 2, height: 2, background: PARCHMENT, opacity: 0.25 }} />
+                )}
+              </span>
+              <PixelLabel
+                text={name}
+                px={2}
+                fill={here ? SIGNAL : PARCHMENT}
+                opacity={here ? 1 : 0.55}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
-import { SpeechPanel, SpeechTail, SpeechText } from "@/engine";
+import { SpeechPanel, SpeechText } from "@/engine";
 
 /**
  * The player's inner voice, drawn in the same chrome as NpcMonologue:
@@ -81,10 +81,10 @@ export function CharacterMonologue({
               filter: `drop-shadow(0 ${u}px 0 rgba(0,0,0,0.55))`,
             }}
           >
-            {/* the same riveted plate the clock and the interact chip are cut
-                from — a thought the character has is the game talking, and it
-                should come out of the game's own furniture */}
-            <SpeechPanel u={u} tone="say" rivets={false} maxWidth={Math.round(56 * scale)}>
+            {/* A thought, so it takes the lighter scrim and sits back a little:
+                the player's own inner voice should feel like it is inside the
+                picture rather than laid over it. */}
+            <SpeechPanel u={u} tone="think" bare maxWidth={Math.round(62 * scale)}>
               <SpeechText
                 key={text}
                 text={text}
@@ -93,11 +93,8 @@ export function CharacterMonologue({
                 pace={0.78}
                 fontSize={font}
                 lineHeight={lead}
-                className="font-mono text-parchment/90"
               />
             </SpeechPanel>
-
-            <SpeechTail u={u} tone="say" />
           </div>
         </motion.div>
       ) : null}

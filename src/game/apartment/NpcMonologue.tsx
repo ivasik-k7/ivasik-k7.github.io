@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { mumble, SpeechPanel, SpeechTail, SpeechText, voiceFor } from "@/engine";
+import { mumble, SpeechPanel, SpeechText, voiceFor } from "@/engine";
 
 /**
  * Ambient monologue: an NPC mutters to nobody in particular.
@@ -209,16 +209,17 @@ export function NpcMonologue({
         exit={{ opacity: 0, y: -u }}
         transition={{ duration: still ? 0 : 0.16, ease: "linear" }}
       >
-        {/* the same riveted plate as the clock and the interact chip, with the
-            speaker on the title plate that straddles the top edge — a
-            character speaking is the game speaking, and it comes out of the
-            game's own furniture rather than a lookalike built next to it */}
+        {/* The title screen's language: the speaker's name in the pixel font
+            with a rule off it, the line in mono under that, and a scrim dark
+            enough to read against. No plate. A bubble drawn out of the HUD's
+            riveted frame was consistent with the clock and still lost the words
+            to the decoration around them. */}
         <div ref={boxRef}>
           <SpeechPanel
             u={u}
             tone="say"
-            rivets={false}
-            maxWidth={Math.round(52 * scale)}
+            bare
+            maxWidth={Math.round(58 * scale)}
             title={showSpeaker ? speaker.toUpperCase() : undefined}
           >
             <SpeechText
@@ -229,11 +230,9 @@ export function NpcMonologue({
               pace={1.45}
               fontSize={font}
               lineHeight={lead}
-              className="font-mono text-parchment/90"
             />
           </SpeechPanel>
         </div>
-        <SpeechTail u={u} tone="say" />
       </motion.div>
     </AnimatePresence>
   );

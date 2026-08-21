@@ -28,6 +28,7 @@ import { CharacterMonologue } from "./CharacterMonologue";
 import { APARTMENT_HANDLERS } from "./handlers";
 import { OUTSIDE_SCENES } from "./outsideScenes";
 import { PLAYER } from "./player";
+import { RouteMap } from "./RouteMap";
 import { APARTMENT_SCENES } from "./scenes";
 import { WardrobePanel } from "./WardrobePanel";
 
@@ -48,7 +49,8 @@ type Overlay =
   | { type: "terminal" }
   | { type: "menu" }
   | { type: "wardrobe" }
-  | { type: "pause" };
+  | { type: "pause" }
+  | { type: "routemap" };
 
 /**
  * You should be able to start a conversation from conversational distance —
@@ -81,6 +83,11 @@ const VERB: Record<string, string> = {
   door: "ENTER",
   flatdoor: "ENTER",
   creakdoor: "ENTER",
+  trainDoor: "BOARD",
+  biletomat: "BUY",
+  konduktor: "TALK",
+  trainExit: "GET OFF",
+  routemap: "READ",
   stairs: "ENTER",
   liftdoors: "OPEN",
   liftbutton: "CALL",
@@ -133,9 +140,22 @@ const AMBIENCE: Record<string, AmbienceName> = {
  * The full game, assembled on the Scene Engine: the original apartment
  * plus the stairwell, the lift, the yard and the Żabka on the corner.
  */
-/** Stable identity so onReady fires once, not on every EngineGame render. */
+/**
+ * Stable identity so `onReady` fires once, not on every EngineGame render.
+ *
+ * It also keeps a module-level handle on the runtime, because two overlays need
+ * to move the player and `renderOverlay` is handed `world` and `updateWorld` but
+ * not `travel` — and the route map's whole purpose is to travel. Rather than
+ * widen the engine's overlay contract for one caller, the game holds on to the
+ * api it is already given here.
+ */
+let runtimeApi: RuntimeApi<WorldState> | null = null;
+
 function exposeGameApi(api: RuntimeApi<WorldState>) {
-  (window as unknown as { __game: RuntimeApi<WorldState> }).__game = api;
+  runtimeApi = api;
+  if (import.meta.env.DEV) {
+    (window as unknown as { __game: RuntimeApi<WorldState> }).__game = api;
+  }
 }
 
 export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
@@ -221,6 +241,18 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
             place={PLACE_NAME[here] ?? here}
           />
         );
+      if (o.type === "routemap")
+        return (
+          <RouteMap
+            key="routemap"
+            here={here === "station" ? "przymorze" : "oliwa"}
+            onClose={close}
+            onTravel={(scene, x) => {
+              close();
+              runtimeApi?.travel(scene, x);
+            }}
+          />
+        );
       if (o.type === "terminal") return <Terminal key="terminal" onClose={close} />;
       if (o.type === "wardrobe")
         return (
@@ -258,7 +290,7 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     // so this hands back an empty fragment instead
     renderDebug: bench ? () => <></> : undefined,
     // dev/test hook: lets CDP scripts and Playwright drive the game directly
-    onReady: import.meta.env.DEV ? exposeGameApi : undefined,
+    onReady: exposeGameApi,
     menuOverlay: { type: "menu" },
     // Escape, when it has nothing else to back out of
     pauseOverlay: { type: "pause" },

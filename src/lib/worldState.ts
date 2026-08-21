@@ -67,6 +67,7 @@ export const ITEM_LABEL: Record<string, string> = {
   cigarettes: "REDS",
   lighter: "LIGHTER",
   parcel: "PARCEL",
+  ticket: "BILET",
 };
 
 export const initialWorld: WorldState = {

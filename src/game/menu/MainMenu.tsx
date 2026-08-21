@@ -46,6 +46,8 @@ type Item = {
   label: string;
   /** the quiet line under it — what this actually does, in the world's voice */
   note?: string;
+  /** a second, quieter line — only CONTINUE has one, and only when a save exists */
+  detail?: string;
   disabled?: boolean;
   run: () => void;
 };
@@ -110,6 +112,7 @@ function MainMenuInner({ onStart }: { onStart: (action: MenuAction) => void }) {
         id: "continue",
         label: "CONTINUE",
         note: save ? save.line : "nothing saved yet",
+        detail: save?.detail,
         disabled: !save,
         run: () => save && begin({ kind: "continue", save }),
       },
@@ -237,11 +240,16 @@ function MainMenuInner({ onStart }: { onStart: (action: MenuAction) => void }) {
       </Fade>
 
       <Fade show={screen === "settings"}>
-        <SettingsScreen settings={settings} onChange={changeSettings} onBack={back} />
+        <SettingsScreen
+          settings={settings}
+          onChange={changeSettings}
+          onBack={back}
+          active={screen === "settings"}
+        />
       </Fade>
 
       <Fade show={screen === "credits"}>
-        <CreditsScreen onBack={back} still={still} />
+        <CreditsScreen onBack={back} still={still} active={screen === "credits"} />
       </Fade>
 
       {/* build stamp, bottom right, the way a game does it — on the same measure
@@ -355,6 +363,23 @@ function MenuRow({
         >
           {item.note ?? " "}
         </span>
+        {/* The save card, such as it is: one more line, on the one row that has
+            one, only while it is selected. There is a single save slot, so a
+            grid of cards would be a grid of one — what actually helps is being
+            reminded which afternoon this was, and the money in your pocket and
+            the number of times you have stopped to pet the dog say so. */}
+        {item.detail ? (
+          <span
+            style={{
+              ...PROSE.quiet(scale),
+              opacity: active ? 0.7 : 0,
+              transition: "opacity 160ms",
+              marginTop: -2,
+            }}
+          >
+            {item.detail}
+          </span>
+        ) : null}
       </span>
     </button>
   );

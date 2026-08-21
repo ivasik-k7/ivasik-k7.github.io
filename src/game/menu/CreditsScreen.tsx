@@ -124,10 +124,19 @@ const CREDITS: Entry[] = [
     names: [`version ${BUILD.version}`, BUILD.commit, BUILD.date].filter(Boolean),
   },
   { gap: true, names: [] },
-  { names: ["Warsaw"] },
+  { names: ["Gdansk"] },
 ];
 
-export function CreditsScreen({ onBack, still }: { onBack: () => void; still: boolean }) {
+export function CreditsScreen({
+  onBack,
+  still,
+  active = true,
+}: {
+  onBack: () => void;
+  still: boolean;
+  /** false while fading out — see the note on SettingsScreen */
+  active?: boolean;
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const scale = useMenuScale();
   /**
@@ -137,7 +146,7 @@ export function CreditsScreen({ onBack, still }: { onBack: () => void; still: bo
    */
   const [rate, setRate] = useState(1);
 
-  useMenuInput(true, {
+  useMenuInput(active, {
     onVertical: (dy) => setRate((r) => Math.max(-3, Math.min(6, r + dy * 1.5))),
     onCancel: onBack,
     onConfirm: onBack,

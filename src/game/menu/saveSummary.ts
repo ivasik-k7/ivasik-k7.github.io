@@ -16,11 +16,20 @@ export type SaveSummary = {
   scene: string;
   x: number;
   savedAt: string;
-  /** the line shown under CONTINUE */
+  /** where you were, and when you stopped — the line shown under CONTINUE */
   line: string;
+  /**
+   * A second, quieter line: what you had on you and what you had been doing.
+   *
+   * This is the whole of the save-slot presentation. There is one slot, so a
+   * grid of cards with thumbnails would be a grid of one; what actually helps
+   * is being reminded which afternoon this was, and the two numbers that say
+   * so are the money in your pocket and how many times you have stopped to
+   * pet the dog.
+   */
+  detail?: string;
 };
 
-/** The names the game uses out loud, not the scene ids. */
 /**
  * Scene ids as a person would say them. Exported because the pause menu names
  * the room you are standing in and the title screen names the room you left,
@@ -38,6 +47,7 @@ export const PLACE_NAME: Record<string, string> = {
   parking: "parking −1",
   gym: "the gym",
   district: "the osiedle",
+  station: "the platform",
 };
 
 function ago(iso: string): string {
@@ -52,6 +62,20 @@ function ago(iso: string): string {
   return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
+/** "34 zł" and "Gross petted 6 times", when there is anything to say. */
+function detailFor(world: WorldState | undefined): string | undefined {
+  if (!world) return undefined;
+  const bits: string[] = [];
+  if (typeof world.money === "number") bits.push(`${Math.round(world.money)} zł`);
+  const items = Array.isArray(world.inventory)
+    ? world.inventory.reduce((n, it) => n + (it.quantity ?? 0), 0)
+    : 0;
+  if (items > 0) bits.push(items === 1 ? "one thing in your bag" : `${items} things in your bag`);
+  const pets = world.dogPets ?? 0;
+  if (pets > 0) bits.push(pets === 1 ? "Gross petted once" : `Gross petted ${pets} times`);
+  return bits.length ? bits.join(" · ") : undefined;
+}
+
 export function readSave(): SaveSummary | null {
   const slot = loadGame<WorldState>(SAVE_KEY, SAVE_VERSION);
   if (!slot) return null;
@@ -62,5 +86,6 @@ export function readSave(): SaveSummary | null {
     x: slot.x,
     savedAt: slot.savedAt,
     line: when ? `${place} · ${when}` : place,
+    detail: detailFor(slot.world),
   };
 }

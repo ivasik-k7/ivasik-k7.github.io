@@ -60,10 +60,18 @@ export function SettingsScreen({
   settings,
   onChange,
   onBack,
+  active = true,
 }: {
   settings: Settings;
   onChange: (next: Settings) => void;
   onBack: () => void;
+  /**
+   * False while this screen is fading out. The screens cross-fade, so for the
+   * ~200 ms of the transition both the outgoing and the incoming screen are
+   * mounted — and if both are listening, one keypress steps a setting *and*
+   * moves the title cursor.
+   */
+  active?: boolean;
 }) {
   const scale = useMenuScale();
   const [cursor, setCursor] = useState(1);
@@ -224,7 +232,7 @@ export function SettingsScreen({
     setCursor((c) => (rows[c]?.kind === "head" ? stepCursor(c, 1, rows.length, skip) : c));
   }, [rows, skip]);
 
-  useMenuInput(true, {
+  useMenuInput(active, {
     onVertical: (dy) => {
       setCursor((c) => {
         const next = stepCursor(c, dy, rows.length, skip);

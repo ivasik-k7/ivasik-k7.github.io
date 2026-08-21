@@ -176,7 +176,7 @@ export {
 export { PixelSprite } from "./ui/PixelSprite";
 export {
   SpeechPanel,
-  SpeechTail,
+  SpeechStem,
   SpeechText,
   type SpeechTone,
 } from "./ui/SpeechPanel";
@@ -186,3 +186,12 @@ export {
   speakingAction,
   useSpeaking,
 } from "./ui/speaking";
+export {
+  DIM,
+  GROUND,
+  PARCHMENT,
+  prose,
+  proseQuiet,
+  RULE,
+  SIGNAL,
+} from "./ui/uiLook";

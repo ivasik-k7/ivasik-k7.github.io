@@ -17,6 +17,21 @@
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-display: ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  /**
+   * The voice.
+   *
+   * Everything a character says is set in this and nothing else is. It used to
+   * be the same Geist Mono as the HUD readouts, which was wrong twice over: a
+   * monospace makes prose read as data, and Geist is a 2023 developer typeface
+   * that says "npm install" rather than "Warsaw, October".
+   *
+   * Archivo is a grotesque cut from twentieth-century American gothic signage —
+   * the lettering on a bus blind or a factory door — which is the right register
+   * for a housing estate at dusk, and it carries the full Polish set, which the
+   * dialogue needs on every other line. Self-hosted via @fontsource, so the game
+   * still fetches nothing from anybody.
+   */
+  --font-speech: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {

@@ -64,21 +64,38 @@ export function MenuStage({ still = false }: { still?: boolean }) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
+  /**
+   * How far through the pan we are, in ms, kept across restarts.
+   *
+   * Without this the camera snapped. The effect re-runs whenever the tab is
+   * hidden or shown, and it used to take a fresh `performance.now()` as its
+   * origin — so coming back to the tab restarted the pass at k=0 and the whole
+   * street jumped up to 150 px sideways in a single frame. The phase is stored
+   * here on the way out and used as the origin on the way back in, so the pan
+   * resumes exactly where it stopped.
+   */
+  const phase = useRef(0);
+
   useEffect(() => {
     const el = ref.current;
     if (!el || still || hidden) return;
     let raf = 0;
-    const start = performance.now();
+    const origin = performance.now() - phase.current;
+    let elapsed = phase.current;
     const tick = (now: number) => {
+      elapsed = now - origin;
       // a slow triangle rather than a sine: the turn at each end is what makes
       // it read as a camera being held rather than as an animation looping
-      const t = ((now - start) % (DRIFT_MS * 2)) / DRIFT_MS;
+      const t = (elapsed % (DRIFT_MS * 2)) / DRIFT_MS;
       const k = t < 1 ? t : 2 - t;
       el.style.transform = `translate3d(${(-DRIFT_PX * k).toFixed(1)}px,0,0)`;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      phase.current = elapsed;
+    };
   }, [still, hidden]);
 
   const Art = STREET_SCENE.Component;

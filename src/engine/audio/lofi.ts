@@ -289,6 +289,25 @@ export class LofiPlayer {
     this.emit();
   }
 
+  /**
+   * Go straight to a track.
+   *
+   * `next(step)` was the only way in, which is fine for a deck with four
+   * cassettes on it and useless for a list of twenty — reaching track 17 meant
+   * pressing skip sixteen times, each one a 2.4 s crossfade. This takes the
+   * same crossfade path so it still never cuts.
+   */
+  playTrack(index: number) {
+    const want = ((index % MUSIC_TRACKS.length) + MUSIC_TRACKS.length) % MUSIC_TRACKS.length;
+    if (want === this.trackIndex_) {
+      // asking for what is already on means "start it" if it is not playing
+      if (!this._playing) this.play();
+      return;
+    }
+    this.next(want - this.trackIndex_);
+    if (!this._playing) this.play();
+  }
+
   /** The music channel, and only the music channel. */
   setVolume(v: number) {
     this._volume = Math.max(0, Math.min(1, v));

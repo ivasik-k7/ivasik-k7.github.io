@@ -82,6 +82,41 @@ export const resources = {
         "gym-scale": "THE SCALE",
         "gym-showers": "SHOWERS",
         "district-steps": "ULICA SŁONECZNA",
+        "district-skm": "SKM PLATFORM",
+        /* --- Przymorze-Uniwersytet --- */
+        "station-stairs": "UNDERPASS",
+        "station-name": "STATION NAME",
+        "station-name-2": "STATION NAME",
+        "station-timetable": "TIMETABLE",
+        "station-biletomat": "TICKET MACHINE",
+        "station-drum": "POSTER DRUM",
+        "station-shelter": "SHELTER",
+        "station-bench": "BENCH",
+        "station-board": "DEPARTURES",
+        "station-bin": "BIN",
+        "station-edge": "PLATFORM EDGE",
+        "station-fence": "FENCE",
+        "station-reader": "STUDENT",
+        "station-bench-sitter": "BABCIA KRYSIA",
+        "station-phone": "MAN ON THE PHONE",
+        "station-looker": "MAN AT THE END",
+        "train-door-1": "CARRIAGE DOOR",
+        "train-door-2": "CARRIAGE DOOR",
+        "train-door-3": "CARRIAGE DOOR",
+        "train-door-4": "CARRIAGE DOOR",
+        /* --- inside the carriage --- */
+        "train-exit-l": "DOORS",
+        "train-exit-r": "GANGWAY",
+        "train-map": "ROUTE MAP",
+        "train-seat-1": "SEAT",
+        "train-seat-2": "SEAT",
+        "train-seat-3": "SEAT",
+        "train-seat-4": "SEAT",
+        "train-window": "WINDOW",
+        "train-pole": "GRAB POLE",
+        "train-display": "NEXT STOP",
+        "train-bin": "BIN",
+        "train-hammer": "EMERGENCY HAMMER",
         "district-bikes": "BIKE RACK",
         "district-shelter": "TRAM SHELTER",
         "district-ticket": "TICKET MACHINE",
@@ -334,6 +369,38 @@ export const resources = {
         "gym-showers": "The showers. Better pressure than home, and everybody knows it.",
         "district-bikes": "Bike rack: three frames, one wheel, a lock defending a memory.",
         "district-shelter": "The tram shelter. The glass survived; the timetable did not.",
+        "district-skm": "Steps up to the platform. Two minutes if the lights are with you.",
+        /* --- Przymorze-Uniwersytet --- */
+        "station-stairs":
+          "Down into the underpass. Tiles, a puddle that never leaves, and somebody's tag on the handrail.",
+        "station-name": "PRZYMORZE-UNIWERSYTET. Longer than the platform, nearly.",
+        "station-name-2": "The same name again, in case the train stops at the other end.",
+        "station-timetable":
+          "The timetable, behind glass, sun-bleached. Weekdays down the left. You already know it.",
+        "station-biletomat":
+          "The machine takes cards now. There is a queue for it in the morning and never at this hour.",
+        "station-drum":
+          "Theatre of Music, two months ago. Somebody has peeled a corner of it back to the poster underneath.",
+        "station-shelter":
+          "Glass on three sides, a steel bench, and a roof that drips for an hour after the rain stops.",
+        "station-bench": "You sit down. The bench is cold through your jeans and that is fine.",
+        "station-board":
+          "SOPOT 15:42. GDYNIA GŁÓWNA 15:58. The cursor blinks after the last line, patiently.",
+        "station-bin": "Two coffee cups and a free paper. Somebody made an effort.",
+        "station-edge":
+          "The yellow line, worn through to concrete where everyone stands. Down the track it goes straight for a kilometre and then bends left toward Sopot.",
+        "station-fence":
+          "Palisade fence, and buddleia coming out of the wall behind it. Beyond that, Obrońców Wybrzeża and the blocks.",
+        /* --- inside the carriage --- */
+        "train-exit-r":
+          "The gangway to the next car. Somebody is standing in it with a bike, as somebody always is.",
+        "train-window":
+          "Przymorze goes past: the backs of the blocks, then the sheds, then the cranes over the yard. You could watch this all the way to Gdynia.",
+        "train-pole": "Yellow, warm where a hundred hands have been.",
+        "train-display": "NEXT: ZASPA. The dot matrix drops a pixel on the S and puts it back.",
+        "train-bin": "Somebody's ticket, folded into a very small triangle.",
+        "train-hammer":
+          "Behind glass, red, never used. You have wondered your whole life whether it works.",
         "district-ticket": "The ticket machine takes exact change and personal grudges.",
         "cafe-orbita-tables": "Café tables holding down their napkins against the wind.",
         "district-bins": "Segregation bins. The osiedle sorts, mostly, mostly correctly.",
@@ -541,6 +608,7 @@ export const resources = {
         "lift-sticker": "A smiley sticker at knee height. The vandal was maybe four years old.",
       },
       toast: {
+        boarding: "You step up into the carriage.",
         lightsOn: "You flip the switch. The bulb takes a moment to decide.",
         guitar: "The same four chords since school. They still do the trick.",
         lightsOff: "You flip the switch off. The room settles into shadow.",
@@ -667,6 +735,8 @@ export const resources = {
         parking: "PARKING −1",
         gym: "SIŁKA",
         district: "OSIEDLE",
+        station: "PRZYMORZE-UNIW.",
+        train: "SKM",
       },
       menu: {
         title: "STATUS",

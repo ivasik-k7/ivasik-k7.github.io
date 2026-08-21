@@ -3813,6 +3813,19 @@ export const DISTRICT_SCENE: RuntimeSceneDef<WorldState> = {
     },
     { id: "district-bikes", kind: "flavor", x: 130, range: 22 },
     { id: "district-shelter", kind: "flavor", x: 234, range: 28 },
+    /**
+     * Up onto the SKM platform. The viaduct is already drawn overhead in the
+     * far plane at this end of the square, so the stair goes where the stair
+     * would actually be — under it.
+     */
+    {
+      id: "district-skm",
+      kind: "stairs",
+      priority: 2,
+      x: 250,
+      range: 26,
+      to: { scene: "station", spawnX: 150 },
+    },
     { id: "district-ticket", kind: "flavor", x: 274, range: 10 },
     /* --- café A --- */
     { id: "cafe-orbita-tables", kind: "flavor", x: 300, range: 14 },
