@@ -1,4 +1,10 @@
-import { GameRuntime, type RuntimeConfig, type RuntimeSceneDef, SCENE_HEIGHT } from "@/engine";
+import {
+  type DialogueTree,
+  GameRuntime,
+  type RuntimeConfig,
+  type RuntimeSceneDef,
+  SCENE_HEIGHT,
+} from "@/engine";
 
 /**
  * ExampleGame — the smallest complete game the engine can run, kept as
@@ -80,10 +86,21 @@ const STOP: RuntimeSceneDef<World> = {
   id: "stop",
   width: 480,
   spawnX: 90,
-  ground: { top: 150, bottom: 168, blockers: [{ x0: 206, y0: 150, x1: 266, y1: 158 }] },
+  ground: {
+    top: 150,
+    bottom: 168,
+    blockers: [{ x0: 206, y0: 150, x1: 266, y1: 158 }],
+    // the pavement rises toward the gate — feet follow the profile
+    profile: [
+      { x: 380, bottom: 168 },
+      { x: 460, bottom: 158 },
+    ],
+    // a puddle: slower through it, and `live.surface` reads "puddle" inside
+    zones: [{ x0: 300, x1: 348, y0: 160, y1: 168, kind: "puddle", speed: 0.6 }],
+  },
   objects: [
     { id: "ex-sign", kind: "read", x: 140, range: 24, priority: 1 },
-    { id: "ex-bench", kind: "read", x: 236, range: 30, y: 154 },
+    { id: "ex-bench", kind: "bench", x: 236, range: 30, y: 154 },
     {
       id: "ex-gate",
       kind: "door",
@@ -114,6 +131,9 @@ const STOP: RuntimeSceneDef<World> = {
       <rect x={206} y={140} width={60} height={4} fill="#7a5c3e" />
       <rect x={208} y={144} width={4} height={14} fill="#4e3b28" />
       <rect x={260} y={144} width={4} height={14} fill="#4e3b28" />
+      {/* the puddle the zone walks through */}
+      <rect x={300} y={160} width={48} height={8} fill="#7f95a0" opacity={0.55} />
+      <rect x={306} y={162} width={30} height={2} fill="#a8bcc4" opacity={0.5} />
       {/* the gate out */}
       {post(424, "#4e3b28")}
       {post(444, "#4e3b28")}
@@ -165,6 +185,46 @@ const LABEL: Record<string, string> = {
   "ex-back": "GATE",
 };
 
+/**
+ * The bench talks — and shows the dialogue system's naturalness kit: variants
+ * exhaust so revisits never repeat verbatim, a line appears only while the
+ * timetable is unread, a `once` choice retires itself, and asked topics dim.
+ */
+const BENCH_TREE: DialogueTree<never> = {
+  id: "ex-bench",
+  start: "sit",
+  nodes: {
+    sit: {
+      lines: [{ text: "The bench holds its peace." }],
+      variants: [
+        {
+          lines: [
+            { speaker: "BENCH", text: "Someone carved a heart into me." },
+            {
+              text: "You haven't even read the timetable yet.",
+              when: (ctx) => ((ctx as { world?: World }).world?.read ?? 0) === 0,
+            },
+          ],
+        },
+        { lines: [{ speaker: "BENCH", text: "Back again. The 143 does that to people." }] },
+        { lines: [{ speaker: "BENCH", text: "..." }] },
+      ],
+      choices: [
+        {
+          id: "ex-bench-heart",
+          label: "Ask about the heart",
+          once: true,
+          next: "heart",
+        },
+        { id: "ex-bench-sit", label: "Say nothing", next: "quiet" },
+        { label: "Leave" },
+      ],
+    },
+    heart: { lines: [{ text: "Both initials are yours. The bench says nothing more about it." }] },
+    quiet: { lines: [{ text: "You and the bench watch the street together." }], next: "sit" },
+  },
+} as DialogueTree<never>;
+
 const CONFIG: RuntimeConfig<World> = {
   scenes: { stop: STOP, yard: YARD },
   start: { scene: "stop", x: 90 },
@@ -175,9 +235,16 @@ const CONFIG: RuntimeConfig<World> = {
       updateWorld({ read: world.read + 1 });
       showToast(LINES[obj.id] ?? "Nothing new.");
     },
+    bench: ({ startDialogue }) => startDialogue(BENCH_TREE),
   },
   objectLabel: (obj) => LABEL[obj.id] ?? obj.id.toUpperCase(),
-  objectVerb: (obj) => (obj.kind === "door" ? "ENTER" : "READ"),
+  objectVerb: (obj) => (obj.kind === "door" ? "ENTER" : obj.kind === "bench" ? "SIT" : "READ"),
+  // same contract as the main game: the drive harness reaches the api with ?drive=1
+  onReady: (api) => {
+    if (import.meta.env.DEV || new URLSearchParams(window.location.search).has("drive")) {
+      (window as unknown as { __game: unknown }).__game = api;
+    }
+  },
 };
 
 export function ExampleGame() {

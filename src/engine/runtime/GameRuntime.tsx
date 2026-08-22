@@ -12,7 +12,16 @@ import {
   TRAVEL_SWITCH_AT_MS,
   WALK_SPEED_Y_RATIO,
 } from "../core/constants";
-import { clampY, groundOf, hasDepth, stepOnGround } from "../core/ground";
+import {
+  clampY,
+  clampYAt,
+  groundOf,
+  hasDepth,
+  planRoute,
+  speedAt,
+  stepOnGround,
+  surfaceAt,
+} from "../core/ground";
 import { newIdleState, resetIdle, stepIdle } from "../core/idleBrain";
 import { detectObjects, resolveActiveTarget, viewportScale } from "../core/math";
 import { BandProvider } from "../core/runtime-cull";
@@ -346,6 +355,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     /** Stall detection: the last gap and when it last shrank. */
     lastGap: number;
     progressAt: number;
+    /** Waypoints still to walk after (x, y) — a route around furniture. */
+    rest: { x: number; y: number }[];
   } | null>(null);
   const seqRef = useRef<SeqRun<W> | null>(null);
   const ctxFactoryRef = useRef<((obj: SceneObject) => RuntimeCtx<W>) | null>(null);
@@ -732,15 +743,58 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   }, []);
 
   // --- auto-walk ------------------------------------------------------------------------
-  const walkTo = useCallback((x: number, o?: { y?: number; timeoutMs?: number }) => {
-    cancelAutoWalkStatic(autoWalkRef);
-    wakeRef.current();
-    return new Promise<boolean>((resolve) => {
-      // deadlines live on the game clock: a pause must not eat the walk
-      const t = clockRef.current.t;
-      autoWalkRef.current = newAutoWalk(x, o?.y, t + (o?.timeoutMs ?? 8000), null, t, resolve);
-    });
-  }, []);
+  /**
+   * Turn a walk request into a route. Scenes with furniture get a detour
+   * around it (planRoute) instead of the old stall-against-the-bench; scenes
+   * without blockers keep the straight walk, y-undefined still meaning
+   * "hold this depth".
+   */
+  const planWalk = useCallback(
+    (x: number, y: number | undefined) => {
+      const def = getDef(sceneRef.current);
+      const band = groundOf(def);
+      if (!def || !band.blockers || band.blockers.length === 0) {
+        return { x, y, rest: [] as { x: number; y: number }[] };
+      }
+      const route = planRoute(
+        band,
+        pos.current.x,
+        pos.current.y,
+        x,
+        y ?? pos.current.y,
+        EDGE_MARGIN,
+        def.width - EDGE_MARGIN,
+      );
+      const first = route[0] ?? { x, y: y ?? pos.current.y };
+      return { x: first.x, y: first.y as number | undefined, rest: route.slice(1) };
+    },
+    [getDef],
+  );
+
+  const planWalkRef = useRef(planWalk);
+  planWalkRef.current = planWalk;
+
+  const walkTo = useCallback(
+    (x: number, o?: { y?: number; timeoutMs?: number }) => {
+      cancelAutoWalkStatic(autoWalkRef);
+      wakeRef.current();
+      return new Promise<boolean>((resolve) => {
+        // deadlines live on the game clock: a pause must not eat the walk
+        const t = clockRef.current.t;
+        const w = planWalk(x, o?.y);
+        autoWalkRef.current = newAutoWalk(
+          w.x,
+          w.y,
+          t + (o?.timeoutMs ?? 8000),
+          null,
+          t,
+          resolve,
+          w.rest,
+        );
+      });
+    },
+    [planWalk],
+  );
 
   // --- travel & blackout ----------------------------------------------------------------
   const travel = useCallback(
@@ -788,7 +842,11 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         const fallback = nextDef?.spawnX ?? (nextDef ? nextDef.width / 2 : pos.current.x);
         pos.current.x = spawnX ?? remembered ?? fallback;
         const rememberedY = opts.rememberSceneX ? sceneYRef.current[target] : undefined;
-        pos.current.y = clampY(groundOf(nextDef), spawnY ?? rememberedY ?? FLOOR_Y);
+        pos.current.y = clampYAt(
+          groundOf(nextDef),
+          pos.current.x,
+          spawnY ?? rememberedY ?? FLOOR_Y,
+        );
         camRig.current.x = Number.NaN;
         camRig.current.look = 0;
         camRig.current.focusX = null;
@@ -1021,17 +1079,23 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         return;
       }
       cancelAutoWalkStatic(autoWalkRef);
-      autoWalkRef.current = newAutoWalk(
+      // stand at the object's own depth when it declares one; stay put otherwise
+      const w = planWalk(
         clamp(meta.approachX ?? obj.x, EDGE_MARGIN, def.width - EDGE_MARGIN),
-        // stand at the object's own depth when it declares one; stay put otherwise
         meta.approachY ?? obj.y,
+      );
+      autoWalkRef.current = newAutoWalk(
+        w.x,
+        w.y,
         clockRef.current.t + 8000,
         obj.id,
         clockRef.current.t,
+        undefined,
+        w.rest,
       );
       wakeRef.current();
     },
-    [def.width, interact, opts.autoWalkToTargets, selectTarget],
+    [def.width, interact, opts.autoWalkToTargets, planWalk, selectTarget],
   );
 
   /**
@@ -1353,6 +1417,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const liveRef = useRef<LiveState>({
     frame: "stand",
     y: FLOOR_Y,
+    surface: null,
     prevFrame: "stand",
     action: null,
     actionProgress: 0,
@@ -1491,7 +1556,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       showToast: (text) => loopBag.current.showToast(text),
       startWalk: (x, y, deadline) => {
         cancelAutoWalkStatic(autoWalkRef);
-        autoWalkRef.current = newAutoWalk(x, y, deadline, null, clock.t);
+        const w = planWalkRef.current(x, y);
+        autoWalkRef.current = newAutoWalk(w.x, w.y, deadline, null, clock.t, undefined, w.rest);
       },
       walking: () => autoWalkRef.current !== null,
       setFacing: (facing) => {
@@ -1719,14 +1785,23 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           } else if (autoWalkRef.current) {
             const walk = autoWalkRef.current;
             const gapX = walk.x - p.x;
-            const gapY = walk.y === undefined ? 0 : clampY(ground, walk.y) - p.y;
+            const gapY = walk.y === undefined ? 0 : clampYAt(ground, walk.x, walk.y) - p.y;
             const gap = Math.abs(gapX) + Math.abs(gapY);
             if (gap < walk.lastGap - 0.05) {
               walk.lastGap = gap;
               walk.progressAt = gameNow;
             }
             if (Math.abs(gapX) <= ARRIVE_EPS && Math.abs(gapY) <= ARRIVE_EPS) {
-              arrived = true;
+              const next = walk.rest.shift();
+              if (next) {
+                // a routed walk: the bench corner reached, aim at the next leg
+                walk.x = next.x;
+                walk.y = next.y;
+                walk.lastGap = Number.POSITIVE_INFINITY;
+                walk.progressAt = gameNow;
+              } else {
+                arrived = true;
+              }
             } else if (gameNow > walk.deadline) {
               // the old contract: a timeout still counts as "close enough"
               arrived = true;
@@ -1741,8 +1816,10 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           }
           if (dirX !== 0 || dirY !== 0) {
             if (dirX !== 0) p.facing = dirX as 1 | -1;
-            const dx = dirX * bag.walkSpeed * dt;
-            const dy = dirY * bag.walkSpeedY * dt;
+            // the ground underfoot has a say: mud wades, ice hurries
+            const surf = ground.zones ? speedAt(ground, p.x, p.y) : 1;
+            const dx = dirX * bag.walkSpeed * surf * dt;
+            const dy = dirY * bag.walkSpeedY * surf * dt;
             const next = stepOnGround(
               ground,
               p.x,
@@ -1761,9 +1838,11 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             const span = 16 * Math.max(1, player.walkCycle.length) * 512;
             p.walkDist = (p.walkDist + Math.abs(dx) + Math.abs(dy)) % span;
             moving = true;
-          } else if (p.y < ground.top || p.y > ground.bottom) {
-            // self-heal a stale save or a scene whose band changed under it
-            p.y = clampY(ground, p.y);
+          } else {
+            // self-heal a stale save, a changed band, or a profile edge the
+            // player is standing past while idle
+            const settled = clampYAt(ground, p.x, p.y);
+            if (settled !== p.y) p.y = settled;
           }
           acc -= stepMs;
           simSteps++;
@@ -2023,6 +2102,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
               ? "walk"
               : "idle";
         live.moving = moving;
+        live.surface = ground.zones ? surfaceAt(ground, p.x, p.y) : null;
         live.facing = p.facing as 1 | -1;
         live.x = Math.round(p.x);
         live.y = Math.round(p.y);
@@ -2101,7 +2181,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
               }
               if (custom.y !== undefined) {
                 if (Math.abs(custom.y - st.y) > 0.01) actorMoving = true;
-                st.y = clampY(ground, custom.y);
+                st.y = clampYAt(ground, st.x, custom.y);
               }
               if (custom.facing) st.facing = custom.facing;
               if (custom.frame) st.frame = custom.frame;
@@ -2392,8 +2472,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
    */
   const speaking = useMemo<SpeakingState | null>(() => {
     if (!dialogue) return null;
-    const node = dialogue.state.tree.nodes[dialogue.state.nodeId];
-    const line = node?.lines[dialogue.state.lineIndex];
+    const line = dialogue.state.lines[dialogue.state.lineIndex];
     return {
       objId: dialogue.obj?.id ?? "__seq__",
       speaker: line?.speaker,
@@ -2846,6 +2925,7 @@ function newAutoWalk(
   interactId: string | null,
   now: number,
   resolve?: (ok: boolean) => void,
+  rest?: { x: number; y: number }[],
 ) {
   return {
     x,
@@ -2855,5 +2935,7 @@ function newAutoWalk(
     resolve,
     lastGap: Number.POSITIVE_INFINITY,
     progressAt: now,
+    /** waypoints still to walk after (x,y) — a route around furniture */
+    rest: rest ?? [],
   };
 }

@@ -132,3 +132,123 @@ describe("dialogue", () => {
     expect(kinds).toEqual(["empty", "missing", "once-without-id", "unreachable"]);
   });
 });
+
+describe("dialogue variants (no verbatim repeats)", () => {
+  const varTree = (mode?: "exhaust" | "cycle" | "random"): DialogueTree<never> =>
+    ({
+      id: "pani",
+      start: "hello",
+      nodes: {
+        hello: {
+          lines: [{ text: "fallback" }],
+          variantMode: mode,
+          variants: [
+            { lines: [{ text: "first meeting" }] },
+            { lines: [{ text: "second time" }] },
+            { lines: [{ text: "standing line" }] },
+          ],
+        },
+      },
+    }) as DialogueTree<never>;
+
+  const openLines = (tree: DialogueTree<never>, ctx: () => unknown): string => {
+    const step = openDialogue(tree, ctx);
+    if (step.kind !== "continue") throw new Error();
+    return step.state.lines.map((l) => l.text).join("|");
+  };
+
+  it("exhausts variants in order then holds the last (persisted via counters)", () => {
+    const counters: Record<string, number> = {};
+    const ctx = () => ({
+      counter: (k: string) => counters[k] ?? 0,
+      bump: (k: string, by = 1) => {
+        counters[k] = (counters[k] ?? 0) + by;
+        return counters[k];
+      },
+    });
+    const tree = varTree(); // default exhaust
+    expect(openLines(tree, ctx)).toBe("first meeting");
+    expect(openLines(tree, ctx)).toBe("second time");
+    expect(openLines(tree, ctx)).toBe("standing line");
+    expect(openLines(tree, ctx)).toBe("standing line"); // held
+  });
+
+  it("cycles forever in cycle mode, remembering per-session without a counter store", () => {
+    const tree = varTree("cycle");
+    const bare = () => ({});
+    expect(openLines(tree, bare)).toBe("first meeting");
+    expect(openLines(tree, bare)).toBe("second time");
+    expect(openLines(tree, bare)).toBe("standing line");
+    expect(openLines(tree, bare)).toBe("first meeting"); // wrapped
+  });
+
+  it("never repeats the same random variant twice running", () => {
+    const tree = varTree("random");
+    const bare = () => ({});
+    let prev = openLines(tree, bare);
+    for (let i = 0; i < 20; i++) {
+      const next = openLines(tree, bare);
+      expect(next).not.toBe(prev);
+      prev = next;
+    }
+  });
+
+  it("skips variants whose `when` fails and falls back to node lines when none qualify", () => {
+    const tree = {
+      id: "t2",
+      start: "n",
+      nodes: {
+        n: {
+          lines: [{ text: "fallback" }],
+          variants: [{ lines: [{ text: "never" }], when: () => false }],
+        },
+      },
+    } as DialogueTree<never>;
+    expect(openLines(tree, () => ({}))).toBe("fallback");
+  });
+});
+
+describe("per-line conditions", () => {
+  it("drops lines whose `when` says not today, keeping the rest in order", () => {
+    let raining = true;
+    const tree = {
+      start: "n",
+      nodes: {
+        n: {
+          lines: [
+            { text: "always" },
+            { text: "rain line", when: () => raining },
+            { text: "closing" },
+          ],
+        },
+      },
+    } as DialogueTree<never>;
+    const texts = () => {
+      const step = openDialogue(tree, () => ({}));
+      if (step.kind !== "continue") throw new Error();
+      return step.state.lines.map((l) => l.text);
+    };
+    expect(texts()).toEqual(["always", "rain line", "closing"]);
+    raining = false;
+    expect(texts()).toEqual(["always", "closing"]);
+  });
+});
+
+describe("seen-choice memory", () => {
+  it("marks an identified choice as asked-before through the flag store", () => {
+    const { ctx } = flagCtx();
+    const state = open(ctx);
+    expect(offeredChoices(TREE.nodes.hello, ctx).map((c) => c.seenBefore)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    chooseDialogue(state, 0, ctx);
+    // the once-choice is gone entirely; the others carry their memory flags
+    const after = offeredChoices(TREE.nodes.hello, ctx);
+    expect(after.map((c) => `${c.label}:${c.seenBefore}`)).toEqual([
+      "Buy tea:false",
+      "Leave:false",
+    ]);
+  });
+});

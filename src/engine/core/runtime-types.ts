@@ -47,6 +47,30 @@ export type InputAction =
 export type GroundBlocker = { x0: number; y0: number; x1: number; y1: number };
 
 /**
+ * A named patch of ground — what it is made of and how it walks. `kind` is
+ * the game's vocabulary ("puddle", "sand", "crowd"); read it back with
+ * `surfaceAt` for footstep sfx and effects. `speed` multiplies walk speed
+ * while inside (0.6 = wading). First matching zone wins, so declare the
+ * specific patch before the broad one. y-bounds default to the whole band.
+ */
+export type GroundZone = {
+  x0: number;
+  x1: number;
+  y0?: number;
+  y1?: number;
+  kind: string;
+  speed?: number;
+};
+
+/**
+ * A control point bending the band's edges along x. Points define `top`,
+ * `bottom` or both; each edge interpolates linearly across the points that
+ * mention it and holds the band constant elsewhere — steps down to a cellar
+ * door, a ramp, a platform tapering toward its nose.
+ */
+export type GroundProfilePoint = { x: number; top?: number; bottom?: number };
+
+/**
  * The walkable depth band. `top` is the far feet line (small y), `bottom` the
  * near one (large y). Scenes without one get the degenerate {FLOOR_Y, FLOOR_Y}
  * band and behave exactly as before — a single line.
@@ -55,6 +79,10 @@ export type GroundBand = {
   top: number;
   bottom: number;
   blockers?: readonly GroundBlocker[];
+  /** Bends the edges along x — see GroundProfilePoint. */
+  profile?: readonly GroundProfilePoint[];
+  /** Named surface patches — see GroundZone. */
+  zones?: readonly GroundZone[];
 };
 
 /* ------------------------------------------------------- objects & scenes */
@@ -269,6 +297,8 @@ export type LiveState = {
   frame: string;
   /** feet-y in the ground band (FLOOR_Y in single-line scenes) */
   y: number;
+  /** the ground zone underfoot (null between zones / zone-less scenes) */
+  surface: string | null;
   /** the frame shown on the tick before, so a transition is visible as a pair */
   prevFrame: string;
   /** the running action, if any */

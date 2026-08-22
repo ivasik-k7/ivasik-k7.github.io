@@ -61,7 +61,8 @@ export function DialogueBox({
   u?: number;
 }) {
   const node = state.tree.nodes[state.nodeId];
-  const line = node?.lines[state.lineIndex];
+  // the lines resolved for THIS visit — variants and line-conditions applied
+  const line = state.lines[state.lineIndex];
   const choices = useMemo(() => (node ? offeredChoices(node, makeCtx) : []), [node, makeCtx]);
   const atChoices = dialogueAtChoices(state, makeCtx);
   const accent = MOOD_ACCENT[line?.mood ?? "neutral"];
@@ -138,6 +139,7 @@ export function DialogueBox({
           <ul className="mt-3 flex flex-col" style={{ gap: u }}>
             {choices.map((choice, i) => {
               const locked = choice.lockedBy !== null;
+              const seen = choice.seenBefore && !locked;
               const here = i === state.choiceIndex;
               return (
                 <li key={choice.id ?? choice.label}>
@@ -152,7 +154,9 @@ export function DialogueBox({
                         ? "rgba(227,217,194,0.34)"
                         : here
                           ? accent
-                          : "rgba(227,217,194,0.66)",
+                          : seen
+                            ? "rgba(227,217,194,0.44)" // already asked — dimmer, still there
+                            : "rgba(227,217,194,0.66)",
                       transition: "color 140ms",
                     }}
                     onClick={() => {

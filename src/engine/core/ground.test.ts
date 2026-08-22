@@ -57,3 +57,136 @@ describe("ground band", () => {
     expect(freed.x).toBe(124);
   });
 });
+
+describe("ground profile (sloped edges)", () => {
+  const RAMP: GroundBand = {
+    top: 150,
+    bottom: 168,
+    // the bottom edge climbs from 168 to 156 between x=100 and x=200
+    profile: [
+      { x: 100, bottom: 168 },
+      { x: 200, bottom: 156 },
+    ],
+  };
+
+  it("interpolates the profiled edge and holds constants elsewhere", async () => {
+    const { edgesAt } = await import("./ground");
+    expect(edgesAt(RAMP, 50)).toEqual({ top: 150, bottom: 168 }); // before: first point holds
+    expect(edgesAt(RAMP, 150).bottom).toBeCloseTo(162, 5); // halfway up the ramp
+    expect(edgesAt(RAMP, 300)).toEqual({ top: 150, bottom: 156 }); // past: last point holds
+    expect(edgesAt(RAMP, 150).top).toBe(150); // the un-profiled edge is constant
+  });
+
+  it("clamps at the local edge and never inverts a malformed band", async () => {
+    const { clampYAt, edgesAt } = await import("./ground");
+    expect(clampYAt(RAMP, 150, 168)).toBeCloseTo(162, 5);
+    const bad: GroundBand = { top: 150, bottom: 168, profile: [{ x: 0, top: 180 }] };
+    const e = edgesAt(bad, 0);
+    expect(e.top).toBeLessThanOrEqual(e.bottom);
+  });
+
+  it("carries the feet along the slope while walking x", async () => {
+    const { stepOnGround } = await import("./ground");
+    // standing at the ramp's foot on its bottom edge, walking right
+    const step = stepOnGround(RAMP, 150, 162, 10, 0, 20, 400);
+    expect(step.x).toBe(160);
+    expect(step.y).toBeCloseTo(160.8, 5); // lifted to the edge at x=160
+  });
+});
+
+describe("ground zones (surfaces)", () => {
+  const WET: GroundBand = {
+    top: 150,
+    bottom: 168,
+    zones: [
+      { x0: 100, x1: 140, y0: 160, y1: 168, kind: "puddle", speed: 0.6 },
+      { x0: 0, x1: 480, kind: "pavement" },
+    ],
+  };
+
+  it("names the surface underfoot, first match winning", async () => {
+    const { surfaceAt } = await import("./ground");
+    expect(surfaceAt(WET, 120, 164)).toBe("puddle");
+    expect(surfaceAt(WET, 120, 152)).toBe("pavement"); // above the puddle's y0
+    expect(surfaceAt({ top: 150, bottom: 168 }, 120, 164)).toBeNull();
+  });
+
+  it("applies the speed of the first zone that declares one", async () => {
+    const { speedAt } = await import("./ground");
+    expect(speedAt(WET, 120, 164)).toBe(0.6);
+    expect(speedAt(WET, 300, 164)).toBe(1); // pavement declares no speed
+  });
+});
+
+describe("nearestWalkable", () => {
+  const FURNISHED: GroundBand = {
+    top: 150,
+    bottom: 168,
+    blockers: [{ x0: 200, y0: 150, x1: 260, y1: 160 }],
+  };
+
+  it("snaps a target inside furniture out through the nearest face", async () => {
+    const { nearestWalkable, insideBlocker } = await import("./ground");
+    const p = nearestWalkable(FURNISHED, 210, 155, 20, 400);
+    expect(insideBlocker(FURNISHED.blockers, p.x, p.y)).toBe(false);
+    expect(Math.hypot(p.x - 210, p.y - 155)).toBeLessThan(20);
+  });
+
+  it("leaves a clear target alone", async () => {
+    const { nearestWalkable } = await import("./ground");
+    expect(nearestWalkable(FURNISHED, 300, 164, 20, 400)).toEqual({ x: 300, y: 164 });
+  });
+});
+
+describe("planRoute", () => {
+  const FURNISHED: GroundBand = {
+    top: 150,
+    bottom: 168,
+    blockers: [{ x0: 200, y0: 150, x1: 260, y1: 160 }],
+  };
+
+  it("walks straight when nothing is in the way", async () => {
+    const { planRoute } = await import("./ground");
+    expect(planRoute(FURNISHED, 100, 166, 300, 166, 20, 400)).toEqual([{ x: 300, y: 166 }]);
+  });
+
+  it("detours around a bench and ends on the target", async () => {
+    const { planRoute, insideBlocker } = await import("./ground");
+    // straight line at y=155 runs through the bench
+    const route = planRoute(FURNISHED, 100, 155, 320, 155, 20, 400);
+    expect(route.length).toBeGreaterThan(1);
+    expect(route[route.length - 1]).toEqual({ x: 320, y: 155 });
+    // every leg of the route is clear
+    let px = 100;
+    let py = 155;
+    for (const w of route) {
+      expect(insideBlocker(FURNISHED.blockers, w.x, w.y)).toBe(false);
+      const mid = { x: (px + w.x) / 2, y: (py + w.y) / 2 };
+      expect(insideBlocker(FURNISHED.blockers, mid.x, mid.y)).toBe(false);
+      px = w.x;
+      py = w.y;
+    }
+  });
+
+  it("threads between two pieces of furniture in file", async () => {
+    const { planRoute } = await import("./ground");
+    const two: GroundBand = {
+      top: 150,
+      bottom: 180,
+      blockers: [
+        { x0: 150, y0: 150, x1: 190, y1: 162 },
+        { x0: 240, y0: 158, x1: 280, y1: 180 },
+      ],
+    };
+    const route = planRoute(two, 100, 156, 340, 172, 20, 480);
+    expect(route[route.length - 1]).toEqual({ x: 340, y: 172 });
+    expect(route.length).toBeGreaterThan(1);
+  });
+
+  it("snaps an unreachable target onto walkable ground", async () => {
+    const { planRoute, insideBlocker } = await import("./ground");
+    const route = planRoute(FURNISHED, 100, 166, 230, 155, 20, 400);
+    const end = route[route.length - 1];
+    expect(insideBlocker(FURNISHED.blockers, end.x, end.y)).toBe(false);
+  });
+});
