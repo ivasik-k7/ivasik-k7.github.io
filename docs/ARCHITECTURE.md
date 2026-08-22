@@ -326,5 +326,70 @@ timer discipline.
 | Developer experience | 7 | 8 | README, example game, wired validateTree, drive + bench harnesses, CI net |
 | Public-release readiness | 3 | 6 | docs + example + API stance exist; packaging, versioning, license work remain |
 
-_Report ends. The program's remaining horizon: packaging (Phase 7 tail),
-sequencer step extensibility, and a graceful lazy-scene abort — none urgent._
+---
+
+## H. Two-agent review (2026-08-22, post-program)
+
+Two independent reviews ran after §G — a capability-gap architect and an
+adversarial robustness engineer — and their verified findings landed in two
+tranches.
+
+### Robustness fixes (all verified against the code, then fixed + tested)
+
+1. **`persist.migrate` was a dead contract**: `loadGame` discarded old-version
+   slots before migrate could run, and passed the CURRENT version as
+   `fromVersion`. Bumping the save version wiped every player. Now
+   `systems/save.loadSlot(key, version, migrate)` hands old slots to migrate
+   with their real version; the runtime uses it; three tests pin it.
+2. **One clock for gameplay time**: actions, cutscene beats, auto-walk
+   deadlines/stall, toasts (incl. queued) and interaction cooldowns all moved
+   from the wall clock to the pausable `GameClock`, and the sequencer is
+   gated on pause. Before: any pause ≥600 ms silently killed an in-flight
+   auto-walk; cutscenes kept advancing — and could `travel` — behind the
+   pause menu; actions finished invisibly under overlays; toasts burned out
+   unseen. Wall time remains for pacing, input feel and the camera.
+3. **Restore hardening**: a save slot that parses but carries wrong shapes
+   (string `x`, numeric `scene`) falls back field by field instead of
+   string-concatenating NaN into the sim; a failed `saveGame` (quota,
+   private mode) keeps the dirty flag so the pagehide flush retries.
+4. **`{dialogue}`/`{do}` in an objectless scene** crashed the whole tree via
+   `undefined.id` in the speaking memo — synthetic `__seq__` anchor now.
+5. **AnimalActor had neither camera culling nor the animation gate** (every
+   animal animated off-screen and behind menus); mirrors NpcActor now. The
+   frame ticker also sleeps with the hidden tab and re-anchors on return.
+6. **Failed lazy-chunk loads** retried `import()` every 60 ms for the whole
+   10 s hold (~166 requests on a dead network); doubling backoff from 1 s.
+7. **Overlapping screen flashes**: the first flash's cleanup killed the
+   second mid-fade; id-guarded like toasts always were.
+8. **Action interrupts during the natural exit** restarted the way out;
+   interrupts now only land during the loop phase.
+9. **Dialogue ctx churn**: `offeredChoices`/`chooseDialogue` build one ctx
+   per evaluation (authors' impure predicates fired 6×+ per keypress), and
+   the runtime hands DialogueBox a `(dialogue, world)`-keyed stable thunk so
+   its choices memo works again.
+
+Known accepted trade-off (documented, unfixed): under sustained sub-24fps
+the bounded accumulator dilates sim movement while gameplay clocks tick at
+wall speed — the unified clock keeps actions/cutscenes/walks consistent with
+each other, but not with dilated movement distance. Revisit only if a target
+device actually lives there.
+
+### Capability roadmap (verified gaps — awaiting prioritization)
+
+The capability review's conclusion: the engine's weak axis is *characters
+and time*. In its priority order: (1) first-class NPCs — one declaration for
+figure+interactable+presence (today a person is split across two
+half-systems; presence already drifts: street NPCs are targetable while
+drawn away) — L; (2) actor-addressed cutscene beats (`{actor: "id",
+walkTo/say/action}`) — two-hander scenes are currently impossible — M;
+(3) cue tracks on actions (`cues: [{at, sound, fx, toast}]`) replacing 8+
+hand-rolled pause-unsafe timer chains in handlers.ts — S, best value/line;
+(4) scene-owned handlers + per-object lazy dialogue so content chunks travel
+with their scene chunk — S–M; (5) day-phase in `when`/ctx + a freezable
+clock, making night content CI-testable — S; (6) `via` beats on doors
+(action+sound before travel, pause-safe) — S; (7) engine-owned ambient barks
+(the game's NpcMonologue has the pause bugs the engine already solved) — M;
+(8) registerable ambience beds + positional audio emitters — M; (9) overlay
+ctx parity (travel for the route map without the module-level api global) — S.
+
+_Report ends._

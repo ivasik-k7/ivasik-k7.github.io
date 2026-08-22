@@ -188,16 +188,17 @@ export function chooseDialogue(
   // a locked choice is visible but inert: selecting it is not an error, it
   // just does not go anywhere
   if (!choice || choice.lockedBy !== null) return { kind: "continue", state };
+  const ctx = makeCtx();
   // a taken `once` choice is spent from here on (persisted via the ctx flags)
   if (choice.once && choice.id) {
-    (makeCtx() as FlagCtx)?.setFlag?.(onceKey(choice.id));
+    (ctx as FlagCtx)?.setFlag?.(onceKey(choice.id));
   }
   // resolve the branch against the pre-effect world, then run the effect
   const target =
     typeof choice.next === "function"
-      ? (choice.next as (ctx: unknown) => string)(makeCtx())
+      ? (choice.next as (ctx: unknown) => string)(ctx)
       : choice.next;
-  if (choice.effect) (choice.effect as (ctx: unknown) => void)(makeCtx());
+  if (choice.effect) (choice.effect as (ctx: unknown) => void)(ctx);
   if (target) return enter(state, target);
   return { kind: "end", onEnd: node.onEnd as ((ctx: unknown) => void) | undefined };
 }
@@ -216,13 +217,17 @@ export function offeredChoices(
   makeCtx: () => unknown,
 ): OfferedChoice[] {
   if (!node?.choices) return [];
+  // one ctx per evaluation: the world cannot move inside a single call, and
+  // authors with impure predicates should see them run once per choice, not
+  // three times (the ctx itself is a point-in-time snapshot either way)
+  const ctx = makeCtx();
   const out: OfferedChoice[] = [];
   for (const c of node.choices) {
     const when = c.when as ((ctx: unknown) => boolean) | undefined;
-    if (when && !when(makeCtx())) continue;
-    if (onceSeen(makeCtx(), c)) continue;
+    if (when && !when(ctx)) continue;
+    if (onceSeen(ctx, c)) continue;
     const locked = c.locked as ((ctx: unknown) => string | null) | undefined;
-    out.push({ ...c, lockedBy: locked ? locked(makeCtx()) : null });
+    out.push({ ...c, lockedBy: locked ? locked(ctx) : null });
   }
   return out;
 }

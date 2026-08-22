@@ -62,7 +62,7 @@ import {
   offeredChoices,
   openDialogue,
 } from "../systems/dialogue";
-import { loadGame, saveGame } from "../systems/save";
+import { loadSlot, saveGame } from "../systems/save";
 import { AnimationGateProvider } from "../ui/animationGate";
 import { DialogueBox } from "../ui/DialogueBox";
 import { InteractPrompt, TargetMarker } from "../ui/InteractPrompt";
@@ -143,6 +143,10 @@ function actorFrameNames<W extends AnyWorld>(actor: ActorDef<W>): string[] {
   return [...names].filter((n) => actor.frames[n]);
 }
 
+/** A number from an untrusted save slot, or the fallback. */
+const finiteOr = (v: unknown, fallback: number): number =>
+  typeof v === "number" && Number.isFinite(v) ? v : fallback;
+
 /**
  * What renders while a code-split scene's chunk is still on the wire: a black
  * beat under the travel fade. Never simulated — the loop skips unresolved
@@ -185,15 +189,17 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   // --- persisted start ---------------------------------------------------------
   const [restored] = useState<SavePayload<W> | null>(() => {
     if (!persist) return null;
-    const raw = loadGame<W>(persist.key, persist.version) as SavePayload<W> | null;
-    if (raw && persist.migrate) {
-      return (persist.migrate(raw, persist.version) ?? null) as SavePayload<W> | null;
-    }
-    return raw;
+    // loadSlot hands old-version slots to migrate with their REAL version —
+    // a bumped version upgrades players instead of wiping them
+    return loadSlot<W>(persist.key, persist.version, persist.migrate) as SavePayload<W> | null;
   });
 
   // --- rare React state -------------------------------------------------------
-  const [scene, setScene] = useState(restored?.scene ?? config.start.scene);
+  // truncated or hand-edited storage must not leak strings into the sim: a
+  // slot that parses but carries the wrong shapes falls back field by field
+  const [scene, setScene] = useState(
+    typeof restored?.scene === "string" ? restored.scene : config.start.scene,
+  );
   const [world, setWorld] = useState<W>(restored?.world ?? config.initialWorld);
   const [dialogue, setDialogue] = useState<{ state: DialogueState; obj: SceneObject } | null>(null);
   const [overlay, setOverlay] = useState<unknown>(null);
@@ -239,9 +245,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const liveRegionRef = useRef<HTMLDivElement>(null);
 
   const pos = useRef({
-    x: restored?.x ?? config.start.x,
-    y: restored?.y ?? config.start.y ?? FLOOR_Y,
-    facing: (restored?.facing ?? 1) as 1 | -1,
+    x: finiteOr(restored?.x, config.start.x),
+    y: finiteOr(restored?.y, config.start.y ?? FLOOR_Y),
+    facing: (restored?.facing === -1 ? -1 : 1) as 1 | -1,
     walkDist: 0,
   });
   const keys = useRef({ left: false, right: false, up: false, down: false });
@@ -313,7 +319,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   /** Which scene `enter` already fired for, so a resolution re-render can't double it. */
   const enteredSceneRef = useRef<string | null>(null);
   const usedRef = useRef<Map<string, number>>(new Map());
-  const consumedRef = useRef<Set<string>>(new Set());
+  const consumedRef = useRef<Set<string>>(
+    new Set(Array.isArray(restored?.consumed) ? restored.consumed : []),
+  );
   const worldRevRef = useRef(0);
   const inputLockRef = useRef(false);
   const forcedFrameRef = useRef<string | null>(null);
@@ -372,6 +380,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   scenesRef.current = scenes;
   const sceneDefsRef = useRef<Record<string, RuntimeSceneDef<W>>>({});
   const sceneLoadingRef = useRef<Set<string>>(new Set());
+  /** Failed loads back off (doubling from 1s) instead of retrying every poll. */
+  const sceneRetryRef = useRef<Record<string, { at: number; delay: number }>>({});
   const [, bumpResolved] = useState(0);
   const resolveScene = useCallback((key: string): RuntimeSceneDef<W> | undefined => {
     const cached = sceneDefsRef.current[key];
@@ -385,17 +395,23 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       sceneDefsRef.current[key] = source;
       return source;
     }
-    if (!sceneLoadingRef.current.has(key)) {
+    const retry = sceneRetryRef.current[key];
+    if (!sceneLoadingRef.current.has(key) && (!retry || nowMs() >= retry.at)) {
       sceneLoadingRef.current.add(key);
       source().then(
         (loaded) => {
           sceneDefsRef.current[key] = loaded;
           sceneLoadingRef.current.delete(key);
+          delete sceneRetryRef.current[key];
           if (sceneRef.current === key) bumpResolved((n) => n + 1);
           wakeRef.current();
         },
         (err) => {
           sceneLoadingRef.current.delete(key);
+          // back off doubling from 1s: the travel hold polls every 60ms and a
+          // dead network must not answer that with ~166 fresh import() storms
+          const delay = Math.min(8000, (sceneRetryRef.current[key]?.delay ?? 500) * 2);
+          sceneRetryRef.current[key] = { at: nowMs() + delay, delay };
           console.error(`runtime: scene "${key}" failed to load`, err);
         },
       );
@@ -478,6 +494,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       counters: countersRef.current,
       sceneX: { ...sceneXRef.current, [sceneRef.current]: pos.current.x },
       sceneY: { ...sceneYRef.current, [sceneRef.current]: pos.current.y },
+      consumed: [...consumedRef.current],
     };
     return payload;
   }, [persist]);
@@ -486,8 +503,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     if (!persist) return;
     const payload = buildSave();
     if (!payload) return;
-    saveGame(persist.key, payload);
-    saveDirtyRef.current = false;
+    // a failed write (quota, private mode) stays dirty so the pagehide
+    // flush and the next autosave keep trying instead of silently giving up
+    if (saveGame(persist.key, payload)) saveDirtyRef.current = false;
   }, [buildSave, persist]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: world/scene changes are what mark the save dirty
@@ -541,22 +559,24 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   useEffect(() => {
     if (!toast) return;
-    const timers = timersRef.current;
-    const id = timers.after(() => {
+    // the game clock: a toast shown just before the menu opens is still
+    // there, with its time left, when the menu closes
+    const clock = clockRef.current;
+    const id = clock.after(3000, () => {
       setToast((cur) => (cur?.id === toast.id ? null : cur));
-    }, 3000);
-    return () => timers.clear(id);
+    });
+    return () => clock.cancel(id);
   }, [toast]);
 
   const queueToast = useCallback(
     (text: string, delayMs: number) => {
-      queuedToasts.current.push(timersRef.current.after(() => showToast(text), delayMs));
+      queuedToasts.current.push(clockRef.current.after(delayMs, () => showToast(text)));
     },
     [showToast],
   );
 
   const cancelQueuedToasts = useCallback(() => {
-    for (const timer of queuedToasts.current) timersRef.current.clear(timer);
+    for (const timer of queuedToasts.current) clockRef.current.cancel(timer);
     queuedToasts.current = [];
   }, []);
 
@@ -653,8 +673,10 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   const flash = useCallback((color = "#ffffff", ms = 320) => {
     flashSeq.current += 1;
-    setFlashFx({ id: flashSeq.current, color, ms: reducedRef.current ? Math.min(ms, 120) : ms });
-    timersRef.current.after(() => setFlashFx(null), ms + 80);
+    const id = flashSeq.current;
+    setFlashFx({ id, color, ms: reducedRef.current ? Math.min(ms, 120) : ms });
+    // id-guarded: a second flash must not be cut down by the first one's timer
+    timersRef.current.after(() => setFlashFx((cur) => (cur?.id === id ? null : cur)), ms + 80);
   }, []);
 
   const letterbox = useCallback((on: boolean) => setCinema(on), []);
@@ -702,7 +724,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   // --- actions -----------------------------------------------------------------------
   const startAction = useCallback((id: string, o?: { onInterrupt?: () => void }) => {
-    actionRef.current = { id, start: nowMs(), onInterrupt: o?.onInterrupt };
+    // the GAME clock: an action opened just before the pause menu must be
+    // exactly where it was when the menu closes, not finished behind it
+    actionRef.current = { id, start: clockRef.current.t, onInterrupt: o?.onInterrupt };
     setActionUi(id);
     wakeRef.current();
   }, []);
@@ -712,7 +736,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     cancelAutoWalkStatic(autoWalkRef);
     wakeRef.current();
     return new Promise<boolean>((resolve) => {
-      autoWalkRef.current = newAutoWalk(x, o?.y, nowMs() + (o?.timeoutMs ?? 8000), null, resolve);
+      // deadlines live on the game clock: a pause must not eat the walk
+      const t = clockRef.current.t;
+      autoWalkRef.current = newAutoWalk(x, o?.y, t + (o?.timeoutMs ?? 8000), null, t, resolve);
     });
   }, []);
 
@@ -958,7 +984,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       const meta = obj as RuntimeObject;
       if (consumedRef.current.has(obj.id)) return;
       const until = usedRef.current.get(obj.id) ?? 0;
-      if (until > nowMs()) return;
+      if (until > clockRef.current.t) return;
       if (obj.kind !== "door") {
         pos.current.facing = obj.face ?? (obj.x >= pos.current.x ? 1 : -1);
       }
@@ -971,7 +997,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             }
           : undefined);
       if (!handler) return;
-      if (meta.cooldownMs) usedRef.current.set(obj.id, nowMs() + meta.cooldownMs);
+      if (meta.cooldownMs) usedRef.current.set(obj.id, clockRef.current.t + meta.cooldownMs);
       if (meta.once) {
         consumedRef.current.add(obj.id);
         objectCacheRef.current.key = ""; // candidate list must be rebuilt
@@ -999,8 +1025,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         clamp(meta.approachX ?? obj.x, EDGE_MARGIN, def.width - EDGE_MARGIN),
         // stand at the object's own depth when it declares one; stay put otherwise
         meta.approachY ?? obj.y,
-        nowMs() + 8000,
+        clockRef.current.t + 8000,
         obj.id,
+        clockRef.current.t,
       );
       wakeRef.current();
     },
@@ -1451,12 +1478,20 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
      * goes stale and never re-subscribes anything.
      */
     const seqAnchor = (): SceneObject =>
-      (nearRef.current ?? loopBag.current.getDef(sceneRef.current)?.objects[0]) as SceneObject;
+      // a synthetic anchor when nothing is targeted in an objectless scene —
+      // a {dialogue} or {do} beat must never hand `undefined` to a handler
+      // or crash the speaking memo on `.id`
+      nearRef.current ??
+      loopBag.current.getDef(sceneRef.current)?.objects[0] ?? {
+        id: "__seq__",
+        kind: "__seq__",
+        x: pos.current.x,
+      };
     const seqHost: SeqHost<W> = {
       showToast: (text) => loopBag.current.showToast(text),
       startWalk: (x, y, deadline) => {
         cancelAutoWalkStatic(autoWalkRef);
-        autoWalkRef.current = newAutoWalk(x, y, deadline, null);
+        autoWalkRef.current = newAutoWalk(x, y, deadline, null, clock.t);
       },
       walking: () => autoWalkRef.current !== null,
       setFacing: (facing) => {
@@ -1528,10 +1563,13 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
        * so the art resumes exactly where it stopped. Nothing is removed and
        * nothing is simplified — it just stops running while it is invisible.
        */
-      if (paused !== smilPausedRef.current) {
-        smilPausedRef.current = paused;
+      // reduced motion stills the scene art too: the camera and actors already
+      // hold, and the OS-level request does not get outvoted by the smoke
+      const smilStill = paused || reduced;
+      if (smilStill !== smilPausedRef.current) {
+        smilPausedRef.current = smilStill;
         for (const svg of smilRootsRef.current) {
-          if (paused) svg.pauseAnimations();
+          if (smilStill) svg.pauseAnimations();
           else svg.unpauseAnimations();
         }
       }
@@ -1547,6 +1585,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       statAccum.current.frames += 1;
       statAccum.current.frameMs = frameMs;
 
+      /**
+       * Gameplay time. Everything an author times against — action frames,
+       * cutscene beats, auto-walk deadlines, toast lifetimes — reads this
+       * clock, and it stops when the game does. Wall-clock `now` stays for
+       * pacing, input feel and the camera, which live in the player's time.
+       */
+      const gameNow = clock.t;
+
       // --- action animation (core/actionPlayer owns the timing table) ----------
       let actionFrame: string | null = null;
       const act = actionRef.current;
@@ -1560,7 +1606,13 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           padRef.current.right ||
           padRef.current.up ||
           padRef.current.down;
-        const step = stepAction(act, player.actions[act.id], now, wantsMove, inputLockRef.current);
+        const step = stepAction(
+          act,
+          player.actions[act.id],
+          gameNow,
+          wantsMove,
+          inputLockRef.current,
+        );
         if (step.unknown && import.meta.env.DEV) {
           console.warn(`runtime: unknown action "${act.id}"`);
         }
@@ -1618,9 +1670,11 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       }
 
       // --- sequencer (core/sequencer owns the beats) ----------------------------
-      if (seqRef.current && !fadingRef.current) {
+      // gated on pause and stepped on the game clock: a cutscene must not
+      // advance — let alone travel — behind the pause menu
+      if (seqRef.current && !fadingRef.current && !paused) {
         const running = seqRef.current;
-        if (stepSequence(running, seqHost, now)) {
+        if (stepSequence(running, seqHost, gameNow)) {
           seqRef.current = null;
           if (running.cinematic) {
             inputLockRef.current = false;
@@ -1669,14 +1723,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             const gap = Math.abs(gapX) + Math.abs(gapY);
             if (gap < walk.lastGap - 0.05) {
               walk.lastGap = gap;
-              walk.progressAt = now;
+              walk.progressAt = gameNow;
             }
             if (Math.abs(gapX) <= ARRIVE_EPS && Math.abs(gapY) <= ARRIVE_EPS) {
               arrived = true;
-            } else if (now > walk.deadline) {
+            } else if (gameNow > walk.deadline) {
               // the old contract: a timeout still counts as "close enough"
               arrived = true;
-            } else if (now - walk.progressAt > WALK_STALL_MS) {
+            } else if (gameNow - walk.progressAt > WALK_STALL_MS) {
               // a blocker in the way: stop trying instead of moonwalking
               autoWalkRef.current = null;
               walk.resolve?.(false);
@@ -1957,7 +2011,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         live.actionProgress = rdef
           ? Math.min(
               1,
-              (now - (running?.start ?? now)) /
+              (gameNow - (running?.start ?? gameNow)) /
                 (rdef.frames.length * rdef.frameMs * rdef.loops || 1),
             )
           : 0;
@@ -2319,6 +2373,18 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   );
   const dialogueOpen = dialogue !== null;
   /**
+   * Stable per-(dialogue, world) ctx thunk for the box. Inline it and the
+   * box's choices memo is dead — every runtime commit re-runs every author
+   * predicate. Keyed on `world` so a mid-conversation world write still
+   * re-evaluates `when`/`locked` exactly as the fresh-per-render contract
+   * promised.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: world keys freshness, not a read
+  const dialogueMakeCtx = useMemo(
+    () => (dialogue ? () => makeCtx(dialogue.obj) as unknown : () => ({}) as unknown),
+    [dialogue, makeCtx, world],
+  );
+  /**
    * What the character on the other side of the conversation is doing. Derived
    * from the line on screen so a shrug lands on the sentence it belongs to,
    * and published through context so every `NpcActor` in the scene can see it
@@ -2329,7 +2395,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     const node = dialogue.state.tree.nodes[dialogue.state.nodeId];
     const line = node?.lines[dialogue.state.lineIndex];
     return {
-      objId: dialogue.obj.id,
+      objId: dialogue.obj?.id ?? "__seq__",
       speaker: line?.speaker,
       act: line?.act,
       mood: line?.mood,
@@ -2628,7 +2694,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         {dialogue ? (
           <DialogueBox
             state={dialogue.state}
-            makeCtx={() => makeCtx(dialogue.obj) as unknown}
+            makeCtx={dialogueMakeCtx}
             /* the HUD is built at u=3; the panel matches it rather than
                scaling with the viewport, or it reads lighter than the plates
                sitting beside it */
@@ -2778,6 +2844,7 @@ function newAutoWalk(
   y: number | undefined,
   deadline: number,
   interactId: string | null,
+  now: number,
   resolve?: (ok: boolean) => void,
 ) {
   return {
@@ -2787,6 +2854,6 @@ function newAutoWalk(
     interactId,
     resolve,
     lastGap: Number.POSITIVE_INFINITY,
-    progressAt: nowMs(),
+    progressAt: now,
   };
 }

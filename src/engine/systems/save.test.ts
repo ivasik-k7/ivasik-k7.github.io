@@ -49,3 +49,35 @@ describe("save system", () => {
     expect(loadGame<World>(KEY, 4)).toBeNull();
   });
 });
+
+describe("save migration (loadSlot)", () => {
+  beforeEach(() => clearSave(KEY));
+
+  it("hands an old-version slot to migrate with its REAL version", async () => {
+    const { loadSlot } = await import("./save");
+    localStorage.setItem(KEY, JSON.stringify({ ...payload, version: 2 }));
+    let sawFrom = -1;
+    const loaded = loadSlot<World>(KEY, 3, (saved, from) => {
+      sawFrom = from;
+      return { ...(saved as object), version: 3 };
+    });
+    expect(sawFrom).toBe(2);
+    expect(loaded?.version).toBe(3);
+    expect((loaded as SavePayload<World>).x).toBe(240);
+  });
+
+  it("discards an old slot when no migrate is given, and same-version loads untouched", async () => {
+    const { loadSlot } = await import("./save");
+    localStorage.setItem(KEY, JSON.stringify({ ...payload, version: 2 }));
+    expect(loadSlot<World>(KEY, 3)).toBeNull();
+    localStorage.setItem(KEY, JSON.stringify(payload)); // version 3
+    expect(loadSlot<World>(KEY, 3)?.x).toBe(240);
+  });
+
+  it("discards a migrate that returns null or the wrong version", async () => {
+    const { loadSlot } = await import("./save");
+    localStorage.setItem(KEY, JSON.stringify({ ...payload, version: 1 }));
+    expect(loadSlot<World>(KEY, 3, () => null)).toBeNull();
+    expect(loadSlot<World>(KEY, 3, (s) => s)).toBeNull(); // still version 1
+  });
+});

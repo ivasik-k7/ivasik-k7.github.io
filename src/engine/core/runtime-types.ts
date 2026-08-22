@@ -389,4 +389,6 @@ export type SavePayload<W extends AnyWorld> = {
   counters?: Record<string, number>;
   sceneX?: Record<string, number>;
   sceneY?: Record<string, number>;
+  /** Objects consumed by `once` — without this they resurrect on reload. */
+  consumed?: string[];
 };

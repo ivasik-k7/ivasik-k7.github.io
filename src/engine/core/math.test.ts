@@ -65,3 +65,31 @@ describe("keymap", () => {
     expect(DEFAULT_KEYMAP.up).toEqual(["ArrowUp", "KeyW"]);
   });
 });
+
+describe("resolveActiveTarget", () => {
+  const det = (id: string, score: number) => ({ obj: obj(id, 0), dist: 0, score });
+
+  it("keeps a locked target while it stays detected, releases it when it leaves", async () => {
+    const { resolveActiveTarget } = await import("./math");
+    const list = [det("a", 0), det("b", 5)];
+    const locked = resolveActiveTarget(list, null, "b");
+    expect(locked.active?.id).toBe("b");
+    expect(locked.lockId).toBe("b");
+    const gone = resolveActiveTarget([det("a", 0)], "b", "b");
+    expect(gone.lockId).toBeNull();
+    expect(gone.active?.id).toBe("a");
+  });
+
+  it("holds the previous target inside the sticky margin, yields beyond it", async () => {
+    const { resolveActiveTarget } = await import("./math");
+    // prev "b" scores 5 vs best 0: within the margin (7) it keeps focus
+    expect(resolveActiveTarget([det("a", 0), det("b", 5)], "b", null).active?.id).toBe("b");
+    // beyond the margin the better candidate wins
+    expect(resolveActiveTarget([det("a", 0), det("b", 9)], "b", null).active?.id).toBe("a");
+  });
+
+  it("returns nothing (and drops the lock) with no candidates", async () => {
+    const { resolveActiveTarget } = await import("./math");
+    expect(resolveActiveTarget([], "a", "a")).toEqual({ active: null, lockId: null });
+  });
+});

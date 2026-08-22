@@ -60,13 +60,29 @@ export function createFrameTicker(now: () => number = () => performance.now()): 
     arm();
   };
 
+  // a hidden tab still fires clamped ~1Hz timeouts, committing React updates
+  // for every subscribed figure while the main loop is parked — the exact
+  // battery burn the park machinery exists to prevent. Sleep with the tab;
+  // re-anchor every beat to "one period from now" on the way back.
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        disarm();
+      } else {
+        const t = now();
+        for (const s of subs) s.next = t + s.period;
+        arm();
+      }
+    });
+  }
+
   return {
     every(periodMs: number, cb: () => void): () => void {
       const sub: Sub = { period: Math.max(16, periodMs), next: now() + Math.max(16, periodMs), cb };
       subs.add(sub);
-      // the new beat may land before the armed one — re-aim
+      // the new beat may land before the armed one — re-aim (but never while hidden)
       disarm();
-      arm();
+      if (typeof document === "undefined" || !document.hidden) arm();
       return () => {
         subs.delete(sub);
         if (subs.size === 0) disarm();

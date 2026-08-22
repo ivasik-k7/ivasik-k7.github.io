@@ -59,7 +59,18 @@ export function stepAction(
   const exitMs = exit.length * def.frameMs;
 
   let interrupted = false;
-  if (!run.leaving && def.interruptible && wantsMove && !inputLocked && elapsed >= enterMs) {
+  // interruptible only through the loop: during enter the pose isn't held
+  // yet, and during the natural exit the action is already on its way out —
+  // re-entering `leaving` there would restart the walk-away the player is
+  // watching finish
+  if (
+    !run.leaving &&
+    def.interruptible &&
+    wantsMove &&
+    !inputLocked &&
+    elapsed >= enterMs &&
+    elapsed < enterMs + loopMs
+  ) {
     run.leaving = def.abort ?? exit;
     run.leftAt = now;
     interrupted = true;

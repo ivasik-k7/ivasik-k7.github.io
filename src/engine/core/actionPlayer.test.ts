@@ -78,3 +78,14 @@ describe("action player", () => {
     expect(step.frame).toBeNull();
   });
 });
+
+describe("interrupt windows", () => {
+  it("never interrupts during the natural exit — the action is already leaving", () => {
+    const r = run();
+    // exit phase is 600–699; walking there must not restart the way out
+    const step = stepAction(r, DEF, 650, true, false);
+    expect(step.interrupted).toBe(false);
+    expect(step.frame).toBe("x1");
+    expect(stepAction(r, DEF, 700, true, false).natural).toBe(true);
+  });
+});

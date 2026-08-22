@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { FLOOR_Y } from "../core/constants";
+import { useIsVisible } from "../core/runtime-cull";
 import type { SpriteMap } from "../core/types";
 import type { AnimalConfig } from "../sprite/animalBuilder";
-import { useReducedMotion } from "./animationGate";
+import { useAnimationGate, useReducedMotion } from "./animationGate";
 import { frameTicker } from "./frameTicker";
 import { PixelSprite } from "./PixelSprite";
 
@@ -80,7 +81,12 @@ export function AnimalActor({
   /** off for anyone already lying on painted art that has its own shadow */
   shadow?: boolean;
 }) {
-  const frame = useAnimalFrame(animal, action, playing);
+  // the same discipline as NpcActor: an animal off the side of a wide scene,
+  // or any animal while a menu covers the game, must not keep subscribing to
+  // the ticker and committing React updates nobody can see
+  const onCamera = useIsVisible(Math.round(x - animal.width / 2), animal.width, 48);
+  const running = useAnimationGate();
+  const frame = useAnimalFrame(animal, action, playing && onCamera && running);
   const cell = animal.cell ?? 2;
   const left = Math.round(x - animal.width / 2);
   // Grounded on the frame being shown and not on the animal's standing height.
