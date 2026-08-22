@@ -1,10 +1,13 @@
 import {
   type DialogueTree,
+  defineTree,
   GameRuntime,
   type RuntimeConfig,
   type RuntimeSceneDef,
   SCENE_HEIGHT,
 } from "@/engine";
+// TODO: move to the barrel once the DialogueBox redesign lands in index.ts
+import { npcMemory } from "@/engine/systems/memory";
 
 /**
  * ExampleGame — the smallest complete game the engine can run, kept as
@@ -186,44 +189,131 @@ const LABEL: Record<string, string> = {
 };
 
 /**
- * The bench talks — and shows the dialogue system's naturalness kit: variants
- * exhaust so revisits never repeat verbatim, a line appears only while the
- * timetable is unread, a `once` choice retires itself, and asked topics dim.
+ * The bench talks — the naturalness pilot. Everything a conversation between
+ * people (well, a person and a bench) needs to feel real is in this one tree:
+ * a greeting that knows how long you've been away, an answer that escalates
+ * when you ask it AGAIN, a reaction to a dumb question, the player's own head
+ * butting in once, and a wind-down when there is nothing left to say.
  */
-const BENCH_TREE: DialogueTree<never> = {
-  id: "ex-bench",
-  start: "sit",
-  nodes: {
-    sit: {
-      lines: [{ text: "The bench holds its peace." }],
-      variants: [
-        {
-          lines: [
-            { speaker: "BENCH", text: "Someone carved a heart into me." },
-            {
-              text: "You haven't even read the timetable yet.",
-              when: (ctx) => ((ctx as { world?: World }).world?.read ?? 0) === 0,
-            },
-          ],
-        },
-        { lines: [{ speaker: "BENCH", text: "Back again. The 143 does that to people." }] },
-        { lines: [{ speaker: "BENCH", text: "..." }] },
-      ],
-      choices: [
-        {
-          id: "ex-bench-heart",
-          label: "Ask about the heart",
-          once: true,
-          next: "heart",
-        },
-        { id: "ex-bench-sit", label: "Say nothing", next: "quiet" },
-        { label: "Leave" },
-      ],
+const mem = (ctx: unknown) => npcMemory(ctx, "ex-bench");
+
+const BENCH_TREE = defineTree(
+  "ex-bench",
+  { npc: "ex-bench" },
+  {
+    // the greeting knows whether you just left or have been gone a while
+    start: (ctx) => {
+      const m = mem(ctx);
+      const back = m.met() && m.minutesSince() < 3 ? "again" : "sit";
+      m.visit();
+      return back;
     },
-    heart: { lines: [{ text: "Both initials are yours. The bench says nothing more about it." }] },
-    quiet: { lines: [{ text: "You and the bench watch the street together." }], next: "sit" },
+    nodes: {
+      again: {
+        lines: [{ speaker: "BENCH", text: "Back already. The 143 does that to people." }],
+        next: "hub",
+      },
+      sit: {
+        lines: [{ text: "The bench holds its peace." }],
+        variants: [
+          {
+            lines: [
+              { speaker: "BENCH", text: "Someone carved a heart into me." },
+              {
+                text: "You haven't even read the timetable yet.",
+                when: (ctx) => ((ctx as { world?: World }).world?.read ?? 0) === 0,
+              },
+            ],
+          },
+          { lines: [{ speaker: "BENCH", text: "Sit. The wood remembers everyone." }] },
+          { lines: [{ speaker: "BENCH", text: "..." }] },
+        ],
+        next: "hub",
+      },
+      hub: {
+        // the connective tissue between topics — cycling so the wait itself is alive
+        lines: [{ text: "The bench waits." }],
+        variantMode: "cycle",
+        variants: [
+          { lines: [{ text: "The bench waits." }] },
+          { lines: [{ text: "A tram passes somewhere unseen." }] },
+          { lines: [{ text: "The pigeon inspects your shoe." }] },
+        ],
+        topics: true,
+        exhaustedNext: "wrapup",
+        choices: [
+          {
+            id: "ex-bench-heart",
+            label: "Ask about the heart",
+            once: true,
+            next: "heart",
+            effect: (ctx) => mem(ctx).learn("heart"),
+          },
+          {
+            id: "ex-bench-143",
+            label: "When does the 143 come?",
+            next: "when143",
+            // asked again, the bench reacts to the repetition — and escalates
+            againNext: "when143Again",
+          },
+          {
+            id: "ex-bench-dumb",
+            label: "Are you... a talking bench?",
+            once: true,
+            next: "dumb",
+            effect: (ctx) => mem(ctx).warm(-1),
+          },
+          { label: "Leave" },
+        ],
+      },
+      heart: {
+        lines: [
+          { text: "Both initials are yours. The bench says nothing more about it." },
+          // the player's head butts in — once per save, inner voice
+        ],
+        interjections: [
+          {
+            id: "ex-int-heart",
+            text: "You don't remember carving it. That is the worst part.",
+            once: true,
+          },
+        ],
+        next: "hub",
+      },
+      when143: {
+        lines: [{ speaker: "BENCH", text: "Whenever it feels like it. Ask the timetable." }],
+        next: "hub",
+      },
+      when143Again: {
+        lines: [{ text: "fallback" }],
+        variantMode: "exhaust",
+        variants: [
+          { lines: [{ speaker: "BENCH", text: "Still whenever it feels like it." }] },
+          {
+            lines: [
+              {
+                speaker: "BENCH",
+                text: "You asked. Twice now. The answer is a shrug made of wood.",
+              },
+            ],
+          },
+          { lines: [{ speaker: "BENCH", text: "..." }] },
+        ],
+        next: "hub",
+      },
+      dumb: {
+        lines: [{ speaker: "BENCH", text: "...Are you a talking person? We all do what we can." }],
+        interjections: [{ id: "ex-int-dumb", text: "It has a point. Maybe don't.", once: true }],
+        next: "hub",
+      },
+      wrapup: {
+        lines: [
+          { speaker: "BENCH", text: "Your bus is somewhere. Go stand by the sign like everyone." },
+        ],
+      },
+    },
   },
-} as DialogueTree<never>;
+) as DialogueTree<never>;
 
 const CONFIG: RuntimeConfig<World> = {
   scenes: { stop: STOP, yard: YARD },

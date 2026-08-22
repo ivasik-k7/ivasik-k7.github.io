@@ -33,6 +33,11 @@ export interface DialogueLine {
    */
   when?: (ctx: unknown) => boolean;
   /**
+   * "inner" marks the player's own head: no speaker plate, set apart by the
+   * panel. The voice that notices you asked the same thing twice.
+   */
+  voice?: "inner";
+  /**
    * What the speaker is doing while this line is on screen — an action id on
    * the character rig. The runtime plays it, so a question can be asked with a
    * shrug and an apology delivered looking at the floor.
@@ -62,7 +67,14 @@ export interface DialogueChoice<Ctx = unknown> {
   locked?: (ctx: Ctx) => string | null;
   /** Offered once per save. Requires an `id` to remember it by. */
   once?: boolean;
-  /** Stable identity for `once` and for dialogue history. */
+  /**
+   * Where a RE-ASKED question goes instead of its `next` — the seam for a
+   * person reacting to repetition. Put exhaust variants on that node and the
+   * reaction escalates by itself: patient, then terse, then just a look.
+   * Requires an `id` (that's what remembers the first ask).
+   */
+  againNext?: string;
+  /** Stable identity for `once`/`seenBefore`/`againNext` and history. */
   id?: string;
 }
 
@@ -78,6 +90,20 @@ export interface DialogueVariant<Ctx = unknown> {
   when?: (ctx: Ctx) => boolean;
 }
 
+/**
+ * An unprompted thought inside a conversation — the passive check without
+ * the dice. Evaluated when its node is entered; the highest-weight qualifying
+ * interjection lands after the node's last line as an inner-voice line.
+ * `once` spends it per save through the ctx flag store.
+ */
+export interface Interjection<Ctx = unknown> {
+  id: string;
+  text: string;
+  when?: (ctx: Ctx) => boolean;
+  once?: boolean;
+  weight?: number;
+}
+
 export interface DialogueNode<Ctx = unknown> {
   /** The node's lines — or the fallback when every variant's `when` fails. */
   lines: DialogueLine[];
@@ -91,6 +117,16 @@ export interface DialogueNode<Ctx = unknown> {
   variants?: DialogueVariant<Ctx>[];
   variantMode?: "exhaust" | "cycle" | "random";
   choices?: DialogueChoice<Ctx>[];
+  /** The player's head may butt in here — see Interjection. */
+  interjections?: Interjection<Ctx>[];
+  /**
+   * Where the conversation goes when this node HAD choices but they are all
+   * spent or hidden — the natural wind-down of a drained hub ("No dobra,
+   * klienci czekają.") instead of a dead menu.
+   */
+  exhaustedNext?: string;
+  /** Presentation hint: these choices are topics of inquiry, not a fork. */
+  topics?: boolean;
   /** Auto-advance target when there are no choices. */
   next?: string | ((ctx: Ctx) => string);
   onEnter?: (ctx: Ctx) => void;
@@ -100,6 +136,8 @@ export interface DialogueNode<Ctx = unknown> {
 export interface DialogueTree<Ctx = unknown> {
   /** Stable name for persistence (variant rotation, seen-marks). */
   id?: string;
+  /** The character this tree belongs to — binds it to npcMemory(ctx, npc). */
+  npc?: string;
   start: string | ((ctx: Ctx) => string);
   nodes: Record<string, DialogueNode<Ctx>>;
 }
@@ -212,12 +250,32 @@ function resolveLines(
     }
     lines = pool[idx].lines;
   }
-  const spoken = lines.filter((l) => {
+  let spoken = lines.filter((l) => {
     const when = l.when as ((c: unknown) => boolean) | undefined;
     return !when || when(ctx);
   });
   // every line begged off: keep the unfiltered set rather than a mute node
-  return spoken.length > 0 ? spoken : lines;
+  if (spoken.length === 0) spoken = lines;
+  // the player's head may butt in: highest-weight qualifying interjection
+  // lands after the node's last spoken line, as an inner-voice line
+  const inter = pickInterjection(node, ctx);
+  if (inter) {
+    if (inter.once) (ctx as FlagCtx)?.setFlag?.(interKey(inter.id));
+    spoken = [...spoken, { text: inter.text, voice: "inner" }];
+  }
+  return spoken;
+}
+
+function pickInterjection(node: DialogueNode<never>, ctx: unknown): Interjection<never> | null {
+  if (!node.interjections || node.interjections.length === 0) return null;
+  let best: Interjection<never> | null = null;
+  for (const i of node.interjections) {
+    if (i.once && (ctx as FlagCtx)?.flag?.(interKey(i.id))) continue;
+    const when = i.when as ((c: unknown) => boolean) | undefined;
+    if (when && !when(ctx)) continue;
+    if (!best || (i.weight ?? 0) > (best.weight ?? 0)) best = i;
+  }
+  return best;
 }
 
 export function openDialogue(tree: DialogueTree<never>, makeCtx: () => unknown): DialogueStep {
@@ -286,6 +344,11 @@ export function advanceDialogue(state: DialogueState, makeCtx: () => unknown): D
     // stay — the box is showing choices; selection happens via chooseDialogue
     return { kind: "continue", state };
   }
+  // the hub is drained: every authored choice spent or hidden. A person wraps
+  // up; a menu just sits there. This is the wrapping up.
+  if (node.exhaustedNext && (node.choices?.length ?? 0) > 0) {
+    return enter(state, node.exhaustedNext, makeCtx());
+  }
   if (node.next) {
     return enter(state, asFn(node.next as string | ((c: unknown) => string), makeCtx), makeCtx());
   }
@@ -300,6 +363,7 @@ export function advanceDialogue(state: DialogueState, makeCtx: () => unknown): D
  */
 const onceKey = (id: string) => `dlg.once:${id}`;
 const seenKey = (id: string) => `dlg.seen:${id}`;
+const interKey = (id: string) => `dlg.int:${id}`;
 type FlagCtx = { flag?: (key: string) => boolean; setFlag?: (key: string, on?: boolean) => void };
 
 function onceSeen(ctx: unknown, choice: DialogueChoice<never>): boolean {
@@ -318,6 +382,12 @@ export function chooseDialogue(
   // just does not go anywhere
   if (!choice || choice.lockedBy !== null) return { kind: "continue", state };
   const ctx = makeCtx();
+  // asking the same person the same thing again is a different conversation:
+  // a re-asked identified choice detours through `againNext` — and exhaust
+  // variants on that node make the reaction escalate on their own
+  if (choice.againNext && choice.id && (ctx as FlagCtx)?.flag?.(seenKey(choice.id))) {
+    return enter(state, choice.againNext, ctx);
+  }
   // a taken `once` choice is spent from here on (persisted via the ctx flags);
   // any identified choice is remembered as asked-before, so the panel can
   // dim topics the player has already been through
@@ -389,7 +459,7 @@ export function dialogueAtChoices(state: DialogueState, makeCtx: () => unknown):
 // ---------------------------------------------------------------------------
 
 export type TreeProblem = {
-  kind: "missing" | "unreachable" | "empty" | "once-without-id";
+  kind: "missing" | "unreachable" | "empty" | "once-without-id" | "duplicate-choice-id";
   node: string;
   from?: string;
 };
@@ -419,6 +489,7 @@ export function validateTree(tree: DialogueTree<never>): TreeProblem[] {
     // a computed start could pick any node, so nothing is provably unreachable
     for (const id of ids) reached.add(id);
   }
+  const choiceIds = new Set<string>();
   for (const [id, node] of Object.entries(tree.nodes)) {
     const hasVariantLines = (node.variants ?? []).some((v) => v.lines.length > 0);
     if (node.lines.length === 0 && !hasVariantLines) problems.push({ kind: "empty", node: id });
@@ -426,14 +497,38 @@ export function validateTree(tree: DialogueTree<never>): TreeProblem[] {
       if (v.lines.length === 0) problems.push({ kind: "empty", node: id });
     }
     edge(id, node.next);
+    edge(id, node.exhaustedNext);
     for (const c of node.choices ?? []) {
       edge(id, c.next);
+      edge(id, c.againNext);
       // a `once` with nothing to remember it by silently repeats forever
       if (c.once && !c.id) problems.push({ kind: "once-without-id", node: id });
+      // the dlg.once:/dlg.seen: stores are GLOBAL — a reused id is two
+      // choices sharing one memory
+      if (c.id) {
+        if (choiceIds.has(c.id)) problems.push({ kind: "duplicate-choice-id", node: id });
+        choiceIds.add(c.id);
+      }
+      if (c.againNext && !c.id) problems.push({ kind: "once-without-id", node: id });
     }
   }
   for (const id of ids) {
     if (!reached.has(id)) problems.push({ kind: "unreachable", node: id });
   }
   return problems;
+}
+
+/**
+ * The authoring front door for a tree. It exists to make the two things
+ * persistence needs impossible to forget: a stable tree `id` (variant
+ * rotation keys collide across trees without one) and the character binding
+ * for npcMemory. The tree itself keeps today's literal shape — this is a
+ * stamp, not a builder.
+ */
+export function defineTree<Ctx = unknown>(
+  id: string,
+  meta: { npc?: string },
+  tree: Omit<DialogueTree<Ctx>, "id" | "npc">,
+): DialogueTree<Ctx> {
+  return { id, npc: meta.npc, ...tree };
 }

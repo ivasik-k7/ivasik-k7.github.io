@@ -4,6 +4,7 @@ import {
   chooseDialogue,
   type DialogueState,
   type DialogueTree,
+  defineTree,
   dialogueAtChoices,
   offeredChoices,
   openDialogue,
@@ -250,5 +251,157 @@ describe("seen-choice memory", () => {
       "Buy tea:false",
       "Leave:false",
     ]);
+  });
+});
+
+describe("natural-conversation mechanics", () => {
+  it("routes a re-asked question through againNext, where exhaust variants escalate", () => {
+    const { ctx } = flagCtx();
+    const counters: Record<string, number> = {};
+    const full = () => ({
+      ...(ctx() as object),
+      counter: (k: string) => counters[k] ?? 0,
+      bump: (k: string, by = 1) => {
+        counters[k] = (counters[k] ?? 0) + by;
+        return counters[k];
+      },
+    });
+    const tree = defineTree(
+      "smoker",
+      { npc: "smoker" },
+      {
+        start: "hub",
+        nodes: {
+          hub: {
+            lines: [{ speaker: "SMOKER", text: "No?" }],
+            choices: [
+              {
+                id: "sm-quit",
+                label: "When are you quitting?",
+                next: "quit",
+                againNext: "quitAgain",
+              },
+              { label: "Leave" },
+            ],
+          },
+          quit: {
+            lines: [{ speaker: "SMOKER", text: "Od poniedziałku. Zawsze od poniedziałku." }],
+            next: "hub",
+          },
+          quitAgain: {
+            lines: [{ text: "fallback" }],
+            variantMode: "exhaust",
+            variants: [
+              { lines: [{ speaker: "SMOKER", text: "Mówiłem już. Poniedziałek." }] },
+              { lines: [{ speaker: "SMOKER", text: "...", act: "smoke" }] },
+            ],
+            next: "hub",
+          },
+        },
+      },
+    ) as DialogueTree<never>;
+
+    const s0 = openDialogue(tree, full);
+    if (s0.kind !== "continue") throw new Error();
+    // first ask: the real answer
+    const first = chooseDialogue(s0.state, 0, full);
+    if (first.kind !== "continue") throw new Error();
+    expect(first.state.nodeId).toBe("quit");
+    // second ask: the person reacts to being asked again — patiently
+    const back = openDialogue(tree, full);
+    if (back.kind !== "continue") throw new Error();
+    const second = chooseDialogue(back.state, 0, full);
+    if (second.kind !== "continue") throw new Error();
+    expect(second.state.nodeId).toBe("quitAgain");
+    expect(second.state.lines[0].text).toBe("Mówiłem już. Poniedziałek.");
+    // third ask: just a look
+    const back2 = openDialogue(tree, full);
+    if (back2.kind !== "continue") throw new Error();
+    const third = chooseDialogue(back2.state, 0, full);
+    if (third.kind !== "continue") throw new Error();
+    expect(third.state.lines[0].text).toBe("...");
+  });
+
+  it("lands the highest-weight qualifying interjection as an inner-voice line, once", () => {
+    const { ctx } = flagCtx();
+    const tree = defineTree(
+      "t",
+      {},
+      {
+        start: "n",
+        nodes: {
+          n: {
+            lines: [{ speaker: "PANI", text: "Dobry." }],
+            interjections: [
+              { id: "int-a", text: "He dropped the 'dzień'.", once: true, weight: 2 },
+              { id: "int-b", text: "Cold in here.", weight: 1 },
+            ],
+          },
+        },
+      },
+    ) as DialogueTree<never>;
+    const s1 = openDialogue(tree, ctx);
+    if (s1.kind !== "continue") throw new Error();
+    expect(s1.state.lines.map((l) => `${l.voice ?? "out"}:${l.text}`)).toEqual([
+      "out:Dobry.",
+      "inner:He dropped the 'dzień'.",
+    ]);
+    // the once-thought is spent; the lighter one takes its place next visit
+    const s2 = openDialogue(tree, ctx);
+    if (s2.kind !== "continue") throw new Error();
+    expect(s2.state.lines[1].text).toBe("Cold in here.");
+  });
+
+  it("winds a drained hub down through exhaustedNext instead of leaving a dead menu", () => {
+    const { ctx } = flagCtx();
+    const tree = defineTree(
+      "t2",
+      {},
+      {
+        start: "hub",
+        nodes: {
+          hub: {
+            lines: [{ speaker: "PANI", text: "Tak?" }],
+            choices: [{ id: "only", label: "One question", once: true, next: "answer" }],
+            exhaustedNext: "wrapup",
+          },
+          answer: { lines: [{ text: "An answer." }], next: "hub" },
+          wrapup: { lines: [{ speaker: "PANI", text: "No dobra. Klienci czekają." }] },
+        },
+      },
+    ) as DialogueTree<never>;
+    const s1 = openDialogue(tree, ctx);
+    if (s1.kind !== "continue") throw new Error();
+    chooseDialogue(s1.state, 0, ctx); // spends the only topic
+    // fresh conversation: hub line plays, then advances into the wind-down
+    const s2 = openDialogue(tree, ctx);
+    if (s2.kind !== "continue") throw new Error();
+    let step = advanceDialogue(s2.state, ctx); // finish typing
+    if (step.kind !== "continue") throw new Error();
+    step = advanceDialogue(step.state, ctx); // no offered choices -> exhaustedNext
+    if (step.kind !== "continue") throw new Error();
+    expect(step.state.nodeId).toBe("wrapup");
+    expect(step.state.lines[0].text).toBe("No dobra. Klienci czekają.");
+  });
+
+  it("validateTree catches duplicate choice ids and edge targets of again/exhausted", () => {
+    const tree = {
+      start: "a",
+      nodes: {
+        a: {
+          lines: [{ text: "hi" }],
+          exhaustedNext: "ghost1",
+          choices: [
+            { id: "dup", label: "x", next: "a" },
+            { id: "dup", label: "y", next: "a" },
+            { id: "z", label: "z", againNext: "ghost2", next: "a" },
+          ],
+        },
+      },
+    } as DialogueTree<never>;
+    const kinds = validateTree(tree)
+      .map((p) => p.kind)
+      .sort();
+    expect(kinds).toEqual(["duplicate-choice-id", "missing", "missing"]);
   });
 });
