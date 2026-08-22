@@ -57,6 +57,7 @@ export type {
   RuntimeObject,
   RuntimeSceneDef,
   RuntimeStats,
+  SceneLifecycleCtx,
   SeqStep,
 } from "./core/runtime-types";
 export type {

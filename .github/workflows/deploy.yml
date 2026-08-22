@@ -15,6 +15,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The engine's regression net: gates plus a headless drive of the real
+  # build (scripts/drive-game.mjs asserts behavior; bench numbers are
+  # uploaded for reference, never asserted — shared runners are too noisy).
+  engine-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Drive the production build headlessly
+        run: |
+          npx vite preview --port 4173 &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ > /dev/null && break; sleep 1; done
+          node scripts/drive-game.mjs "http://localhost:4173/?drive=1" /tmp/drive-shots
+          node scripts/bench-game.mjs "http://localhost:4173/?drive=1" /tmp/bench.json docs/bench-baseline.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-check
+          path: |
+            /tmp/drive-shots
+            /tmp/bench.json
+
   build:
     runs-on: ubuntu-latest
     steps:

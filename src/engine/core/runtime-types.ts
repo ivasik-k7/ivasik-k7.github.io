@@ -110,7 +110,30 @@ export type ActorDef<W extends AnyWorld> = {
   z?: number;
 };
 
+/** What a scene lifecycle hook gets to see and touch. */
+export type SceneLifecycleCtx<W extends AnyWorld> = {
+  world: W;
+  updateWorld: (patch: Partial<W> | ((w: W) => W)) => void;
+  /** The scene this hook belongs to. */
+  scene: string;
+  /** The scene on the other side of the travel (undefined on first mount). */
+  counterpart?: string;
+};
+
 export type RuntimeSceneExtras<W extends AnyWorld> = {
+  /**
+   * Called on arrival — after the scene is on screen, on first mount and on
+   * every travel here. The place to start scene-owned state or timers.
+   */
+  enter: (ctx: SceneLifecycleCtx<W>) => void;
+  /** Called as the player leaves, at fade-out start. Release what enter took. */
+  exit: (ctx: SceneLifecycleCtx<W>) => void;
+  /**
+   * Fired toward the DESTINATION scene the moment a travel starts, while the
+   * fade still covers the screen — the seam for warming lazy chunks or assets.
+   * Fire-and-forget: the travel never waits on it.
+   */
+  preload: () => void | Promise<unknown>;
   /**
    * Cheap fingerprint of everything the scene artwork actually reads.
    * Without it, any world write repaints hundreds of rects; with it, the art

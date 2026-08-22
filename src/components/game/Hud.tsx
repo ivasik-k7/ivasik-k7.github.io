@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { lofiPlayer, PixelFrame, PixelLabel } from "@/engine";
-import type { RoomId } from "@/lib/apartment";
 import type { DayPhase } from "@/lib/worldState";
 
 /**
@@ -25,7 +24,8 @@ import type { DayPhase } from "@/lib/worldState";
 export type PanelId = "about" | "skills" | "links";
 
 export interface HudProps {
-  room: RoomId;
+  /** Scene id, shown through the hud.<id> i18n key (upper-cased fallback). */
+  room: string;
   /** omit to derive from the wall clock */
   phase?: DayPhase;
   visited?: readonly string[];

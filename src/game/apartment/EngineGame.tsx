@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { PanelId } from "@/components/game/Hud";
 import { HUD } from "@/components/game/Hud";
 import { MenuScreen, type MenuTab, PANEL_TAB } from "@/components/game/MenuScreen";
 import { Terminal } from "@/components/game/Terminal";
@@ -13,7 +14,6 @@ import {
   type RuntimeConfig,
   type RuntimeSceneDef,
 } from "@/engine";
-import type { PanelId, RoomId } from "@/lib/apartment";
 import {
   type DayPhase,
   dayPhase,
@@ -250,7 +250,7 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     dayPhase: () => dayPhase(new Date().getHours()),
     renderHud: (scene, world, phase, openOverlay) => (
       <HUD
-        room={scene as RoomId}
+        room={scene}
         phase={phase as DayPhase}
         visited={visited}
         onOpenMenu={() => openOverlay({ type: "menu" })}

@@ -216,12 +216,28 @@ Phase 4 — NPC animation unification  ✅ DONE 2026-08-22: ui/frameTicker.ts �
                                      NpcActor/AnimalActor (was N intervals, N
                                      commits/beat; now 1 + batched commits);
                                      street cast animation verified in shots
-Phase 5 — Scene lifecycle & registry ⏳ PART DONE 2026-08-22: legacy engine
-                                     deleted (ApartmentGame/rooms/StatusMenu/
-                                     Panel + WALK_CYCLE), unused geist font
-                                     dropped. REMAINING: explicit scene
-                                     enter/exit resource ownership, preloading
-                                     seam, slim lib/apartment to its types
+Phase 5 — Scene lifecycle & registry ✅ DONE 2026-08-22 (except the flagged
+                                     proposal below): legacy engine deleted
+                                     (ApartmentGame/rooms/StatusMenu/Panel +
+                                     WALK_CYCLE + lib/apartment entirely —
+                                     PanelId lives in Hud, room prop is the
+                                     honest string), unused geist font dropped;
+                                     scene lifecycle hooks landed — enter (on
+                                     mount + every arrival), exit (at fade-out),
+                                     preload (fired toward the destination
+                                     behind the fade, never awaited); CI gained
+                                     an engine-check job (lint/tc/test + drive
+                                     harness vs the built bundle, bench JSON
+                                     as artifact)
+
+  ▶ FLAGGED FOR IVAN — scene code-splitting. The GameEntry chunk is now
+    776 KB (233 KB gz); the scene art dominates it. The preload seam exists
+    precisely so each scene's art can move to a lazy module warmed behind
+    the travel fade. But it means splitting art out of every scene file —
+    files your editor owns — so it should ride your editing flow, not mine.
+    Mechanics when ready: SceneDef.Component per heavy scene becomes a
+    lazy component; def.preload = () => import("./xxxArt"); fallback null
+    is covered by the 220 ms fade.
 Phase 6 — Diagnostics & perf harness ✅ DONE 2026-08-22: scripts/bench-game.mjs
                                      (boot/scene-entry/idle-frames, JSON +
                                      delta vs baseline; drives PROD via ?drive=1).

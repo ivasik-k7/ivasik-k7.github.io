@@ -296,6 +296,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const countersRef = useRef<Record<string, number>>({ ...(restored?.counters ?? {}) });
   const sceneXRef = useRef<Record<string, number>>({ ...(restored?.sceneX ?? {}) });
   const sceneYRef = useRef<Record<string, number>>({ ...(restored?.sceneY ?? {}) });
+  /** Where the last `enter` fired from — the counterpart handed to the next one. */
+  const prevSceneRef = useRef<string | null>(null);
   const usedRef = useRef<Map<string, number>>(new Map());
   const consumedRef = useRef<Set<string>>(new Set());
   const worldRevRef = useRef(0);
@@ -496,7 +498,16 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   // --- scene-change hook (ambience, music) --------------------------------------------
   useEffect(() => {
     config.onSceneChange?.(scene);
-  }, [config.onSceneChange, scene]);
+    // lifecycle: enter fires on first mount and on every arrival, after the
+    // scene is the one on screen
+    (scenes[scene] as RuntimeSceneDef<W> | undefined)?.enter?.({
+      world: worldRef.current,
+      updateWorld,
+      scene,
+      counterpart: prevSceneRef.current ?? undefined,
+    });
+    prevSceneRef.current = scene;
+  }, [config.onSceneChange, scene, scenes, updateWorld]);
 
   // --- day phase -------------------------------------------------------------------
   useEffect(() => {
@@ -646,6 +657,16 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         sceneXRef.current[sceneRef.current] = pos.current.x;
         sceneYRef.current[sceneRef.current] = pos.current.y;
       }
+      // lifecycle: the leaving scene releases, the destination starts warming
+      // behind the fade (never awaited — see RuntimeSceneExtras.preload)
+      const fromKey = sceneRef.current;
+      (scenes[fromKey] as RuntimeSceneDef<W> | undefined)?.exit?.({
+        world: worldRef.current,
+        updateWorld,
+        scene: fromKey,
+        counterpart: target,
+      });
+      void (scenes[target] as RuntimeSceneDef<W> | undefined)?.preload?.();
       const timers = timersRef.current;
       setFade({ on: true, ms: reducedRef.current ? 90 : TRAVEL_FADE_OUT_MS });
       timers.after(() => {
@@ -670,7 +691,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         }, TRAVEL_FADE_IN_DELAY_MS);
       }, TRAVEL_SWITCH_AT_MS);
     },
-    [clearTargets, opts.rememberSceneX, scenes],
+    [clearTargets, opts.rememberSceneX, scenes, updateWorld],
   );
 
   const blackout = useCallback(
