@@ -161,6 +161,17 @@ export type RuntimeSceneExtras<W extends AnyWorld> = {
 
 export type RuntimeSceneDef<W extends AnyWorld> = SceneDefOf<W> & Partial<RuntimeSceneExtras<W>>;
 
+/**
+ * A scene entry in the runtime's registry: the def itself, or a loader for
+ * it. A loader makes the scene its own code-split chunk — the runtime kicks
+ * it the moment a travel starts toward it and holds the travel fade until it
+ * lands, so a first visit costs a beat of black and every later visit is
+ * free. Loaders are resolved once and cached for the session.
+ */
+export type SceneSource<W extends AnyWorld> =
+  | RuntimeSceneDef<W>
+  | (() => Promise<RuntimeSceneDef<W>>);
+
 /* ------------------------------------------------------------- sequencing */
 
 /** One beat of a cutscene. Steps run in order; each blocks until it resolves. */
@@ -356,8 +367,12 @@ export type RuntimeConfigExtras<W extends AnyWorld> = {
 };
 
 /** What GameRuntime accepts. A plain GameConfig<W> satisfies it unchanged. */
-export type RuntimeConfig<W extends AnyWorld> = Omit<GameConfig<W>, "persist"> &
-  Partial<RuntimeConfigExtras<W>> & { persist?: RuntimePersist<W> };
+export type RuntimeConfig<W extends AnyWorld> = Omit<GameConfig<W>, "persist" | "scenes"> &
+  Partial<RuntimeConfigExtras<W>> & {
+    persist?: RuntimePersist<W>;
+    /** Scene defs, or loaders for code-split scenes. A plain GameConfig fits. */
+    scenes: Record<string, SceneSource<W>>;
+  };
 
 /* ------------------------------------------------------------------ saves */
 

@@ -62,18 +62,26 @@ type Overlay =
 /** 64 game px is about 1.7 m at this scale: close enough to talk, far enough to see. */
 const TALKING_DISTANCE = 64;
 
-function widenPeople(scenes: Record<string, RuntimeSceneDef<WorldState>>) {
-  for (const scene of Object.values(scenes)) {
-    for (const obj of scene.objects) {
-      if (obj.kind === "npc" || obj.kind === "cashier") {
-        obj.range = Math.max(obj.range ?? 0, TALKING_DISTANCE);
-      }
+function widenPeople(scene: RuntimeSceneDef<WorldState>): RuntimeSceneDef<WorldState> {
+  for (const obj of scene.objects) {
+    if (obj.kind === "npc" || obj.kind === "cashier") {
+      obj.range = Math.max(obj.range ?? 0, TALKING_DISTANCE);
     }
   }
-  return scenes;
+  return scene;
 }
 
-const SCENES = widenPeople({ ...APARTMENT_SCENES, ...OUTSIDE_SCENES });
+/**
+ * Every scene is a code-split chunk (see scenes.tsx / outsideScenes.tsx); the
+ * widening applies as each one's loader resolves. The engine caches resolved
+ * defs, so this runs once per scene per session.
+ */
+const SCENES = Object.fromEntries(
+  Object.entries({ ...APARTMENT_SCENES, ...OUTSIDE_SCENES }).map(([key, load]) => [
+    key,
+    () => load().then(widenPeople),
+  ]),
+);
 
 /** What pressing E actually does, by object kind — shown on the interact chip. */
 const VERB: Record<string, string> = {

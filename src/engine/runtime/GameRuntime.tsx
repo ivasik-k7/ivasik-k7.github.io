@@ -143,6 +143,18 @@ function actorFrameNames<W extends AnyWorld>(actor: ActorDef<W>): string[] {
   return [...names].filter((n) => actor.frames[n]);
 }
 
+/**
+ * What renders while a code-split scene's chunk is still on the wire: a black
+ * beat under the travel fade. Never simulated — the loop skips unresolved
+ * scenes entirely.
+ */
+const PENDING_SCENE = Object.freeze({
+  id: "__pending__",
+  width: 320,
+  objects: [] as SceneObject[],
+  Component: () => null,
+});
+
 export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeConfig<W> }) {
   const { scenes, player, handlers, objectLabel } = config;
   const persist = config.persist;
@@ -298,6 +310,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const sceneYRef = useRef<Record<string, number>>({ ...(restored?.sceneY ?? {}) });
   /** Where the last `enter` fired from — the counterpart handed to the next one. */
   const prevSceneRef = useRef<string | null>(null);
+  /** Which scene `enter` already fired for, so a resolution re-render can't double it. */
+  const enteredSceneRef = useRef<string | null>(null);
   const usedRef = useRef<Map<string, number>>(new Map());
   const consumedRef = useRef<Set<string>>(new Set());
   const worldRevRef = useRef(0);
@@ -350,7 +364,58 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   viewRef.current = view;
   dialogueRef.current = dialogue;
 
-  const def = scenes[scene] as RuntimeSceneDef<W>;
+  // --- scene resolution ---------------------------------------------------------
+  // A registry entry may be a loader (code-split scene). Resolved defs land in
+  // sceneDefsRef; the current scene renders a black pending stub until its
+  // chunk arrives (travel holds the fade for the same window).
+  const scenesRef = useRef(scenes);
+  scenesRef.current = scenes;
+  const sceneDefsRef = useRef<Record<string, RuntimeSceneDef<W>>>({});
+  const sceneLoadingRef = useRef<Set<string>>(new Set());
+  const [, bumpResolved] = useState(0);
+  const resolveScene = useCallback((key: string): RuntimeSceneDef<W> | undefined => {
+    const cached = sceneDefsRef.current[key];
+    if (cached) return cached;
+    const source = scenesRef.current[key] as
+      | RuntimeSceneDef<W>
+      | (() => Promise<RuntimeSceneDef<W>>)
+      | undefined;
+    if (!source) return undefined;
+    if (typeof source !== "function") {
+      sceneDefsRef.current[key] = source;
+      return source;
+    }
+    if (!sceneLoadingRef.current.has(key)) {
+      sceneLoadingRef.current.add(key);
+      source().then(
+        (loaded) => {
+          sceneDefsRef.current[key] = loaded;
+          sceneLoadingRef.current.delete(key);
+          if (sceneRef.current === key) bumpResolved((n) => n + 1);
+          wakeRef.current();
+        },
+        (err) => {
+          sceneLoadingRef.current.delete(key);
+          console.error(`runtime: scene "${key}" failed to load`, err);
+        },
+      );
+    }
+    return undefined;
+  }, []);
+  /** Resolved def by key — the loop-side read (never kicks a load). */
+  const getDef = useCallback(
+    (key: string): RuntimeSceneDef<W> | undefined => sceneDefsRef.current[key],
+    [],
+  );
+  // make sure the scene on screen (first mount, restores, travels) is loading
+  useEffect(() => {
+    resolveScene(scene);
+  }, [scene, resolveScene]);
+
+  const def = (sceneDefsRef.current[scene] ??
+    resolveScene(scene) ??
+    PENDING_SCENE) as RuntimeSceneDef<W>;
+  const defResolved = def !== (PENDING_SCENE as RuntimeSceneDef<W>);
   const walkSpeed = player.walkSpeed ?? DEFAULT_WALK_SPEED;
   const walkSpeedY = player.walkSpeedY ?? walkSpeed * WALK_SPEED_Y_RATIO;
 
@@ -497,17 +562,20 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   // --- scene-change hook (ambience, music) --------------------------------------------
   useEffect(() => {
+    // lifecycle: enter (and the game's onSceneChange) fire when the scene is
+    // actually on screen — for a code-split scene that is when its chunk
+    // lands, not when the black stub does
+    if (!defResolved || enteredSceneRef.current === scene) return;
+    enteredSceneRef.current = scene;
     config.onSceneChange?.(scene);
-    // lifecycle: enter fires on first mount and on every arrival, after the
-    // scene is the one on screen
-    (scenes[scene] as RuntimeSceneDef<W> | undefined)?.enter?.({
+    def.enter?.({
       world: worldRef.current,
       updateWorld,
       scene,
       counterpart: prevSceneRef.current ?? undefined,
     });
     prevSceneRef.current = scene;
-  }, [config.onSceneChange, scene, scenes, updateWorld]);
+  }, [config.onSceneChange, scene, def, defResolved, updateWorld]);
 
   // --- day phase -------------------------------------------------------------------
   useEffect(() => {
@@ -657,20 +725,39 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         sceneXRef.current[sceneRef.current] = pos.current.x;
         sceneYRef.current[sceneRef.current] = pos.current.y;
       }
-      // lifecycle: the leaving scene releases, the destination starts warming
-      // behind the fade (never awaited — see RuntimeSceneExtras.preload)
+      // lifecycle: the leaving scene releases; the destination starts loading
+      // (its chunk, then its preload) behind the fade
       const fromKey = sceneRef.current;
-      (scenes[fromKey] as RuntimeSceneDef<W> | undefined)?.exit?.({
+      getDef(fromKey)?.exit?.({
         world: worldRef.current,
         updateWorld,
         scene: fromKey,
         counterpart: target,
       });
-      void (scenes[target] as RuntimeSceneDef<W> | undefined)?.preload?.();
+      const eager = resolveScene(target);
+      void eager?.preload?.();
+      let preloadFired = Boolean(eager);
       const timers = timersRef.current;
       setFade({ on: true, ms: reducedRef.current ? 90 : TRAVEL_FADE_OUT_MS });
-      timers.after(() => {
-        const nextDef = scenes[target] as RuntimeSceneDef<W> | undefined;
+      /**
+       * The switch waits for a code-split destination: the fade holds black
+       * while the chunk is on the wire, polling briefly instead of switching
+       * to a scene that isn't there. A destination that never resolves
+       * (network death, bad key) falls through after the deadline and lands
+       * on the pending stub rather than wedging the fade forever.
+       */
+      const holdUntil = nowMs() + 10_000;
+      const doSwitch = () => {
+        const nextDef = getDef(target);
+        if (!nextDef && scenesRef.current[target] && nowMs() < holdUntil) {
+          resolveScene(target);
+          timers.after(doSwitch, 60);
+          return;
+        }
+        if (nextDef && !preloadFired) {
+          preloadFired = true;
+          void nextDef.preload?.();
+        }
         const remembered = opts.rememberSceneX ? sceneXRef.current[target] : undefined;
         const fallback = nextDef?.spawnX ?? (nextDef ? nextDef.width / 2 : pos.current.x);
         pos.current.x = spawnX ?? remembered ?? fallback;
@@ -689,9 +776,10 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           fadingRef.current = false;
           setFade({ on: false, ms: reducedRef.current ? 90 : TRAVEL_FADE_OUT_MS });
         }, TRAVEL_FADE_IN_DELAY_MS);
-      }, TRAVEL_SWITCH_AT_MS);
+      };
+      timers.after(doSwitch, TRAVEL_SWITCH_AT_MS);
     },
-    [clearTargets, opts.rememberSceneX, scenes, updateWorld],
+    [clearTargets, getDef, opts.rememberSceneX, resolveScene, updateWorld],
   );
 
   const blackout = useCallback(
@@ -1141,21 +1229,18 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         cancelAutoWalkStatic(autoWalkRef);
         return;
       }
-      if (opts.pointerPicking && !inputLockRef.current) {
+      const sceneDef = getDef(sceneRef.current);
+      if (opts.pointerPicking && !inputLockRef.current && sceneDef) {
         // screen -> world, undoing pan and zoom about the current origin
         const cam = camStateRef.current;
         const local = cam.originX + (event.clientX - box.left - cam.originX - cam.pan) / cam.zoom;
-        const picked = pickObject(
-          (scenes[sceneRef.current] as RuntimeSceneDef<W>).objects as RuntimeObject[],
-          local / cam.scale,
-        );
+        const picked = pickObject(sceneDef.objects as RuntimeObject[], local / cam.scale);
         if (picked && !consumedRef.current.has(picked.id)) {
           engage(picked);
           return;
         }
         // nothing under the tap, nothing in reach: in a ground-band scene an
         // empty tap is "walk there" — the natural touch control for depth
-        const sceneDef = scenes[sceneRef.current] as RuntimeSceneDef<W>;
         const band = groundOf(sceneDef);
         if (!nearRef.current && hasDepth(band)) {
           const localY =
@@ -1168,7 +1253,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       }
       interact(nearRef.current);
     },
-    [engage, fireGesture, interact, opts.pointerPicking, scenes, walkTo],
+    [engage, fireGesture, getDef, interact, opts.pointerPicking, walkTo],
   );
 
   const pointerStop = useCallback(() => {
@@ -1280,7 +1365,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   // --- loop bag: everything the tick reads, refreshed each render ---------------------------------
   const loopBag = useRef({
-    scenes,
+    getDef,
     player,
     walkSpeed,
     walkSpeedY,
@@ -1302,7 +1387,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     atlas,
   });
   loopBag.current = {
-    scenes,
+    getDef,
     player,
     walkSpeed,
     walkSpeedY,
@@ -1366,8 +1451,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
      * goes stale and never re-subscribes anything.
      */
     const seqAnchor = (): SceneObject =>
-      (nearRef.current ??
-        (loopBag.current.scenes[sceneRef.current] as RuntimeSceneDef<W>).objects[0]) as SceneObject;
+      (nearRef.current ?? loopBag.current.getDef(sceneRef.current)?.objects[0]) as SceneObject;
     const seqHost: SeqHost<W> = {
       showToast: (text) => loopBag.current.showToast(text),
       startWalk: (x, y, deadline) => {
@@ -1406,10 +1490,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         clamp(
           x,
           EDGE_MARGIN,
-          (loopBag.current.scenes[sceneRef.current] as RuntimeSceneDef<W>).width - EDGE_MARGIN,
+          (loopBag.current.getDef(sceneRef.current)?.width ?? SCENE_HEIGHT) - EDGE_MARGIN,
         ),
-      clampWalkY: (y) =>
-        clampY(groundOf(loopBag.current.scenes[sceneRef.current] as RuntimeSceneDef<W>), y),
+      clampWalkY: (y) => clampY(groundOf(loopBag.current.getDef(sceneRef.current)), y),
       makeCtx: () => ctxFactoryRef.current?.(seqAnchor()),
       cancelled: (run) => seqRef.current !== run,
     };
@@ -1420,7 +1503,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       const cfg = bag.opts;
       const { scale, w: viewW, h: viewH } = viewRef.current;
       const sceneKey = sceneRef.current;
-      const def = bag.scenes[sceneKey] as RuntimeSceneDef<W> | undefined;
+      const def = bag.getDef(sceneKey);
       if (!def) return;
       const player = bag.player;
       const reduced = reducedRef.current;
@@ -2109,7 +2192,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     runSequence,
     updateWorld,
     saveNow,
-    scenes,
+    getDef,
     startAction,
   });
   apiBag.current = {
@@ -2119,7 +2202,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     runSequence,
     updateWorld,
     saveNow,
-    scenes,
+    getDef,
     startAction,
   };
 
@@ -2130,7 +2213,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         const bag = apiBag.current;
         const obj = id
           ? (candidatesRef.current.find((o) => o.id === id) ??
-            (bag.scenes[sceneRef.current] as RuntimeSceneDef<W>).objects.find((o) => o.id === id) ??
+            bag.getDef(sceneRef.current)?.objects.find((o) => o.id === id) ??
             null)
           : nearRef.current;
         if (obj) bag.interact(obj);

@@ -134,3 +134,23 @@ export function secondsToDeparture(now = performance.now()): number {
 
 /** A cycle fraction, for SMIL `keyTimes`. */
 export const kt = (seconds: number) => (seconds / CYCLE_S).toFixed(4);
+
+/**
+ * The line — data, not art: it lives here so the route map (in the boot
+ * chunk) can read it without dragging the whole train scene along.
+ *
+ * `scene` is where getting off actually puts you; `scene` is where getting off actually puts you; `spawnX` is the
+ * spot on that scene's ground you land on — by the doors, by the steps, at the
+ * bottom of the Stocznia stair. The route map reads both, so opening a new
+ * station is one line here and zero lines there.
+ */
+export const LINE = [
+  { id: "gdansk", name: "GDANSK GL.", scene: null as string | null, spawnX: 0 },
+  { id: "stocznia", name: "STOCZNIA", scene: "elektrykow" as string | null, spawnX: 120 },
+  { id: "politechnika", name: "POLITECHNIKA", scene: null as string | null, spawnX: 0 },
+  { id: "oliwa", name: "OLIWA", scene: "district" as string | null, spawnX: 250 },
+  { id: "przymorze", name: "PRZYMORZE-UNIW.", scene: "station" as string | null, spawnX: 520 },
+  { id: "zaspa", name: "ZASPA", scene: null as string | null, spawnX: 0 },
+  { id: "sopot", name: "SOPOT", scene: null as string | null, spawnX: 0 },
+  { id: "gdynia", name: "GDYNIA GL.", scene: null as string | null, spawnX: 0 },
+] as const;

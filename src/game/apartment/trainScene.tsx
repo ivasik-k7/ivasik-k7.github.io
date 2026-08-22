@@ -23,6 +23,7 @@ import {
   vignettePaths,
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
+import { LINE } from "./stationTimetable";
 import { SHADE_CYCLE, TrainWindowView, VIEW } from "./trainLandscape";
 
 // --- inside the SKM, somewhere between Przymorze and Oliwa -------------------
@@ -719,23 +720,6 @@ const LUGGAGE_TRIM = pxPath([
 ]);
 
 /* ------------------------------------------------------------ the map ----- */
-
-/**
- * The line. `scene` is where getting off actually puts you; `spawnX` is the
- * spot on that scene's ground you land on — by the doors, by the steps, at the
- * bottom of the Stocznia stair. The route map reads both, so opening a new
- * station is one line here and zero lines there.
- */
-export const LINE = [
-  { id: "gdansk", name: "GDANSK GL.", scene: null as string | null, spawnX: 0 },
-  { id: "stocznia", name: "STOCZNIA", scene: "elektrykow" as string | null, spawnX: 120 },
-  { id: "politechnika", name: "POLITECHNIKA", scene: null as string | null, spawnX: 0 },
-  { id: "oliwa", name: "OLIWA", scene: "district" as string | null, spawnX: 250 },
-  { id: "przymorze", name: "PRZYMORZE-UNIW.", scene: "station" as string | null, spawnX: 520 },
-  { id: "zaspa", name: "ZASPA", scene: null as string | null, spawnX: 0 },
-  { id: "sopot", name: "SOPOT", scene: null as string | null, spawnX: 0 },
-  { id: "gdynia", name: "GDYNIA GL.", scene: null as string | null, spawnX: 0 },
-] as const;
 
 const MAP_BOX: Rect = [Z.map - 60, GLASS_TOP + 4, 116, 40];
 const MAP_SET = bevelPaths([MAP_BOX]);

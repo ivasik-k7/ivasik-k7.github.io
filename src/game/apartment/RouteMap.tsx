@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { PixelLabel, playSfx, prose, proseQuiet, RULE, SIGNAL } from "@/engine";
 import { useMenuInput } from "../menu/useMenuInput";
-import { LINE } from "./trainScene";
+import { LINE } from "./stationTimetable";
 
 /**
  * The route map, read close up.
