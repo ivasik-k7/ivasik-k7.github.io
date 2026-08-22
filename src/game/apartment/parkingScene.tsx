@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
-import { ElevatorDoors, LayeredScene, NpcActor, px, type SceneDef, stripes } from "@/engine";
+import {
+  ElevatorDoors,
+  LayeredScene,
+  Monologue,
+  NpcActor,
+  px,
+  type SceneDef,
+  stripes,
+} from "@/engine";
 import type { WorldState } from "@/lib/worldState";
-import { NpcMonologue } from "./NpcMonologue";
 import { NPCS } from "./npcs";
 
 // --- ПАРКІНГ / underground parking, level -1 ---------------------------------------
@@ -1419,7 +1426,7 @@ function ParkingEffects({
         </svg>
       ) : null}
       {mode !== "away" ? (
-        <NpcMonologue
+        <Monologue
           x={1006}
           headY={76}
           scale={scale}

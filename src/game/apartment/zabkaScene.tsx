@@ -12,6 +12,7 @@ import {
   type LightTier,
   M,
   type Mat,
+  Monologue,
   NpcActor,
   type Ph,
   PixelText,
@@ -30,7 +31,6 @@ import {
   vignettePaths,
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
-import { NpcMonologue } from "./NpcMonologue";
 import { NPCS } from "./npcs";
 
 // --- ŻABKA / the 24h shop on the ground floor ---------------------------------------
@@ -2010,7 +2010,7 @@ function ZabkaEffects({
       </svg>
       {/* the clerk says the four things a clerk says */}
       {s.clerk === "counter" ? (
-        <NpcMonologue
+        <Monologue
           x={600}
           headY={84}
           scale={scale}

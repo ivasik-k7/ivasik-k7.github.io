@@ -1,35 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { mumble, voiceFor } from "../audio/voice";
+import { fontCovers } from "../scene/pixelKit";
 import {
   type DialogueMood,
   type DialogueState,
   dialogueAtChoices,
   offeredChoices,
 } from "../systems/dialogue";
-import { PixelLabel } from "./PixelFrame";
+import { PixelFrame, PixelLabel } from "./PixelFrame";
+import { PixelProse } from "./PixelProse";
 import { SpeechText } from "./SpeechPanel";
-import { PARCHMENT, prose, proseQuiet, RULE, SIGNAL } from "./uiLook";
+import { PARCHMENT, prose, SIGNAL } from "./uiLook";
 
 /**
- * A conversation.
+ * A conversation, on the HUD's own plate.
  *
- * Set the way the title screen is set, because the title screen is the most
- * legible surface in the game and the reason is that there is nothing on it:
- * the speaker's name in the 3×5 pixel font with a rule running off it, the line
- * in mono underneath, the choices as a column with an arrow beside the one you
- * are on. No box, no frame, no plate — the words sit on a gradient that lifts
- * the bottom of the screen just enough to read against, and the game carries on
- * being visible behind them.
+ * This is the third dress this box has worn, and the wheel has come round on
+ * purpose: it started as a riveted `PixelFrame`, was stripped back to bare
+ * type on a gradient when the frame felt heavier than the words, and is now a
+ * `PixelFrame` again — because the words themselves changed. They are set in
+ * `PixelProse`, the interface's 3×5 glyph font one step smaller than the
+ * HUD's labels, and pixel type on a pixel plate reads as one manufactured
+ * object where web type on that plate read as a browser in a picture frame.
+ * The clock, the interact chip and the conversation are now literally the
+ * same material.
  *
- * It replaces a version built out of the HUD's riveted `PixelFrame`. That was
- * consistent with the clock and the music deck and still wrong: four decorated
- * edges, a chamfer, a scanline wash and eight rivets around two lines of
- * dialogue, over pixel art that is already dense. The frame won and the words
- * lost.
- *
- * Everything is on one left edge — the same 7% gutter the menu uses — so the
- * name, the line, the choices and the hint form a single column, and nothing
- * moves when the cursor does. Input is owned by the runtime; this renders and
+ * The speaker rides the panel's title tab in the mood's accent; choices are a
+ * column with the menu's fixed-width arrow; the hints are spelled in the same
+ * glyphs along the bottom. Input is owned by the runtime; this renders and
  * forwards clicks.
  */
 
@@ -92,100 +90,149 @@ export function DialogueBox({
 
   if (!line) return null;
 
-  const font = Math.max(12, u * 4);
-  const label = Math.max(2, u - 1);
+  /** prose one step under the HUD's px=3 labels — "same font, smaller" */
+  const px = Math.max(2, u - 1);
+  const lineH = 8 * px;
 
   return (
     <div
       className="absolute right-0 bottom-0 left-0 z-30"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {/* The ground. A gradient rather than a panel: the scene keeps showing
-          through the top of it, which is what stops a conversation feeling like
-          a screen that has replaced the game. */}
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0"
-        style={{
-          height: `calc(100% + ${u * 20}px)`,
-          background:
-            "linear-gradient(180deg, rgba(6,8,13,0) 0%, rgba(6,8,13,0.72) 42%, rgba(6,8,13,0.92) 100%)",
-        }}
-      />
-
-      <div
-        className="relative mx-auto w-full max-w-2xl px-[7%] pb-5 [@media(pointer:coarse)]:pb-20"
-        style={{ paddingTop: u * 6 }}
-      >
-        {/* the speaker, and the rule that runs off the name */}
-        {line.speaker ? (
-          <div className="flex items-center gap-2" style={{ marginBottom: u * 1.5 }}>
-            <PixelLabel text={line.speaker.toUpperCase()} px={label} fill={accent} opacity={0.92} />
-            <span style={{ flex: 1, height: 2, background: RULE }} />
-          </div>
-        ) : null}
-
-        <p style={{ ...prose(font), minHeight: font * 2.6, color: "rgba(227,217,194,0.9)" }}>
-          <SpeechText
-            key={`${state.nodeId}:${state.lineIndex}`}
-            text={line.text}
-            done={state.lineDone}
-            u={u}
-            fontSize={font}
-            onDone={() => setTyped(true)}
-          />
-        </p>
-
-        {atChoices ? (
-          <ul className="mt-3 flex flex-col" style={{ gap: u }}>
-            {choices.map((choice, i) => {
-              const locked = choice.lockedBy !== null;
-              const seen = choice.seenBefore && !locked;
-              const here = i === state.choiceIndex;
-              return (
-                <li key={choice.id ?? choice.label}>
-                  <button
-                    type="button"
-                    disabled={locked}
-                    aria-current={here}
-                    className="flex w-full items-baseline gap-3 text-left disabled:cursor-not-allowed"
-                    style={{
-                      ...prose(font),
-                      color: locked
-                        ? "rgba(227,217,194,0.34)"
-                        : here
-                          ? accent
-                          : seen
-                            ? "rgba(227,217,194,0.44)" // already asked — dimmer, still there
-                            : "rgba(227,217,194,0.66)",
-                      transition: "color 140ms",
-                    }}
-                    onClick={() => {
-                      if (!locked) onChoose(i);
-                    }}
-                  >
-                    {/* the marker column is a fixed width, so choosing does not
-                        shift the labels — the same rule the menu follows */}
-                    <Mark on={here && !locked} u={u} colour={accent} />
-                    <span className="flex-1">{choice.label}</span>
-                    {/* a gate says what it wants rather than just refusing */}
-                    {locked ? <span style={proseQuiet(font - 1)}>{choice.lockedBy}</span> : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-
-        {/* the controls, spelled out along the bottom the way the menu does it */}
-        <button
-          type="button"
-          onClick={atChoices ? undefined : onAdvance}
-          className="mt-3 block text-left"
-          style={proseQuiet(Math.max(10, font - 2))}
-          aria-label={atChoices ? "choose a reply" : settled ? "continue" : "reveal the rest"}
+      <div className="relative mx-auto w-full max-w-2xl px-[7%] pb-4 [@media(pointer:coarse)]:pb-20">
+        <PixelFrame
+          u={u}
+          tone="panel"
+          title={
+            line.speaker ? (
+              <PixelLabel text={line.speaker.toUpperCase()} px={px} fill={accent} opacity={0.95} />
+            ) : undefined
+          }
+          bodyStyle={{ padding: `${u * 4}px ${u * 4}px ${u * 3}px` }}
         >
-          {atChoices ? "↑↓ pick · e choose" : settled ? "e continue" : "e skip"}
-        </button>
+          <div
+            style={{
+              minHeight: lineH * 2 + px,
+              // the player's own head: dimmer, plateless, set off by a thin rule
+              ...(line.voice === "inner"
+                ? { borderLeft: "2px solid rgba(227,217,194,0.28)", paddingLeft: u * 3 }
+                : null),
+            }}
+          >
+            {fontCovers(line.text) ? (
+              <PixelProse
+                key={`${state.nodeId}:${state.lineIndex}`}
+                text={line.text}
+                px={px}
+                fill={PARCHMENT}
+                opacity={line.voice === "inner" ? 0.6 : 0.92}
+                done={state.lineDone}
+                caret
+                onDone={() => setTyped(true)}
+              />
+            ) : (
+              /* the 3×5 face has no glyphs for this line (Ukrainian, French
+                 cedillas) — the words matter more than the material, so this
+                 line alone falls back to the prose face, verbatim */
+              <p
+                style={{
+                  ...prose(Math.max(12, px * 4)),
+                  color: PARCHMENT,
+                  opacity: line.voice === "inner" ? 0.6 : 0.92,
+                }}
+              >
+                <SpeechText
+                  key={`${state.nodeId}:${state.lineIndex}`}
+                  text={line.text}
+                  done={state.lineDone}
+                  u={u}
+                  fontSize={Math.max(12, px * 4)}
+                  onDone={() => setTyped(true)}
+                />
+              </p>
+            )}
+          </div>
+
+          {atChoices ? (
+            <ul className="mt-2 flex flex-col" style={{ gap: u }}>
+              {choices.map((choice, i) => {
+                const locked = choice.lockedBy !== null;
+                const seen = choice.seenBefore && !locked;
+                const here = i === state.choiceIndex;
+                const fill = locked
+                  ? "rgba(227,217,194,0.34)"
+                  : here
+                    ? accent
+                    : seen
+                      ? "rgba(227,217,194,0.44)" // already asked — dimmer, still there
+                      : "rgba(227,217,194,0.66)";
+                return (
+                  <li key={choice.id ?? choice.label}>
+                    <button
+                      type="button"
+                      disabled={locked}
+                      aria-current={here}
+                      className="flex w-full items-start gap-3 text-left disabled:cursor-not-allowed"
+                      onClick={() => {
+                        if (!locked) onChoose(i);
+                      }}
+                    >
+                      {/* the marker column is a fixed width, so choosing does not
+                          shift the labels — the same rule the menu follows */}
+                      <Mark on={here && !locked} u={u} colour={accent} />
+                      <span className="flex-1">
+                        {fontCovers(choice.label) ? (
+                          <PixelProse text={choice.label} px={px} fill={fill} done />
+                        ) : (
+                          <span style={{ ...prose(Math.max(11, px * 3.6)), color: fill }}>
+                            {choice.label}
+                          </span>
+                        )}
+                      </span>
+                      {/* a gate says what it wants rather than just refusing */}
+                      {locked ? (
+                        fontCovers(choice.lockedBy ?? "") ? (
+                          <PixelProse
+                            text={choice.lockedBy ?? ""}
+                            px={px}
+                            fill={PARCHMENT}
+                            opacity={0.4}
+                            done
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              ...prose(Math.max(11, px * 3.6)),
+                              color: PARCHMENT,
+                              opacity: 0.4,
+                            }}
+                          >
+                            {choice.lockedBy}
+                          </span>
+                        )
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+
+          {/* the controls, spelled in the same glyphs, quiet along the bottom */}
+          <button
+            type="button"
+            onClick={atChoices ? undefined : onAdvance}
+            className="mt-3 block text-left"
+            aria-label={atChoices ? "choose a reply" : settled ? "continue" : "reveal the rest"}
+          >
+            <PixelLabel
+              text={atChoices ? "UP/DOWN PICK · E CHOOSE" : settled ? "E CONTINUE" : "E SKIP"}
+              px={px}
+              fill={PARCHMENT}
+              opacity={0.38}
+            />
+          </button>
+        </PixelFrame>
       </div>
     </div>
   );

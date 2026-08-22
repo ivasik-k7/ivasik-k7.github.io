@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { lofiPlayer, PixelFrame, PixelLabel } from "@/engine";
+import { lofiPlayer, PixelFrame, PixelLabel, useReducedMotion } from "@/engine";
 import type { DayPhase } from "@/lib/worldState";
 
 /**
@@ -42,19 +42,6 @@ const SIGNAL = "#fcee0a";
 const EMBER = "#ffb454";
 
 // ---------------------------------------------------------------------------
-
-function useReducedMotion() {
-  const [still, setStill] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setStill(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setStill(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return still;
-}
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());

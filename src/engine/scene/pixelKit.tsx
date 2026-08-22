@@ -731,6 +731,24 @@ export function textPath(text: string, x: number, y: number, gap = 1): string {
   return pxPath(textRects(text, x, y, gap));
 }
 
+/**
+ * Whether this font can actually SET a string — every character resolves to a
+ * real glyph rather than the blank-cell fallback. The glyph set is Latin plus
+ * Polish combining marks; Cyrillic, French cedillas and anything else outside
+ * it comes back false, and a renderer should fall back to a prose face for
+ * that line instead of silently dropping the letters (which is how Ukrainian
+ * dialogue once rendered as a row of commas). Spaces and unknown-but-foldable
+ * punctuation count as covered.
+ */
+export function fontCovers(text: string): boolean {
+  for (const ch0 of text.toUpperCase()) {
+    const raw = FOLD[ch0] ?? ch0;
+    const ch = ACCENTS[raw]?.base ?? raw;
+    if (ch !== " " && !GLYPHS[ch]) return false;
+  }
+  return true;
+}
+
 /** The old version emitted one node per lit pixel — "14" cost 22 nodes. */
 export function PixelText({
   x,

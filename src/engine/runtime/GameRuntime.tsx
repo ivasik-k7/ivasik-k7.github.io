@@ -2169,7 +2169,16 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
               dir: 1,
               pauseUntil: 0,
               frame: actor.idleFrame ?? "stand",
-              hidden: false,
+              /**
+               * Read off the element, not assumed. Travel resets this state
+               * table while a same-scene travel KEEPS the elements — and the
+               * fade's bogus camera bounds may have display:none'd them a
+               * frame earlier. A fresh state claiming "shown" would then agree
+               * with the culling check forever and the write below would never
+               * fire: every actor in the scene stayed invisible after the
+               * second arrival. The element knows; trust the element.
+               */
+              hidden: el.style.display === "none",
               z: Number.NaN,
             };
             actorStateRef.current[actor.id] = st;

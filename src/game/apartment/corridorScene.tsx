@@ -14,6 +14,7 @@ import {
   Light,
   M,
   type Mat,
+  Monologue,
   NpcActor,
   type Ph,
   PhaseSky,
@@ -39,7 +40,6 @@ import {
   vignettePaths,
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
-import { NpcMonologue } from "./NpcMonologue";
 import { NPCS } from "./npcs";
 
 // --- KORYTARZ / klatka B, piętro 4 — the landing outside your own door -------------
@@ -2612,7 +2612,7 @@ function CorridorEffects({
         </svg>
       ) : null}
       {s.natalia !== "away" ? (
-        <NpcMonologue
+        <Monologue
           x={375}
           headY={s.natalia === "wring" ? 86 : 82}
           scale={scale}

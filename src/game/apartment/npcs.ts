@@ -744,6 +744,124 @@ const NPCS_FACTORIES: Record<string, () => NpcConfig> = {
       lines: ["Sekundę siedzę. Sekundę.", "Nie mów która godzina."],
     }),
 
+  /** Half of the couple by the bar — mid-thesis, drink as a pointer. */
+  ola: () =>
+    createNpc({
+      id: "club-couple",
+      name: "Ola",
+      build: "slim",
+      height: "average",
+      doing: "standing",
+      look: {
+        skin: "olive",
+        hair: "black",
+        hairStyle: "fringe",
+        top: "tank",
+        topColour: "charcoal",
+        bottom: "trousers",
+        bottomColour: "black",
+        shoes: "boots",
+        shoeColour: "black",
+        accent: "scarf",
+        accentColour: "pink",
+        prop: "bottle",
+      },
+      lines: ["To NIE jest ten sam set co w lipcu.", "Słuchaj basu, nie mnie."],
+    }),
+
+  /** The other half — losing the debate, enjoying the loss. */
+  kuba: () =>
+    createNpc({
+      id: "club-kuba",
+      name: "Kuba",
+      build: "regular",
+      height: "tall",
+      doing: "leaning",
+      look: {
+        skin: "fair",
+        hair: "brown",
+        hairStyle: "curtains",
+        face: "stubble",
+        top: "tshirt",
+        topColour: "white",
+        bottom: "jeans",
+        bottomColour: "black",
+        shoes: "trainers",
+        shoeColour: "white",
+      },
+      lines: ["Dobra, dobra. Ten sam.", "W lipcu było wolniej. O dwa BPM."],
+    }),
+
+  /** Sixth in a queue of four. The WC has its own physics. */
+  wcQueue: () =>
+    createNpc({
+      id: "wc-queue",
+      name: "Kolejka do WC",
+      build: "slim",
+      height: "short",
+      doing: "waiting",
+      look: {
+        skin: "pale",
+        hair: "chestnut",
+        hairStyle: "bob",
+        top: "tshirt",
+        topColour: "lilac",
+        bottom: "shorts",
+        bottomColour: "black",
+        shoes: "trainers",
+        shoeColour: "white",
+        prop: "phone",
+      },
+      lines: ["Pięć minut. Standard.", "Ktoś tam mieszka. Na pewno ktoś tam mieszka."],
+    }),
+
+  /** By the door, one finger in one ear, physics doing the rest. */
+  klubowyCaller: () =>
+    createNpc({
+      id: "club-caller",
+      name: "Człowiek z telefonem",
+      build: "regular",
+      height: "average",
+      doing: "phoning",
+      look: {
+        skin: "tan",
+        hair: "black",
+        hairStyle: "topknot",
+        top: "shirt",
+        topColour: "wine",
+        bottom: "jeans",
+        bottomColour: "black",
+        shoes: "trainers",
+        shoeColour: "black",
+      },
+      lines: ["ALO? ALO. NIE SŁYSZĘ!", "JESTEM W TURBINIE! W TUR-BI-NIE!"],
+    }),
+
+  /** Cables in the morning: the man the whole rig actually belongs to. */
+  technik: () =>
+    createNpc({
+      id: "club-technik",
+      name: "Technik",
+      build: "stout",
+      height: "average",
+      doing: "working",
+      look: {
+        skin: "ruddy",
+        hair: "grey",
+        hairStyle: "receding",
+        face: "stubble",
+        top: "tshirt",
+        topColour: "black",
+        bottom: "workpants",
+        bottomColour: "charcoal",
+        shoes: "boots",
+        shoeColour: "black",
+        accent: "belt",
+        accentColour: "brown",
+      },
+      lines: ["Osiem zwojów. Zawsze osiem.", "Kto tak zwinął ten kabel? Kto?"],
+    }),
+
   /** The morning after belongs to her and the broom. It always has. */
   sprzataczka: () =>
     createNpc({

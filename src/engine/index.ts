@@ -28,6 +28,14 @@ export * from "./core/constants";
 export * from "./core/ground";
 export * from "./core/math";
 export {
+  acquireVoice,
+  CHANNEL_OF,
+  dwellMs,
+  type MonologueChannel,
+  type MonologueKind,
+  releaseVoice,
+} from "./core/monologue";
+export {
   DEFAULT_PREFS,
   type EnginePrefs,
   getPrefs,
@@ -48,6 +56,8 @@ export type {
   ActorDef,
   GroundBand,
   GroundBlocker,
+  GroundProfilePoint,
+  GroundZone,
   InputAction,
   LiveState,
   QualityTier,
@@ -163,10 +173,11 @@ export * from "./systems/save";
 export { AnimalActor, useAnimalFrame } from "./ui/AnimalActor";
 // ui
 export { AudioHud } from "./ui/AudioHud";
-export { AnimationGateProvider, useAnimationGate } from "./ui/animationGate";
+export { AnimationGateProvider, useAnimationGate, useReducedMotion } from "./ui/animationGate";
 export { DialogueBox } from "./ui/DialogueBox";
 export { FpsMeter } from "./ui/FpsMeter";
 export { InteractPrompt, TargetMarker } from "./ui/InteractPrompt";
+export { Monologue, type MonologueProps } from "./ui/Monologue";
 export { NpcActor, npcToActor, useNpcFrame } from "./ui/NpcActor";
 export {
   CRISP,
@@ -177,6 +188,7 @@ export {
   PixelMeter,
   scanlines,
 } from "./ui/PixelFrame";
+export { PixelProse } from "./ui/PixelProse";
 export { PixelSprite } from "./ui/PixelSprite";
 export {
   SpeechPanel,

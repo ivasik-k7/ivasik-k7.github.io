@@ -13,6 +13,7 @@ import {
   type LightTier,
   M,
   type Mat,
+  Monologue,
   NpcActor,
   type Ph,
   PixelText,
@@ -35,7 +36,6 @@ import {
   vignettePaths,
 } from "@/engine";
 import type { DayPhase, WorldState } from "@/lib/worldState";
-import { NpcMonologue } from "./NpcMonologue";
 import { NPCS } from "./npcs";
 
 // --- ZDROFIT ALCHEMIA / the gym on the first floor of an office park ----------------
@@ -2171,7 +2171,7 @@ function GymEffects({
         {who.lifter ? <NpcActor npc={NPCS.lifter} x={802} facing={-1} /> : null}
       </svg>
       {who.kasia ? (
-        <NpcMonologue
+        <Monologue
           x={306}
           headY={72}
           scale={scale}
@@ -2181,7 +2181,7 @@ function GymEffects({
         />
       ) : null}
       {who.lifter ? (
-        <NpcMonologue
+        <Monologue
           x={798}
           headY={76}
           scale={scale}

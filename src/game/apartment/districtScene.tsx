@@ -13,6 +13,7 @@ import {
   Light,
   M,
   type Mat,
+  Monologue,
   NpcActor,
   npcToActor,
   type Ph,
@@ -35,7 +36,6 @@ import {
   vignettePaths,
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
-import { NpcMonologue } from "./NpcMonologue";
 import { NPCS } from "./npcs";
 
 // --- GDAŃSK OLIWA / the Alchemia district, at street level --------------------------
@@ -3593,7 +3593,7 @@ function DistrictEffects({
         {/* the walker is a runtime actor: he actually crosses the square */}
       </svg>
       {who.barista ? (
-        <NpcMonologue
+        <Monologue
           x={322}
           headY={GROUND - m(1.72)}
           scale={scale}
@@ -3603,7 +3603,7 @@ function DistrictEffects({
         />
       ) : null}
       {who.smoker ? (
-        <NpcMonologue
+        <Monologue
           x={592}
           headY={GROUND - m(1.75)}
           scale={scale}

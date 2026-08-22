@@ -14,6 +14,7 @@ import {
   Light,
   M,
   type Mat,
+  Monologue,
   NpcActor,
   type Ph,
   PhaseSky,
@@ -39,7 +40,6 @@ import {
   vignettePaths,
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
-import { NpcMonologue } from "./NpcMonologue";
 import { NPCS } from "./npcs";
 
 // --- ULICA SŁONECZNA / the street, and the scene the whole game hangs off -----------
@@ -3230,7 +3230,7 @@ function ZabkaInterior({
  *        { id: "zabka-clerk", kind: "npc", priority: 2, x: 566, range: 10 },
  *
  * which sits in the gap between zabka-door (434–478) and waiting-man (484–508),
- * and an NpcMonologue at x=566, headY=98 in StreetEffects gated on
+ * and a Monologue (kind ambient) at x=566, headY=98 in StreetEffects gated on
  * `shop.clerk === "counter"`.
  * ==================================================================== */
 
@@ -7468,7 +7468,7 @@ function StreetEffects({
         ) : null}
       </svg>
       {s.smoker !== "away" ? (
-        <NpcMonologue
+        <Monologue
           x={254}
           headY={74}
           scale={scale}
@@ -7478,7 +7478,7 @@ function StreetEffects({
         />
       ) : null}
       {s.babcia !== "away" ? (
-        <NpcMonologue
+        <Monologue
           x={800}
           headY={82}
           scale={scale}
@@ -7488,7 +7488,7 @@ function StreetEffects({
         />
       ) : null}
       {s.heniek ? (
-        <NpcMonologue
+        <Monologue
           x={498}
           headY={78}
           scale={scale}
