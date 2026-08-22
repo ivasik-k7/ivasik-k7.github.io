@@ -1,0 +1,629 @@
+I want you to perform a **major visual, functional, and technical enrichment of an existing game scene**.
+
+You have an existing scene that I want to significantly improve, and you also have another scene in the project that should be treated as the **primary reference implementation**.
+
+The reference scene is not just a visual reference. Analyze it as a complete example of the project's:
+
+* visual language;
+* art direction;
+* pixel-art treatment;
+* composition;
+* object proportions;
+* environmental density;
+* lighting;
+* animation;
+* interaction design;
+* scene architecture;
+* camera behavior;
+* UI integration;
+* NPC behavior;
+* object placement;
+* depth;
+* shadows;
+* atmosphere;
+* performance patterns;
+* reusable components;
+* overall quality bar.
+
+First **deeply inspect and understand the reference scene**, then use that understanding to substantially rebuild and enrich the target scene.
+
+Do not simply copy elements from the reference scene.
+
+The target scene should become its own believable location while clearly belonging to the same game.
+
+---
+
+# 1. Analyze the Reference Scene First
+
+Before changing the target scene, perform a detailed audit of the reference scene.
+
+Identify concretely:
+
+* how the scene is structured;
+* how the environment is layered;
+* how objects are sized relative to the player;
+* how much environmental detail is used;
+* how foreground/midground/background are constructed;
+* how lighting is implemented;
+* how shadows are implemented;
+* how pixel-art rendering is handled;
+* how animations are implemented;
+* how interactions are represented;
+* how NPCs behave;
+* how the camera works;
+* how scene state is managed;
+* how time/environment changes are represented;
+* what reusable systems/components are being used;
+* what makes the scene visually convincing;
+* what makes it feel polished rather than procedural.
+
+Treat this analysis as establishing the **design and engineering specification** for the target scene.
+
+---
+
+# 2. Majorly Enrich the Target Scene
+
+The target scene should receive a **substantial rebuild**, not a cosmetic pass.
+
+Increase the richness of:
+
+* environment;
+* architecture;
+* props;
+* vegetation;
+* infrastructure;
+* lighting;
+* shadows;
+* background;
+* foreground;
+* NPCs;
+* interactions;
+* animation;
+* atmosphere;
+* contextual details;
+* environmental storytelling.
+
+If the current scene contains only a few major objects, expand it into a convincing environment with many smaller supporting details.
+
+The target should feel like a real place that has existed and been used for years.
+
+---
+
+# 3. Realistic Scale and Correctness
+
+Pay particular attention to **physical correctness and believable proportions**.
+
+Objects should have appropriate sizes relative to:
+
+* player;
+* NPCs;
+* doors;
+* windows;
+* buildings;
+* vehicles;
+* furniture;
+* streets;
+* sidewalks;
+* signs;
+* benches;
+* lamps;
+* fences;
+* trees;
+* other environmental elements.
+
+Avoid the common game-development problem where everything is visually attractive but physically incorrectly scaled.
+
+For example:
+
+* doors should be human-sized;
+* chairs should accommodate the character;
+* tables should have believable height;
+* windows should have realistic proportions;
+* street furniture should be appropriately scaled;
+* vehicles should have believable dimensions;
+* buildings should have consistent floors/windows;
+* NPCs should not appear oversized relative to architecture.
+
+Use the reference scene to determine the project's **visual scale**, then maintain that scale consistently.
+
+---
+
+# 4. Realistic Object Placement
+
+Objects should not look randomly distributed.
+
+Think about how a real location would be organized.
+
+Consider:
+
+* accessibility;
+* walking paths;
+* entrances;
+* functional zones;
+* traffic flow;
+* maintenance areas;
+* storage;
+* lighting placement;
+* signage;
+* furniture placement;
+* environmental wear;
+* areas where people naturally stand;
+* areas that naturally remain empty.
+
+The scene should communicate its own logic.
+
+A player should be able to look at the environment and understand why objects are where they are.
+
+---
+
+# 5. Environmental Density
+
+Significantly increase environmental detail.
+
+Add appropriate combinations of:
+
+* small props;
+* signs;
+* posters;
+* cables;
+* pipes;
+* bins;
+* benches;
+* lamps;
+* fences;
+* doors;
+* windows;
+* utility objects;
+* plants;
+* vegetation;
+* pavement details;
+* cracks;
+* stains;
+* wear;
+* dirt;
+* small decorative objects;
+* background structures;
+* distant objects.
+
+Use variation.
+
+Do not duplicate the same object repeatedly without modification.
+
+The goal is **controlled environmental richness**, not visual clutter.
+
+---
+
+# 6. Foreground / Midground / Background
+
+Build the target scene using deliberate depth layers.
+
+### Foreground
+
+Use larger elements that create spatial framing and depth.
+
+### Midground
+
+This should contain the primary gameplay area, characters, interactive objects, and important environmental structures.
+
+### Background
+
+Use architecture, distant scenery, vegetation, infrastructure, skyline elements, and atmospheric elements.
+
+Where appropriate, add a far-background layer as well.
+
+Use:
+
+* occlusion;
+* parallax;
+* shadows;
+* lighting;
+* atmospheric perspective;
+* scale variation.
+
+The scene should feel spatial and dimensional while remaining consistent with the game's pixel-art presentation.
+
+---
+
+# 7. Day / Night System
+
+Add a proper **day-night visual system** if the current architecture allows it.
+
+Do not simply darken the entire scene at night.
+
+Day/night should affect:
+
+* ambient lighting;
+* sky/background;
+* artificial lights;
+* shadows;
+* windows;
+* signs;
+* street lamps;
+* building illumination;
+* character visibility;
+* environmental atmosphere;
+* color/tonal balance;
+* appropriate NPC behavior.
+
+For example:
+
+### Day
+
+* stronger ambient illumination;
+* clearer distant scenery;
+* natural shadows;
+* more visible environmental details;
+* daytime NPC activity.
+
+### Evening
+
+* warmer artificial lighting;
+* longer/different shadows;
+* increasing window illumination;
+* stronger environmental contrast.
+
+### Night
+
+* significantly reduced ambient light;
+* active street/building lights;
+* illuminated windows/signage;
+* stronger local light sources;
+* appropriate NPC/environment behavior.
+
+Transitions should be gradual and visually coherent.
+
+Use the existing lighting infrastructure rather than creating a disconnected implementation.
+
+---
+
+# 8. Weather / Environmental Variation
+
+If the project's architecture supports it, investigate whether the scene could naturally respond to environmental conditions such as:
+
+* rain;
+* cloudy weather;
+* clear weather;
+* fog;
+* wind;
+* snow where appropriate.
+
+Do not add a weather system purely for feature count.
+
+Only implement it if it meaningfully improves the scene and fits the existing world.
+
+---
+
+# 9. Interactivity
+
+Make the scene significantly more interactive.
+
+Identify environmental elements that logically deserve interaction.
+
+Potential interactions include:
+
+* doors;
+* benches;
+* signs;
+* machines;
+* shops;
+* objects;
+* environmental inspection;
+* contextual NPC interactions;
+* switches;
+* lights;
+* entrances;
+* exits;
+* usable objects.
+
+Not everything should be interactive.
+
+Interaction should communicate:
+
+> "This object is meaningful."
+
+rather than:
+
+> "Everything on screen is clickable."
+
+Use the existing interaction system and conventions.
+
+---
+
+# 10. Contextual Interaction
+
+Interactions should respond to the current state of the world.
+
+For example:
+
+* some objects may only be usable during certain times;
+* some NPCs may only appear at certain times;
+* some locations may behave differently at night;
+* lights may activate at evening;
+* certain interactions may become available after an event;
+* NPC behavior may change depending on time/location/state.
+
+Build this using the existing state architecture rather than hardcoding isolated behavior.
+
+---
+
+# 11. NPCs and Ambient Life
+
+If NPCs are appropriate for the scene, enrich their presence substantially.
+
+NPCs should have:
+
+* different positions;
+* different idle animations;
+* different activities;
+* different movement patterns;
+* contextual behaviors;
+* appropriate interactions with the environment.
+
+Avoid having every NPC simply stand still.
+
+Possible behaviors:
+
+* walking;
+* waiting;
+* sitting;
+* talking;
+* checking a phone;
+* entering/exiting buildings;
+* interacting with objects;
+* looking around;
+* reacting to the environment.
+
+Use natural timing variation.
+
+The scene should feel inhabited rather than populated with static placeholders.
+
+---
+
+# 12. Animation Quality
+
+Review every existing animation in the target scene.
+
+Fix:
+
+* snapping;
+* unnatural loops;
+* abrupt transitions;
+* incorrect timing;
+* repetitive behavior;
+* animation conflicts;
+* objects moving unnaturally;
+* characters freezing between states.
+
+Add subtle environmental animation where appropriate:
+
+* vegetation;
+* lights;
+* signs;
+* particles;
+* distant movement;
+* vehicles;
+* environmental effects.
+
+Animation should support realism without becoming distracting.
+
+---
+
+# 13. Lighting & Rendering
+
+Use the project's existing visual systems, including `lightKit`, `pixelKit`, and any related infrastructure.
+
+Do not create parallel systems unnecessarily.
+
+Pay attention to:
+
+* local light sources;
+* ambient light;
+* shadows;
+* highlights;
+* glow;
+* occlusion;
+* depth;
+* material differentiation;
+* nighttime illumination;
+* window lighting;
+* atmospheric effects.
+
+Lighting should help communicate time, depth, and location.
+
+---
+
+# 14. Pixel-Art Consistency
+
+The target scene must remain faithful to the project's established graphical preset.
+
+Do not suddenly introduce:
+
+* overly realistic textures;
+* incompatible rendering styles;
+* inconsistent resolution;
+* mismatched anti-aliasing;
+* inappropriate gradients;
+* overly smooth assets.
+
+Everything should look like it was created specifically for this game.
+
+Use the reference scene to determine:
+
+* pixel density;
+* sprite scale;
+* outline treatment;
+* shading;
+* lighting style;
+* color treatment;
+* object detail level;
+* animation fidelity.
+
+The goal is:
+
+**realistic proportions and believable environments expressed through our existing graphical language.**
+
+---
+
+# 15. Environmental Storytelling
+
+Add details that communicate that the location has a history.
+
+Consider:
+
+* worn surfaces;
+* repaired objects;
+* old posters;
+* newer posters over older ones;
+* personal objects;
+* discarded items;
+* maintenance equipment;
+* signs of weather;
+* signs of frequent use;
+* small inconsistencies that make the environment feel lived-in.
+
+Do not make everything perfectly clean and symmetrical.
+
+Real places contain irregularity.
+
+---
+
+# 16. Interaction + Environment Integration
+
+Interactions should make use of the environment.
+
+For example, interacting with an object should potentially:
+
+* trigger an animation;
+* change lighting;
+* produce sound;
+* alter object state;
+* affect NPC behavior;
+* display contextual information;
+* modify the world state.
+
+Where appropriate, interactions should have persistent state.
+
+Avoid purely cosmetic interactions unless they provide meaningful atmosphere.
+
+---
+
+# 17. Camera & Composition
+
+Review camera behavior against the reference scene.
+
+Ensure:
+
+* player visibility is appropriate;
+* important locations remain readable;
+* scene boundaries feel intentional;
+* composition works at different positions;
+* foreground elements don't obscure gameplay;
+* interactive objects remain discoverable;
+* movement feels natural.
+
+Use camera movement and framing to improve presentation where appropriate.
+
+---
+
+# 18. Performance
+
+Because the scene will become substantially richer, performance must be considered from the beginning.
+
+Optimize:
+
+* rendering;
+* animation loops;
+* NPC updates;
+* inactive objects;
+* lighting;
+* particles;
+* asset loading;
+* state updates;
+* event listeners;
+* off-screen systems.
+
+Do not remove visual richness simply to achieve performance.
+
+Prefer architectural optimization and intelligent activation/deactivation.
+
+---
+
+# 19. Independent Review
+
+After the first implementation, perform an independent review comparing the target scene against the reference.
+
+Specifically ask:
+
+* Does the target now belong to the same game?
+* Is the visual quality comparable?
+* Is the environment sufficiently detailed?
+* Are objects correctly scaled?
+* Does the environment make physical sense?
+* Does the scene feel inhabited?
+* Is day/night convincing?
+* Are interactions meaningful?
+* Are animations natural?
+* Is the pixel-art style consistent?
+* Is the lighting coherent?
+* Are there still visually empty areas?
+* Are there areas with unnecessary clutter?
+* Are there missing environmental details?
+* Are there technical inconsistencies?
+* Does anything still look like a placeholder?
+
+Then perform another improvement pass.
+
+---
+
+# 20. Do Not Stop at the Requested Features
+
+During the implementation, actively identify additional improvements.
+
+If you discover that the scene would benefit from:
+
+* additional interactions;
+* better NPC behaviors;
+* richer environmental storytelling;
+* better lighting;
+* improved transitions;
+* additional time-of-day states;
+* better sound integration;
+* more contextual animations;
+* better scene architecture;
+* reusable components;
+* additional developer/debugging functionality;
+
+recommend them and implement them when they provide meaningful value.
+
+Do not artificially constrain yourself to the initial checklist.
+
+---
+
+# 21. Final Quality Standard
+
+The final target scene should feel like:
+
+> **a believable real-world location recreated through our game's existing art direction and rendering language.**
+
+It should be:
+
+* visually rich;
+* detailed;
+* believable;
+* correctly proportioned;
+* interactive;
+* animated;
+* atmospheric;
+* responsive to time of day;
+* consistent with the reference scene;
+* technically maintainable;
+* performant;
+* production-ready.
+
+The most important principle is:
+
+**Do not make it merely "more decorated." Make it more believable.**
+
+Every major object should have a reason to exist, every interaction should feel intentional, every animation should feel natural, and every visual element should belong to the same graphical world.
+
+Use the reference scene as the quality benchmark and push the target scene significantly beyond its current state while preserving the project's established visual identity.

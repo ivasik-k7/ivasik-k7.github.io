@@ -2460,7 +2460,7 @@ export const BALCONY_SCENE: RuntimeSceneDef<WorldState> = {
       priority: 1,
       x: 44,
       range: 20,
-      to: { scene: "studio", spawnX: 580 },
+      to: { scene: "studio", spawnX: 610 },
     },
     { id: "ashtray", kind: "flavor", x: 70, range: 8 },
     { id: "smoke", kind: "sport", action: "smoke", x: 96, range: 12 },

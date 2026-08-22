@@ -1,2386 +1,2778 @@
-import { AnimatePresence, motion } from "motion/react";
-import { HEART, HEART_PALETTE, PixelMap } from "@/components/game/sprites";
-import { AnimalActor, LayeredScene, px, type SceneDef, stripes } from "@/engine";
-import type { DayPhase, WorldState } from "@/lib/worldState";
-import { roomDarkness } from "@/lib/worldState";
+import {
+  AnimalActor,
+  AOSet,
+  aoPaths,
+  Bev,
+  Bevel,
+  bevelPaths,
+  bulbPaths,
+  Contact,
+  contactPaths,
+  dim,
+  dth,
+  LayeredScene,
+  Light,
+  type LightTier,
+  M,
+  type Mat,
+  type Ph,
+  PixelText,
+  px,
+  pxPath,
+  type Rect,
+  type RuntimeSceneDef,
+  repeat,
+  type SceneRenderProps,
+  SharedDefs,
+  STEP_DROOP,
+  STEP_FADE,
+  STEP_SLIDE,
+  steppedCone,
+  steppedEllipse,
+  steppedQuad,
+  tiers,
+  toPhase,
+  Vignette,
+  vignettePaths,
+} from "@/engine";
+import { type DayPhase, roomDarkness, studioState, type WorldState } from "@/lib/worldState";
 import { ANIMALS } from "./animals";
 
+// --- KAWALERKA / the studio, floor 4 -------------------------------------------------
+
 /**
- * The flat, v4 — the light pass.
+ * Fifth pass. The whole flat in one room — entry, kitchen run, the door nook,
+ * the balcony glass, the living corner — rebuilt to the house standard the
+ * bedroom, bathroom and corridor already meet, and given real chores.
  *
- * Everything that emits light in this room is now rasterised. There is not a
- * single radialGradient or soft ellipse left: sun shafts are stair-stepped
- * bands, lamp pools are ellipses rasterised into 3–4px rows with quantised
- * alpha, and the falloff between levels is carried by a 2×2 dither rather than
- * a smooth ramp. Light in a pixel scene should be made of pixels.
+ * PLANES
+ *   farBackground 0.85 — the courtyard: sky, the block opposite, its windows,
+ *     two birches, the yard lamp. Full width now; it used to stop at the glass
+ *     and show its own absence at the pan extremes.
+ *   middleBackground 1 — ceiling, the three wall fields, the kitchen window,
+ *     the door nook, the balcony opening, the entry. Everything bolted down.
+ *   ground — floor tile, oak boards, rugs, the contact/AO pass.
+ *   staticObjects — the kitchen run, the fridge, the dog corner, the living
+ *     furniture.
+ *   gameplayObjects — the television, the guitar. Things whose state you read.
+ *   Foreground (runtime z-15) — shoe bench, pouf, toy basket, near lip, vignette.
+ *   Effects — cast, daylight, every lamp pool, transients, Gross. He lives here
+ *     because this is the only plane that hears `actionUi`.
  *
- * And it runs on the clock. `AMBIENT` holds a tint, a level, a lamp gain and a
- * sun geometry for each of the four phases; every artificial source is then
- * scaled by that gain, so the pendant barely registers at noon and does all the
- * work at midnight. Dawn throws a long shallow shaft to the right, the day a
- * steep one to the left, dusk a long orange one further left, night none.
+ * LIGHTING PREMISE — five temperatures, never one:
+ *   the sun shaft through the balcony glass (warm by day, low and orange at
+ *   dusk, cool and steep at dawn); the north light of the kitchen window;
+ *   incandescent ceiling spots and the pendant; the under-cabinet LED strip;
+ *   and the appliances — oven ember, fridge cold, TV by channel, laptop lid.
+ *   Artificial sources ride one gain: barely there at noon, everything at night.
  *
- * Materials from v3 are unchanged: five tones each, bevelled edges, six texture
- * patterns, ambient occlusion in every junction, and shadows that swing to point
- * away from whichever light is currently dominant.
+ * SCALE KEY — PPM = 38 px/m, from the corridor's table:
+ *   adult 1.75 m = 67 px   door leaf 2.05 m = 78 px   worktop 0.90 m → top y116
+ *   units bottom 1.50 m → y93   table 0.75 m → y121   sofa seat 0.45 m → y133
+ *   55" TV 1.22×0.71 m = 46×27 px   fridge 0.60×1.90 m = 23×72 px
+ *   window sill 1.21 m → y104   skirting 0.16 m = 6 px   handle 1.15 m → y106
+ *   The old kitchen ran the hob 1.26 m wide and the fridge to match; both are
+ *   now appliance-sized and the room stopped feeling like a showroom render.
+ *
+ * STATE — world reads, all in artKey: lights.studio, tv, radioOn, kettleOn,
+ *   cookerState, doorOpening, windows["window-kitchen"], fridgeOpen, and the
+ *   studio chore bag (dishesDone, binEmptied, bowlsFilled, guitarOut,
+ *   plantWatered) with clock fallbacks — dishes pile up through the morning,
+ *   the bin fills by dusk, the bowls empty between meals — plus the street's
+ *   weather, read defensively, so rain on the glass matches the rain outside.
+ *
+ * TRANSIENTS — actionUi only, Effects only, never in artKey: steam at the
+ *   kettle and the pot, smoke at the cracked window, the washing-up water,
+ *   the sofa occluder while sitting, hearts and notes as one-shot SMIL.
+ *
+ * BUDGET — geometry precomputed at module scope; ~34 SMIL animations declared,
+ *   most on calcMode="discrete" with negative begins; zero gradients, zero
+ *   ellipses, zero motion/react.
  */
 
 const W = 920;
-const CEIL = 46;
-const FLOOR = 150;
+const H = 180;
 
-/** Five-tone materials: highlight, base, mid, shade, deep shade. */
-const M = {
-  oak: { hi: "#d8bb85", base: "#b8955e", mid: "#a8854f", lo: "#8f7450", deep: "#6d5738" },
-  walnut: { hi: "#7d6448", base: "#5d4a37", mid: "#51402e", lo: "#43362a", deep: "#31271e" },
-  graphite: { hi: "#5e646c", base: "#3f4246", mid: "#383b40", lo: "#33363a", deep: "#24262a" },
-  steel: { hi: "#dfe4ea", base: "#a8aeb6", mid: "#8a8d92", lo: "#71767c", deep: "#54585d" },
-  white: { hi: "#f6f4ee", base: "#e8e6e0", mid: "#dbd8d1", lo: "#c9c5b8", deep: "#a9a69c" },
-  clay: { hi: "#dcc096", base: "#c9a878", mid: "#bd9c6c", lo: "#ab8b5e", deep: "#8f7148" },
-  greige: { hi: "#d6d0c1", base: "#c9c2b2", mid: "#bcb5a5", lo: "#ada695", deep: "#8f8878" },
-  tile: { hi: "#dde6e2", base: "#cdd8d4", mid: "#c0ccc8", lo: "#b0bdb8", deep: "#94a19c" },
-  wool: { hi: "#a09daa", base: "#8d8a94", mid: "#7f7c88", lo: "#6f6c78", deep: "#585564" },
-  sofa: { hi: "#848a92", base: "#6d7278", mid: "#62676d", lo: "#565b60", deep: "#43474c" },
-  leaf: { hi: "#6d9668", base: "#4e6b4e", mid: "#456045", lo: "#3a523c", deep: "#2c3f2e" },
-  brass: { hi: "#e6c479", base: "#c9a24b", mid: "#b08f3d", lo: "#8a6d2f", deep: "#5f4b20" },
-  floorT: { hi: "#c09a63", base: "#a8875a", mid: "#9c7d51", lo: "#8a6c45", deep: "#6f5636" },
-  floorS: { hi: "#b4b1a9", base: "#a5a29a", mid: "#98958d", lo: "#8a8780", deep: "#6f6c66" },
+const PPM = 38;
+const m = (metres: number) => Math.round(metres * PPM);
+
+// landmark rows — every height in the room hangs off these
+const CEIL = 46; // ceiling line, 2.74 m over the floor
+const FLOOR = 150; // engine floor
+const SKIRT = FLOOR - 6; // 0.16 m of skirting
+const CY = FLOOR - 1; // contact-shadow row
+const LEAF_TOP = FLOOR - m(2.05); // 72 — every door leaf on this floor
+const HANDLE_Y = FLOOR - m(1.15); // 106 — every handle, knob and switch
+const WORKTOP = FLOOR - m(0.9); // 116 — the kitchen counter
+const UNIT_TOP = FLOOR - m(2.2); // 66 — wall units, top
+const UNIT_BOT = FLOOR - m(1.5); // 93 — wall units, bottom
+const SILL = FLOOR - m(1.21); // 104 — the kitchen window sill
+const SPOTS = [40, 232, 336, 462] as const; // ceiling downlights
+
+// ---------------------------------------------------------------------------
+// palette — the flat's own casts, shared with the bedroom next door
+// ---------------------------------------------------------------------------
+
+const DAWN_CAST = "#8f8ab0";
+const DUSK_CAST = "#c46a3a";
+const NIGHT_CAST = "#1b2a3a";
+
+function ramp(mat: Mat): Record<Ph, Mat> {
+  return {
+    dawn: dim(mat, DAWN_CAST, 0.16),
+    day: mat,
+    dusk: dim(mat, DUSK_CAST, 0.15),
+    night: dim(mat, NIGHT_CAST, 0.56),
+  };
+}
+
+// the studio's own surfaces, kept from the old room so it stays the same flat
+const GREIGE_MAT: Mat = {
+  hi: "#d6d0c1",
+  base: "#c9c2b2",
+  mid: "#bcb5a5",
+  lo: "#ada695",
+  deep: "#8f8878",
+};
+const KWALL_MAT: Mat = {
+  hi: "#efece3",
+  base: "#e4e1d8",
+  mid: "#d8d5ca",
+  lo: "#c8c5b8",
+  deep: "#a8a598",
+};
+const CLAY_MAT: Mat = {
+  hi: "#dcc096",
+  base: "#c9a878",
+  mid: "#bd9c6c",
+  lo: "#ab8b5e",
+  deep: "#8f7148",
+};
+const TILE_MAT: Mat = {
+  hi: "#dde6e2",
+  base: "#cdd8d4",
+  mid: "#c0ccc8",
+  lo: "#b0bdb8",
+  deep: "#94a19c",
+};
+const BOARD_MAT: Mat = {
+  hi: "#c09a63",
+  base: "#a8875a",
+  mid: "#9c7d51",
+  lo: "#8a6c45",
+  deep: "#6f5636",
+};
+const STONE_MAT: Mat = {
+  hi: "#b4b1a9",
+  base: "#a5a29a",
+  mid: "#98958d",
+  lo: "#8a8780",
+  deep: "#6f6c66",
+};
+const SOFA_MAT: Mat = {
+  hi: "#848a92",
+  base: "#6d7278",
+  mid: "#62676d",
+  lo: "#565b60",
+  deep: "#43474c",
+};
+const WHITE_MAT: Mat = {
+  hi: "#f6f4ee",
+  base: "#e8e6e0",
+  mid: "#dbd8d1",
+  lo: "#c9c5b8",
+  deep: "#a9a69c",
 };
 
-const C = {
-  glassDay: "#a8c2d4",
-  glassDusk: "#c99a72",
-  glassDawn: "#bfb8cf",
-  glassNight: "#232a34",
-  linen: "#e8e2d2",
+const GREIGE = ramp(GREIGE_MAT);
+const KWALL = ramp(KWALL_MAT);
+const CLAY = ramp(CLAY_MAT);
+const TILE = ramp(TILE_MAT);
+const BOARD = ramp(BOARD_MAT);
+const STONE = ramp(STONE_MAT);
+const SOFA = ramp(SOFA_MAT);
+const OAK = ramp(M.oak);
+const GRAPHITE = ramp(M.graphite);
+const STEEL = ramp(M.steel);
+const WHITE = ramp(WHITE_MAT);
+
+/** Accents that are not materials. */
+const K = {
+  glass: { dawn: "#bfb8cf", day: "#a8c2d4", dusk: "#c99a72", night: "#232a34" } as Record<
+    Ph,
+    string
+  >,
+  sky: { dawn: "#a8a2c0", day: "#bcd2e0", dusk: "#d8a478", night: "#141a24" } as Record<Ph, string>,
+  skyRain: { dawn: "#8e8ba0", day: "#9aa8b4", dusk: "#a08a80", night: "#10141c" } as Record<
+    Ph,
+    string
+  >,
+  block: { dawn: "#6a6880", day: "#8a8f98", dusk: "#8a6a58", night: "#1d2430" } as Record<
+    Ph,
+    string
+  >,
+  blockLit: "#ffd98a",
   warm: "#ffd98a",
+  warmHi: "#fff8e0",
   cold: "#dff4ff",
-  shadow: "#00000030",
-};
+  ledCool: "#eaf6ff",
+  green: "#3ddc84",
+  red: "#e84a3a",
+  ember: "#e8843a",
+  linen: "#e8e2d2",
+  curtain: "#8d7a94",
+  curtainLo: "#6f5e78",
+  tulle: "#e4ddd2",
+  rug: "#8d8a94",
+  rugLo: "#6f6c78",
+  rugPat: "#a09daa",
+  throwRed: "#a4553f",
+  duvet: "#7a8f9f",
+  wallGhost: "#efe9da",
+  wallWarm: "#d9d2bd",
+  soil: "#4a3a2c",
+  soilWet: "#382c20",
+  water: "#7fb2d9",
+  waterHi: "#a8d2ee",
+  suds: "#f2f4ee",
+  kibble: "#a06a3a",
+  cardboard: "#b08a5e",
+  flagBlue: "#3f6fd9",
+  flagYellow: "#f2c832",
+  tvFilm: "#d8b48a",
+  tvBall: "#9fd6b0",
+  tvStatic: "#9fc7d6",
+  crt: "#a8c8b8",
+} as const;
 
-type Ph = "dawn" | "day" | "dusk" | "night";
-
-function toPhase(phase?: string): Ph {
-  if (phase === "night") return "night";
-  if (phase === "dusk") return "dusk";
-  if (phase === "dawn" || phase === "morning") return "dawn";
-  return "day";
+/** Hex mix toward a cast — for one-off prop colours that don't own a ramp. */
+function mixHex(a: string, b: string, t: number): string {
+  const ah = Number.parseInt(a.slice(1), 16);
+  const bh = Number.parseInt(b.slice(1), 16);
+  const ch = [16, 8, 0]
+    .map((sh) => Math.round(((ah >> sh) & 255) * (1 - t) + ((bh >> sh) & 255) * t))
+    .map((v) => v.toString(16).padStart(2, "0"))
+    .join("");
+  return `#${ch}`;
 }
 
-function extras(world: WorldState) {
-  const w = world as unknown as Record<string, boolean | undefined>;
-  return {
-    dishesDone: !!w.dishesDone,
-    binEmptied: !!w.binEmptied,
-    bowlsFilled: !!w.bowlsFilled,
-    guitarOut: !!w.guitarOut,
-  };
+/** The soft goods follow the room into the night like everything else. */
+function pcol(hex: string, ph: Ph): string {
+  if (ph === "night") return mixHex(hex, NIGHT_CAST, 0.5);
+  if (ph === "dusk") return mixHex(hex, DUSK_CAST, 0.14);
+  if (ph === "dawn") return mixHex(hex, DAWN_CAST, 0.15);
+  return hex;
 }
+
+/** How much the artificial lights matter, per phase — ×0 when the switch is off. */
+const GAIN: Record<Ph, number> = { dawn: 0.55, day: 0.18, dusk: 0.8, night: 1 };
 
 // ---------------------------------------------------------------------------
-// the day-night model
+// state — one defensive read, clamped, clock fallbacks for the chores
 // ---------------------------------------------------------------------------
 
-interface Ambient {
-  tint: string;
-  op: number;
-  /** how much the artificial lamps actually matter right now */
-  lampGain: number;
-  /** where the sun shaft lands, and in what colour */
-  sun: { botX: number; botW: number; color: string; op: number } | null;
-  /** light leaking in through the glazing regardless of the shaft */
-  skyGain: number;
-}
+export type TvChannelPh = "off" | "film" | "football" | "static";
+type Weather = "clear" | "overcast" | "rain";
+const WEATHERS: readonly Weather[] = ["clear", "overcast", "rain"];
 
-const AMBIENT: Record<Ph, Ambient> = {
-  dawn: {
-    tint: "#6f6ba0",
-    op: 0.13,
-    lampGain: 0.55,
-    sun: { botX: 500, botW: 220, color: "#ffdcb0", op: 0.3 },
-    skyGain: 0.5,
-  },
-  day: {
-    tint: "#fff2d0",
-    op: 0.04,
-    lampGain: 0.18,
-    sun: { botX: 430, botW: 190, color: "#fff0c8", op: 0.34 },
-    skyGain: 1,
-  },
-  dusk: {
-    tint: "#b5572a",
-    op: 0.15,
-    lampGain: 0.8,
-    sun: { botX: 420, botW: 180, color: "#ff9e58", op: 0.24 },
-    skyGain: 0.42,
-  },
-  night: { tint: "#12203a", op: 0.26, lampGain: 1, sun: null, skyGain: 0.1 },
-};
-
-// ---------------------------------------------------------------------------
-// pixel light — no gradients, no soft ellipses
-// ---------------------------------------------------------------------------
-
-/**
- * An ellipse rasterised into chunky rows. Three nested levels stack their alpha,
- * so the falloff comes out as visible steps rather than a smooth ramp.
- */
-function PixelGlow({
-  cx,
-  cy,
-  rx,
-  ry,
-  color,
-  op,
-  q = 4,
-  steps = 3,
-  id,
-}: {
-  cx: number;
-  cy: number;
-  rx: number;
-  ry: number;
-  color: string;
-  op: number;
-  q?: number;
-  steps?: number;
-  id: string;
-}) {
-  if (op <= 0.005) return null;
-  const rows: React.ReactNode[] = [];
-  for (let s = 0; s < steps; s++) {
-    const f = 1 - s / steps;
-    const RX = rx * f;
-    const RY = ry * f;
-    const a = op * (0.34 + s * 0.33);
-    const top = -Math.ceil(RY / q) * q;
-    for (let y = top; y < RY; y += q) {
-      const my = y + q / 2;
-      const t = 1 - (my * my) / (RY * RY);
-      if (t <= 0) continue;
-      const hw = Math.round((RX * Math.sqrt(t)) / q) * q;
-      if (hw < q) continue;
-      rows.push(
-        <rect
-          key={`${id}-${s}-${y}`}
-          x={cx - hw}
-          y={cy + y}
-          width={hw * 2}
-          height={q}
-          fill={color}
-          opacity={a}
-        />,
-      );
-    }
-  }
-  return <g>{rows}</g>;
-}
-
-/**
- * A shaft of light as a staircase: horizontal bands stepping sideways as they
- * fall, alpha quantised into a handful of levels, dithered at each boundary.
- */
-function PixelBeam({
-  topX,
-  topW,
-  botX,
-  botW,
-  topY,
-  botY,
-  color,
-  op,
-  q = 6,
-  levels = 5,
-  id,
-}: {
-  topX: number;
-  topW: number;
-  botX: number;
-  botW: number;
-  topY: number;
-  botY: number;
-  color: string;
-  op: number;
-  q?: number;
-  levels?: number;
-  id: string;
-}) {
-  const bands: React.ReactNode[] = [];
-  for (let y = topY; y < botY; y += q) {
-    const t = (y - topY) / (botY - topY);
-    const lv = Math.max(0, Math.ceil((1 - t) * levels) / levels);
-    const bx = Math.round((topX + (botX - topX) * t) / 2) * 2;
-    const bw = Math.round((topW + (botW - topW) * t) / 2) * 2;
-    bands.push(
-      <rect key={`${id}-${y}`} x={bx} y={y} width={bw} height={q} fill={color} opacity={op * lv} />,
-    );
-    bands.push(
-      <rect
-        key={`${id}-d-${y}`}
-        x={bx}
-        y={y + q - 2}
-        width={bw}
-        height={2}
-        fill="url(#st-dither-lite)"
-        opacity={op * lv * 0.9}
-      />,
-    );
-  }
-  return <g>{bands}</g>;
-}
-
-/** A flat wash in quantised steps — under cabinets, along sills, off radiators. */
-function PixelWash({
-  x,
-  y,
-  w,
-  h,
-  color,
-  op,
-  q = 3,
-  id,
-}: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  color: string;
-  op: number;
-  q?: number;
-  id: string;
-}) {
-  if (op <= 0.005) return null;
-  const rows: React.ReactNode[] = [];
-  const n = Math.max(1, Math.floor(h / q));
-  for (let i = 0; i < n; i++) {
-    const a = op * (1 - i / n);
-    rows.push(
-      <rect key={`${id}-${i}`} x={x} y={y + i * q} width={w} height={q} fill={color} opacity={a} />,
-    );
-  }
-  return <g>{rows}</g>;
-}
-
-/** The corners fall off — in four hard steps, not a gradient. */
-function PixelVignette({ op }: { op: number }) {
-  const bands = [
-    { inset: 0, a: 1 },
-    { inset: 26, a: 0.6 },
-    { inset: 52, a: 0.32 },
-    { inset: 78, a: 0.14 },
-  ];
-  return (
-    <g>
-      {bands.map((b) => (
-        <g key={b.inset}>
-          <rect
-            x={0}
-            y={0}
-            width={b.inset + 26}
-            height={180}
-            fill="#0b0e14"
-            opacity={op * b.a * 0.25}
-          />
-          <rect
-            x={W - b.inset - 26}
-            y={0}
-            width={b.inset + 26}
-            height={180}
-            fill="#0b0e14"
-            opacity={op * b.a * 0.25}
-          />
-        </g>
-      ))}
-      <rect x={0} y={0} width={W} height={10} fill="#0b0e14" opacity={op * 0.3} />
-      <rect x={0} y={172} width={W} height={8} fill="#0b0e14" opacity={op * 0.24} />
-    </g>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// shadow model
-// ---------------------------------------------------------------------------
-
-interface Shadow {
-  src: number;
-  strength: number;
-}
-
-function dominantLight(ph: Ph, lightOn: boolean, tvOn: boolean): Shadow {
-  if (ph === "day") return { src: 604, strength: 1 };
-  if (ph === "dawn") return { src: 604, strength: 0.72 };
-  if (lightOn) return { src: 726, strength: ph === "dusk" ? 0.8 : 0.95 };
-  if (ph === "dusk") return { src: 604, strength: 0.5 };
-  if (tvOn) return { src: 752, strength: 0.4 };
-  return { src: 604, strength: 0.12 };
-}
-
-function castOf(sh: Shadow, x: number, w: number) {
-  const c = x + w / 2;
-  const dir = c < sh.src ? -1 : 1;
-  const d = Math.min(Math.abs(c - sh.src) / 90, 2.4);
-  return {
-    dir,
-    len: Math.round((5 + d * 7) * sh.strength),
-    op: (0.16 + d * 0.05) * sh.strength,
-  };
-}
-
-function Cast({
-  x,
-  w,
-  sh,
-  ground = FLOOR,
-  depth = 6,
-}: {
-  x: number;
-  w: number;
-  sh: Shadow;
-  ground?: number;
-  depth?: number;
-}) {
-  const { dir, len, op } = castOf(sh, x, w);
-  const half = Math.round(len / 2);
-  const halfD = Math.round(depth / 2);
-  return (
-    <g>
-      <polygon
-        points={`${x},${ground - 1} ${x + w},${ground - 1} ${x + w + dir * len},${ground + depth} ${x + dir * len},${ground + depth}`}
-        fill="#1a1206"
-        opacity={op}
-      />
-      <polygon
-        points={`${x},${ground - 1} ${x + w},${ground - 1} ${x + w + dir * half},${ground + halfD} ${x + dir * half},${ground + halfD}`}
-        fill="#140f04"
-        opacity={op * 0.8}
-      />
-      {px(x, ground - 2, w, 2, "#00000044")}
-    </g>
-  );
-}
-
-function AO({
-  x,
-  y,
-  w,
-  h,
-  from = "top",
-  op = 0.22,
-}: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  from?: "top" | "bottom" | "left" | "right";
-  op?: number;
-}) {
-  const steps = Math.min(Math.max(1, h), 6);
-  return (
-    <g>
-      {Array.from({ length: steps }, (_, i) => {
-        const a = (op * (1 - i / steps)).toFixed(3);
-        if (from === "top") return px(x, y + i, w, 1, `rgba(0,0,0,${a})`, `ao${i}`);
-        if (from === "bottom") return px(x, y + h - 1 - i, w, 1, `rgba(0,0,0,${a})`, `ao${i}`);
-        if (from === "left") return px(x + i, y, 1, h, `rgba(0,0,0,${a})`, `ao${i}`);
-        return px(x + w - 1 - i, y, 1, h, `rgba(0,0,0,${a})`, `ao${i}`);
-      })}
-    </g>
-  );
-}
-
-function Bevel({
-  x,
-  y,
-  w,
-  h,
-  mat,
-  flat = false,
-}: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  mat: { hi: string; base: string; mid: string; lo: string; deep: string };
-  flat?: boolean;
-}) {
-  return (
-    <g>
-      {px(x, y, w, h, mat.base)}
-      {!flat ? px(x, y, w, 1, mat.hi) : null}
-      {!flat ? px(x, y + 1, 1, h - 1, mat.mid) : null}
-      {px(x + w - 1, y, 1, h, mat.lo)}
-      {px(x, y + h - 1, w, 1, mat.deep)}
-    </g>
-  );
-}
-
-/** A stair-stepped diagonal highlight on glass, instead of a gradient polygon. */
-function GlassSheen({
-  x,
-  y,
-  h,
-  w = 10,
-  slant = 0.34,
-  op = 0.16,
-  id,
-}: {
-  x: number;
-  y: number;
-  h: number;
-  w?: number;
-  slant?: number;
-  op?: number;
-  id: string;
-}) {
-  const rows: React.ReactNode[] = [];
-  for (let i = 0; i < h; i += 4) {
-    const off = Math.round((i * slant) / 2) * 2;
-    rows.push(
-      <rect
-        key={`${id}-${i}`}
-        x={x - off}
-        y={y + i}
-        width={w}
-        height={4}
-        fill="#ffffff"
-        opacity={op}
-      />,
-    );
-    rows.push(
-      <rect
-        key={`${id}-b-${i}`}
-        x={x - off + w}
-        y={y + i}
-        width={4}
-        height={4}
-        fill="#ffffff"
-        opacity={op * 0.45}
-      />,
-    );
-  }
-  return <g>{rows}</g>;
-}
-
-// ---------------------------------------------------------------------------
-// texture library
-// ---------------------------------------------------------------------------
-
-function Defs() {
-  return (
-    <defs>
-      <pattern id="st-grain" width="6" height="6" patternUnits="userSpaceOnUse">
-        <rect x="1" y="0" width="1" height="1" fill="#ffffff" opacity="0.07" />
-        <rect x="4" y="3" width="1" height="1" fill="#000000" opacity="0.07" />
-        <rect x="2" y="4" width="1" height="1" fill="#ffffff" opacity="0.04" />
-      </pattern>
-      <pattern id="st-wood" width="9" height="4" patternUnits="userSpaceOnUse">
-        <rect x="0" y="0" width="9" height="1" fill="#000000" opacity="0.06" />
-        <rect x="3" y="2" width="4" height="1" fill="#ffffff" opacity="0.05" />
-        <rect x="7" y="1" width="2" height="1" fill="#000000" opacity="0.04" />
-      </pattern>
-      <pattern id="st-plaster" width="5" height="5" patternUnits="userSpaceOnUse">
-        <rect x="0" y="2" width="1" height="1" fill="#000000" opacity="0.05" />
-        <rect x="3" y="0" width="1" height="1" fill="#ffffff" opacity="0.06" />
-      </pattern>
-      <pattern id="st-weave" width="4" height="4" patternUnits="userSpaceOnUse">
-        <rect x="0" y="0" width="2" height="2" fill="#ffffff" opacity="0.05" />
-        <rect x="2" y="2" width="2" height="2" fill="#000000" opacity="0.06" />
-      </pattern>
-      <pattern id="st-brushed" width="3" height="8" patternUnits="userSpaceOnUse">
-        <rect x="0" y="0" width="1" height="8" fill="#ffffff" opacity="0.07" />
-        <rect x="2" y="0" width="1" height="8" fill="#000000" opacity="0.05" />
-      </pattern>
-      {/* the two dithers that carry every light falloff in the room */}
-      <pattern id="st-dither" width="2" height="2" patternUnits="userSpaceOnUse">
-        <rect x="0" y="0" width="1" height="1" fill="#000000" opacity="0.16" />
-        <rect x="1" y="1" width="1" height="1" fill="#000000" opacity="0.16" />
-      </pattern>
-      <pattern id="st-dither-lite" width="2" height="2" patternUnits="userSpaceOnUse">
-        <rect x="0" y="0" width="1" height="1" fill="#ffffff" opacity="0.5" />
-        <rect x="1" y="1" width="1" height="1" fill="#ffffff" opacity="0.5" />
-      </pattern>
-    </defs>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// a 3×5 font for the oven timer
-// ---------------------------------------------------------------------------
-
-const GLYPHS: Record<string, string[]> = {
-  "0": ["111", "101", "101", "101", "111"],
-  "1": ["010", "110", "010", "010", "111"],
-  "2": ["111", "001", "111", "100", "111"],
-  "3": ["111", "001", "111", "001", "111"],
-  "4": ["101", "101", "111", "001", "001"],
-  "5": ["111", "100", "111", "001", "111"],
-  "6": ["111", "100", "111", "101", "111"],
-  "7": ["111", "001", "010", "010", "010"],
-  "8": ["111", "101", "111", "101", "111"],
-  "9": ["111", "101", "111", "001", "111"],
-  ":": ["0", "1", "0", "1", "0"],
-  " ": ["00", "00", "00", "00", "00"],
-};
-
-function PixelText({ x, y, text, fill }: { x: number; y: number; text: string; fill: string }) {
-  const out: React.ReactNode[] = [];
-  let cx = x;
-  for (let i = 0; i < text.length; i++) {
-    const rows = GLYPHS[text[i]] ?? GLYPHS[" "];
-    const w = rows[0].length;
-    for (let r = 0; r < rows.length; r++) {
-      for (let c = 0; c < w; c++) {
-        if (rows[r][c] === "1") out.push(px(cx + c, y + r, 1, 1, fill, `g${i}${r}${c}`));
-      }
-    }
-    cx += w + 1;
-  }
-  return <g>{out}</g>;
-}
-
-// ---------------------------------------------------------------------------
-// doors
-// ---------------------------------------------------------------------------
-
-function DoorLeaf({
-  x,
-  y,
-  w,
-  h,
-  opening,
-  children,
-}: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  opening: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <g>
-      {opening ? px(x, y, w, h, "#14161a") : null}
-      {opening ? <AO x={x} y={y} w={w} h={12} from="top" op={0.5} /> : null}
-      {opening ? px(x, y, 4, h, "#1d2027") : null}
-      <g
-        style={{
-          transition: "transform 380ms ease-in",
-          transform: opening ? "scaleX(0.16)" : "none",
-          transformOrigin: `${x}px ${y}px`,
-        }}
-      >
-        {children}
-      </g>
-    </g>
-  );
-}
-
-function InteriorDoor({
-  x,
-  opening,
-  lit,
-  plate,
-}: {
-  x: number;
-  opening: boolean;
+interface StudioSt {
   lit: boolean;
-  plate: "drop" | "moon";
-}) {
-  return (
-    <g>
-      <Bevel x={x - 2} y={56} w={52} h={94} mat={M.white} />
-      {px(x, 58, 48, 92, M.white.lo)}
-      <AO x={x} y={58} w={48} h={5} from="top" op={0.3} />
-      <AO x={x} y={58} w={5} h={92} from="left" op={0.24} />
-      <DoorLeaf x={x + 4} y={62} w={40} h={88} opening={opening}>
-        <Bevel x={x + 4} y={62} w={40} h={88} mat={M.white} />
-        <rect x={x + 4} y={62} width={40} height={88} fill="url(#st-plaster)" />
-        {[
-          [68, 34],
-          [106, 36],
-        ].map(([py, phh]) => (
-          <g key={`pn${py}`}>
-            {px(x + 8, py, 32, phh, M.white.lo)}
-            {px(x + 8, py, 32, 1, M.white.deep)}
-            {px(x + 8, py, 1, phh, M.white.deep)}
-            {px(x + 39, py, 1, phh, M.white.hi)}
-            {px(x + 8, py + phh - 1, 32, 1, M.white.hi)}
-          </g>
-        ))}
-        {px(x + 36, 100, 4, 5, M.steel.base)}
-        {px(x + 36, 100, 4, 1, M.steel.hi)}
-        {px(x + 39, 100, 1, 5, M.steel.lo)}
-        {px(x + 36, 105, 4, 2, M.steel.deep)}
-        {px(x + 35, 106, 6, 1, "#00000030")}
-      </DoorLeaf>
-      {px(x + 18, 70, 8, 8, M.brass.base)}
-      {px(x + 18, 70, 8, 1, M.brass.hi)}
-      {px(x + 25, 70, 1, 8, M.brass.lo)}
-      {plate === "drop" ? px(x + 20, 72, 4, 4, M.brass.deep) : px(x + 20, 72, 4, 2, M.brass.deep)}
-      {lit ? px(x + 4, 147, 40, 2, "#ffcf7a") : null}
-      {lit ? px(x + 4, 149, 40, 1, "#c9a86a") : null}
-      {px(x + 2, 148, 46, 3, C.shadow)}
-    </g>
-  );
+  tv: TvChannelPh;
+  radioOn: boolean;
+  kettleOn: boolean;
+  cooker: "off" | "open" | "on";
+  opening: string | null;
+  winOpen: boolean;
+  winSmoked: boolean;
+  fridgeOpen: boolean;
+  /** dirty dishes still showing — chore not done and the clock says morning */
+  dishes: boolean;
+  /** the bin bag has crested the rim */
+  binFull: boolean;
+  /** the bowls are full — done, or it is a mealtime phase */
+  fed: boolean;
+  /** the guitar is on its stand rather than put away */
+  guitarOut: boolean;
+  plantWatered: boolean;
+  weather: Weather;
+}
+
+function clampStage<T extends string>(v: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+}
+
+/**
+ * The chore flags fall back to what the clock says, exactly as the old room
+ * pretended they did — the difference is that the handlers now actually write
+ * them, so a washed sink stays washed.
+ */
+function state(world: WorldState, ph: Ph): StudioSt {
+  const chores = studioState(world);
+  const street = ((world as unknown as Record<string, unknown>).street ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const win = world.windows["window-kitchen"];
+  return {
+    lit: !!world.lights.studio,
+    tv: world.tv,
+    radioOn: world.radioOn,
+    kettleOn: world.kettleOn,
+    cooker: world.cookerState,
+    opening: world.doorOpening,
+    winOpen: !!win?.open,
+    winSmoked: !!win?.smoked,
+    fridgeOpen: world.fridgeOpen,
+    dishes: !chores.dishesDone && (ph === "dawn" || ph === "day"),
+    binFull: !chores.binEmptied && (ph === "dusk" || ph === "night"),
+    // breakfast happens off-screen at dawn; by dusk the bowls are empty and
+    // Gross is stirring until somebody actually feeds him
+    fed: chores.bowlsFilled || ph === "dawn",
+    guitarOut: chores.guitarOut || ph !== "night",
+    plantWatered: chores.plantWatered,
+    weather: clampStage(street.weather, WEATHERS, "clear"),
+  };
 }
 
 // ---------------------------------------------------------------------------
-// the yard, behind the glass
+// geometry — everything static built once, at module scope
 // ---------------------------------------------------------------------------
 
-function YardOutside({ ph }: { ph: Ph }) {
+/** Solid-colour tier builder for tints the kit's four letters don't carry. */
+function localTiers(build: (k: number) => Rect[], solid: string, strength = 1): LightTier[] {
+  return [
+    { d: pxPath(build(1)), fill: solid, o: 0.07 * strength },
+    { d: pxPath(build(0.78)), fill: solid, o: 0.08 * strength },
+    { d: pxPath(build(0.52)), fill: solid, o: 0.1 * strength },
+    { d: pxPath(build(0.3)), fill: solid, o: 0.12 * strength },
+  ];
+}
+
+// the sun through the balcony glass — steep and cool at dawn, the long
+// familiar diagonal by day, low and orange at dusk, gone at night
+const SHAFT: Record<Ph, LightTier[] | null> = {
+  dawn: tiers(
+    (k) =>
+      steppedQuad(
+        56,
+        552 + (1 - k) * 16,
+        656 - (1 - k) * 16,
+        H,
+        508 + (1 - k) * 18,
+        700 - (1 - k) * 18,
+        8,
+      ),
+    "c",
+    0.8,
+  ),
+  day: tiers(
+    (k) =>
+      steppedQuad(
+        56,
+        552 + (1 - k) * 18,
+        656 - (1 - k) * 18,
+        H,
+        434 + (1 - k) * 24,
+        622 - (1 - k) * 24,
+        8,
+      ),
+    "w",
+    1,
+  ),
+  dusk: tiers(
+    (k) =>
+      steppedQuad(
+        56,
+        552 + (1 - k) * 20,
+        656 - (1 - k) * 20,
+        H,
+        408 + (1 - k) * 30,
+        586 - (1 - k) * 30,
+        10,
+      ),
+    "e",
+    0.9,
+  ),
+  night: null,
+};
+
+// the kitchen window's north light — never a shaft, just a wash on the sink run
+const WINDOW_WASH = tiers(
+  (k) =>
+    steppedQuad(
+      52,
+      218 + (1 - k) * 14,
+      276 - (1 - k) * 14,
+      FLOOR + 12,
+      200 + (1 - k) * 20,
+      296 - (1 - k) * 20,
+      8,
+    ),
+  "c",
+  0.7,
+);
+const WINDOW_WASH_OP: Record<Ph, number> = { dawn: 0.55, day: 1, dusk: 0.45, night: 0.12 };
+
+// ceiling downlights: entry, kitchen ×2, the nook — cone + floor pool + lens
+const SPOT_XS = SPOTS;
+const SPOT_CONES = SPOT_XS.map((x) =>
+  tiers(
+    (k) => steppedCone(x, CEIL + 5, Math.round(4 * k), FLOOR, Math.round(24 * k), 8),
+    "w",
+    0.85,
+  ),
+);
+const SPOT_POOLS = SPOT_XS.map((x) =>
+  tiers((k) => steppedEllipse(x, FLOOR + 6, Math.round(28 * k), Math.round(7 * k), 2), "w", 0.7),
+);
+const SPOT_SOURCES = bulbPaths(SPOT_XS.map((x) => [x, CEIL + 3] as const));
+
+// the pendant over the kitchen table
+const PENDANT_POOL = tiers(
+  (k) => steppedCone(156, 80, Math.round(7 * k), 124, Math.round(26 * k), 6),
+  "w",
+  0.95,
+);
+const PENDANT_TABLE = tiers(
+  (k) => steppedEllipse(156, 122, Math.round(30 * k), Math.round(7 * k), 2),
+  "w",
+  0.8,
+);
+const PENDANT_SOURCE = bulbPaths([[156, 76]]);
+
+// the arc lamp leaning over the coffee table
+const ARC_POOL = tiers(
+  (k) => steppedCone(821, 84, Math.round(9 * k), 148, Math.round(34 * k), 8),
+  "w",
+  0.9,
+);
+const ARC_SOURCE = bulbPaths([[821, 80]]);
+
+// the small lamp on the side table
+const SIDELAMP_POOL = tiers(
+  (k) => steppedEllipse(905, 106, Math.round(30 * k), Math.round(22 * k), 2),
+  "w",
+  0.85,
+);
+const SIDELAMP_SOURCE = bulbPaths([[905, 104]]);
+
+// the LED strip under the wall units — two cool washes onto the worktop
+const UNDERCAB_L = tiers(
+  (k) =>
+    steppedQuad(
+      94,
+      120 + (1 - k) * 20,
+      208 - (1 - k) * 20,
+      124,
+      116 + (1 - k) * 20,
+      212 - (1 - k) * 20,
+      4,
+    ),
+  "c",
+  0.55,
+);
+const UNDERCAB_R = tiers(
+  (k) =>
+    steppedQuad(
+      94,
+      288 + (1 - k) * 18,
+      372 - (1 - k) * 18,
+      124,
+      284 + (1 - k) * 18,
+      376 - (1 - k) * 18,
+      4,
+    ),
+  "c",
+  0.55,
+);
+
+// appliance light — cold spill from the open fridge, ember from the oven,
+// the TV's temperature depends on what is on
+const FRIDGE_WASH = localTiers(
+  (k) =>
+    steppedQuad(
+      80,
+      368 + (1 - k) * 10,
+      386 - (1 - k) * 10,
+      FLOOR + 4,
+      344 + (1 - k) * 20,
+      396 - (1 - k) * 20,
+      8,
+    ),
+  K.ledCool,
+  1.8,
+);
+const FRIDGE_FLOOR = localTiers(
+  (k) => steppedEllipse(372, FLOOR + 2, Math.round(30 * k), Math.round(7 * k), 2),
+  K.ledCool,
+  1.6,
+);
+const OVEN_GLOW = tiers(
+  (k) => steppedEllipse(322, 134, Math.round(26 * k), Math.round(16 * k), 2),
+  "e",
+  1.8,
+);
+const OVEN_OPEN_GLOW = tiers(
+  (k) => steppedEllipse(322, 140, Math.round(30 * k), Math.round(12 * k), 2),
+  "e",
+  1.6,
+);
+const TV_GLOW: Record<Exclude<TvChannelPh, "off">, LightTier[]> = {
+  film: localTiers(
+    (k) => steppedEllipse(751, 98, Math.round(52 * k), Math.round(34 * k), 2),
+    K.tvFilm,
+    2.2,
+  ),
+  football: localTiers(
+    (k) => steppedEllipse(751, 98, Math.round(52 * k), Math.round(34 * k), 2),
+    K.tvBall,
+    2.2,
+  ),
+  static: localTiers(
+    (k) => steppedEllipse(751, 98, Math.round(52 * k), Math.round(34 * k), 2),
+    K.tvStatic,
+    2.2,
+  ),
+};
+const TV_FLOOR = localTiers(
+  (k) => steppedEllipse(751, FLOOR + 2, Math.round(40 * k), Math.round(8 * k), 2),
+  K.tvStatic,
+  2,
+);
+const LAPTOP_GLOW = tiers(
+  (k) => steppedEllipse(809, 122, Math.round(16 * k), Math.round(10 * k), 2),
+  "c",
+  1.1,
+);
+
+// dust in the shaft: one path, one drift (plus a nearer, faster set in Front)
+const MOTES_D = pxPath([
+  [560, 120, 1, 1],
+  [578, 138, 1, 1],
+  [596, 108, 2, 2],
+  [612, 148, 1, 1],
+  [630, 126, 1, 1],
+  [648, 156, 1, 1],
+  [571, 96, 1, 1],
+  [605, 132, 1, 1],
+]);
+const MOTES_FRONT_D = pxPath([
+  [520, 130, 2, 2],
+  [590, 160, 2, 2],
+  [660, 120, 2, 2],
+]);
+
+// ambient occlusion — one set per plane, rendered once at the plane's end
+const WALL_AO = aoPaths([
+  [116, UNIT_BOT, 94], // left wall units onto the splashback
+  [284, UNIT_BOT, 92], // right run
+  [306, 78, 34], // the hood canopy
+  [210, SILL + 4, 74], // window sill
+  [112, 120, 264], // worktop lip onto the carcass
+  [512, 92, 22], // the nook prints
+  [512, 142, 24], // radiator onto the skirting
+  [728, 112, 46], // the TV onto the wall
+  [846, 102, 44], // the under-flag shelf
+  [66, 58, 40], // the hall wardrobe crown
+  [676, 90, 44], // the bookshelf crown
+]);
+const FLOOR_CONTACT = contactPaths([
+  [14, 62, CY], // shoe bench
+  [126, 62, CY], // kitchen table + stools
+  [344, 18, CY], // pedal bin
+  [377, 24, CY], // fridge
+  [514, 22, CY], // monstera pot
+  [532, 18, CY], // the robot dock
+  [560, 14, CY], // food sack
+  [576, 36, CY], // bowls mat
+  [616, 48, CY], // the dog bed
+  [712, 88, CY], // media unit
+  [766, 20, CY], // guitar stand
+  [780, 18, CY], // arc lamp base
+  [792, 64, CY], // coffee table
+  [816, 102, CY], // sofa
+  [894, 22, CY], // side table
+]);
+
+// bevel sets for the big fixed boxes
+const FRONTDOOR_LEAF = bevelPaths([
+  [16, 70, 40, 80],
+  [20, 76, 32, 30],
+  [20, 112, 32, 32],
+]);
+const WARDROBE_SET = bevelPaths([[66, 56, 32, 92]]);
+const WINDOW_FRAME = bevelPaths([[210, 46, 74, 6]]);
+const BATH_LEAF = bevelPaths([
+  [414, LEAF_TOP, 36, 78],
+  [418, 78, 28, 28],
+  [418, 112, 28, 32],
+]);
+const STUDY_LEAF = bevelPaths([
+  [470, LEAF_TOP, 36, 78],
+  [474, 78, 28, 28],
+  [474, 112, 28, 32],
+]);
+const RADIATOR_SET = bevelPaths([[512, 118, 24, 26]]);
+const FRIDGE_SET = bevelPaths([
+  [377, 78, 24, 22],
+  [377, 102, 24, 44],
+]);
+const HOOD_SET = bevelPaths([
+  [304, 74, 38, 5],
+  [316, 48, 14, 26],
+]);
+const MICRO_SET = bevelPaths([[344, 70, 30, 22]]);
+const TABLE_SET = bevelPaths([[126, 121, 60, 5]]);
+const MEDIA_SET = bevelPaths([[712, 128, 88, 20]]);
+const CTABLE_SET = bevelPaths([[792, 132, 64, 4]]);
+const SOFA_SET = bevelPaths([
+  [816, 116, 16, 32], // left arm
+  [902, 116, 16, 32], // right arm
+  [830, 108, 74, 10], // back rail
+]);
+const SIDETABLE_SET = bevelPaths([[894, 124, 22, 4]]);
+const SHELF_SET = bevelPaths([[676, 90, 44, 58]]);
+const FLAGSHELF_SET = bevelPaths([[846, 96, 44, 4]]);
+
+// the floor, in a handful of paths
+const FLOOR_TILE = (() => {
+  const rows: Rect[] = [];
+  for (let y = 158; y < H; y += 12) rows.push([0, y, 406, 1]);
+  const cols: Rect[] = [];
+  for (let x = 13; x < 406; x += 26) cols.push([x, FLOOR, 1, H - FLOOR]);
+  return { rows: pxPath(rows), cols: pxPath(cols) };
+})();
+const FLOOR_BOARDS = (() => {
+  const seams: Rect[] = [];
+  for (const y of [158, 166, 174]) seams.push([406, y, W - 406, 1]);
+  const joints = pxPath([
+    [470, 150, 1, 8],
+    [548, 158, 1, 8],
+    [618, 150, 1, 8],
+    [694, 166, 1, 8],
+    [742, 150, 1, 8],
+    [858, 158, 1, 8],
+  ]);
+  return { seams: pxPath(seams), joints };
+})();
+
+const VIG = vignettePaths(W, H);
+
+// the opposite block's windows: a grid, and the handful that are lit at night
+const YARD_WINDOWS = (() => {
+  const grid: Rect[] = [];
+  for (let fx = 30; fx < W; fx += 74) {
+    for (const fy of [76, 104]) grid.push([fx, fy, 10, 14]);
+  }
+  return pxPath(grid);
+})();
+const YARD_LIT = pxPath([
+  [104, 104, 10, 14],
+  [326, 76, 10, 14],
+  [400, 104, 10, 14],
+  [622, 104, 10, 14],
+  [696, 76, 10, 14],
+  [844, 104, 10, 14],
+]);
+/** The two windows that punch through the balcony glazing after dark. */
+const YARD_LIT_NEAR = pxPath([
+  [578, 76, 10, 14],
+  [622, 104, 10, 14],
+]);
+
+/* === PLANE 1 — farBackground: the courtyard ==================================== */
+
+function Yard({ ph, rain }: { ph: Ph; rain: boolean }) {
+  const sky = rain ? K.skyRain[ph] : K.sky[ph];
   const night = ph === "night";
-  const dusk = ph === "dusk";
-  const sky = night ? "#1b2430" : dusk ? "#d09566" : ph === "dawn" ? "#c0bcd4" : "#a8c2d4";
-  const skyLo = night ? "#28313f" : dusk ? "#e0ab78" : ph === "dawn" ? "#cfc9dc" : "#bcd2e0";
-  const block = night ? "#3a4048" : dusk ? "#b89a7e" : "#9aa2ac";
-  const blockHi = night ? "#454c56" : dusk ? "#c8a88a" : "#aab2bc";
-  const blockLo = night ? "#2f343b" : dusk ? "#a48870" : "#8a929c";
   return (
     <g>
-      <Defs />
-      {px(150, 30, 620, 130, sky)}
-      {px(150, 30, 620, 26, skyLo)}
-      {[0, 1, 2, 3].map((i) => (
-        <rect
-          key={`sk${i}`}
-          x={150}
-          y={30 + i * 4}
-          width={620}
-          height={4}
-          fill="#2a3240"
-          opacity={0.05 * (4 - i)}
-        />
-      ))}
-      {px(180, 46, 180, 108, block)}
-      {px(180, 46, 180, 2, blockHi)}
-      {px(358, 46, 2, 108, blockLo)}
-      {px(420, 40, 300, 116, block)}
-      {px(420, 40, 300, 2, blockHi)}
-      {px(718, 40, 2, 116, blockLo)}
-      <rect x={180} y={46} width={180} height={108} fill="url(#st-plaster)" />
-      <rect x={420} y={40} width={300} height={116} fill="url(#st-plaster)" />
-      {[62, 86, 110].map((y) => (
-        <g key={`row${y}`}>
-          {px(184, y, 172, 3, blockLo)}
-          {px(184, y, 172, 1, blockHi)}
-          {px(424, y, 292, 3, blockLo)}
-          {px(424, y, 292, 1, blockHi)}
-        </g>
-      ))}
-      {[
-        [196, 68],
-        [232, 68],
-        [268, 92],
-        [304, 68],
-        [440, 52],
-        [484, 76],
-        [530, 52],
-        [576, 100],
-        [624, 76],
-        [672, 52],
-      ].map(([wx, wy], i) => (
-        <g key={`w${wx}${wy}`}>
-          {px(wx - 1, wy - 1, 18, 18, blockLo)}
-          {px(wx, wy, 16, 16, night ? "#1b2029" : "#7d94a4")}
-          <AO x={wx} y={wy} w={16} h={4} from="top" op={0.3} />
-          {night && i % 3 !== 1 ? (
-            <g>
-              <rect x={wx + 2} y={wy + 2} width={12} height={12} fill={C.warm}>
-                <animate
-                  attributeName="opacity"
-                  values="1;1;0.2;1"
-                  dur={`${50 + i * 11}s`}
-                  repeatCount="indefinite"
-                />
-              </rect>
-              <rect x={wx - 1} y={wy + 16} width={18} height={2} fill={C.warm} opacity={0.2} />
-              <rect x={wx + 2} y={wy + 18} width={12} height={2} fill={C.warm} opacity={0.1} />
-            </g>
-          ) : null}
-          {!night ? px(wx + 2, wy + 2, 5, 12, C.linen) : null}
-          {!night ? px(wx, wy + 16, 17, 1, blockHi) : null}
-        </g>
-      ))}
-      <g>
-        {px(240, 84, 10, 14, C.linen)}
-        {px(240, 84, 10, 2, "#f4f0e4")}
-        {px(254, 86, 8, 12, "#7c8ba3")}
+      {/* the defs live in the bottom-most plane of the scene and nowhere else */}
+      <SharedDefs />
+      {px(0, 0, W, 96, sky)}
+      {px(0, 34, W, 2, rain ? "#00000018" : "#ffffff14")}
+      {/* the block opposite, full width — it used to stop at the glass */}
+      {px(0, 64, W, 86, K.block[ph])}
+      {px(0, 64, W, 2, night ? "#232c3a" : "#ffffff22")}
+      <path d={YARD_WINDOWS} fill={night ? "#10141c" : "#00000026"} />
+      {night ? <path d={YARD_LIT_NEAR} fill={K.blockLit} opacity={1} /> : null}
+      {night ? (
+        <path d={YARD_LIT} fill={K.blockLit} opacity={0.8}>
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="0.8;0.8;0.55;0.8"
+            dur="7s"
+            begin="-3s"
+            repeatCount="indefinite"
+          />
+        </path>
+      ) : null}
+      {/* two birches in the yard, out by the bins */}
+      <g style={{ transformOrigin: "258px 140px" }}>
         <animateTransform
           attributeName="transform"
           type="rotate"
-          values="-1 247 84;1.5 247 84;-1 247 84"
-          dur="6s"
+          values="0 258 140;-1 258 140;0 258 140;1 258 140;0 258 140"
+          dur="9s"
+          begin="-2s"
           repeatCount="indefinite"
         />
+        {px(255, 92, 3, 48, "#c8c2b4")}
+        {px(244, 78, 26, 18, night ? "#28372c" : "#5e7a52")}
+        {px(248, 72, 16, 8, night ? "#2e3f32" : "#6b8a5e")}
       </g>
-      {[
-        { x: 366, y: 104, w: 46, h: 30 },
-        { x: 700, y: 108, w: 40, h: 26 },
-      ].map((t) => (
-        <g key={t.x}>
-          {px(t.x, t.y, t.w, t.h, night ? "#2d3a30" : "#4a6150")}
-          {px(t.x + 4, t.y, t.w - 12, t.h - 8, night ? "#35443a" : "#556e59")}
-          {px(t.x + 10, t.y - 12, t.w - 20, 16, night ? "#35443a" : "#5f7a63")}
-          {px(t.x + 18, t.y - 18, 12, 8, night ? "#3b4b40" : "#6a8a6e")}
-          {px(t.x + 20, t.y - 16, 6, 3, night ? "#425446" : "#78997c")}
-          {px(t.x + t.w / 2 - 2, t.y + t.h, 4, 20, "#4a4438")}
-          {px(t.x + t.w / 2 - 2, t.y + t.h, 1, 20, "#5d5648")}
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            values={`0 ${t.x + t.w / 2} ${t.y + t.h};0.9 ${t.x + t.w / 2} ${t.y + t.h};-0.9 ${t.x + t.w / 2} ${t.y + t.h};0 ${t.x + t.w / 2} ${t.y + t.h}`}
-            dur={`${9 + t.x / 200}s`}
-            repeatCount="indefinite"
-          />
-        </g>
-      ))}
-      {px(150, 134, 620, 26, night ? "#3a4038" : "#6f7a5f")}
-      {px(150, 134, 620, 2, night ? "#454b42" : "#7d886c")}
-      <rect x={150} y={134} width={620} height={26} fill="url(#st-grain)" />
-      {px(150, 146, 620, 6, night ? "#4a4a46" : "#9d9a92")}
-      {px(150, 146, 620, 1, night ? "#56564f" : "#adaaa2")}
-      {px(490, 96, 3, 44, "#5d6266")}
-      {px(490, 96, 1, 44, "#7d8288")}
-      {px(484, 92, 15, 5, night ? C.warm : "#8a8f96")}
-      {night ? (
-        <PixelGlow id="yardlamp" cx={491} cy={118} rx={34} ry={38} color={C.warm} op={0.2} q={4} />
-      ) : null}
       <g>
-        {px(0, 60, 4, 2, night ? "#2b3038" : "#4a5058")}
-        {px(3, 59, 3, 1, night ? "#2b3038" : "#4a5058")}
         <animateTransform
           attributeName="transform"
-          type="translate"
-          values="140 0;140 0;760 -22;760 -22"
-          keyTimes="0;0.66;0.84;1"
-          dur="52s"
+          type="rotate"
+          values="0 622 140;1 622 140;0 622 140;-1 622 140;0 622 140"
+          dur="11s"
+          begin="-6s"
           repeatCount="indefinite"
         />
+        {px(620, 96, 3, 44, "#c8c2b4")}
+        {px(608, 80, 28, 20, night ? "#28372c" : "#5e7a52")}
       </g>
-      {px(534, 118, 148, 34, night ? "#5a5750" : "#a5a29a")}
-      {px(534, 118, 148, 2, night ? "#6a675f" : "#b5b2aa")}
-      <rect x={534} y={118} width={148} height={34} fill="url(#st-grain)" />
-      <AO x={534} y={118} w={148} h={4} from="top" op={0.18} />
-      {px(534, 114, 148, 3, "#6d7278")}
-      {px(534, 114, 148, 1, "#8a8f96")}
-      {px(556, 100, 40, 16, "#8a5a3a")}
-      {px(556, 100, 40, 2, "#9a6a46")}
-      {px(594, 100, 2, 16, "#6d472d")}
-      {px(560, 92, 10, 9, night ? "#3d573d" : "#e8a445")}
-      {px(574, 90, 10, 11, night ? "#3d573d" : "#e8c445")}
-      {px(586, 94, 8, 7, night ? "#33503a" : "#d9832f")}
-    </g>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// shell
-// ---------------------------------------------------------------------------
-
-function Ceiling({ lightOn, amb }: { lightOn: boolean; amb: Ambient }) {
-  const gain = lightOn ? amb.lampGain : 0;
-  return (
-    <g>
-      {px(0, 0, W, CEIL, "#eae7de")}
-      {px(0, 0, W, 2, "#f4f1e8")}
-      <rect x={0} y={0} width={W} height={CEIL} fill="url(#st-plaster)" />
-      {[0, 1, 2, 3, 4].map((i) => (
-        <rect
-          key={`cf${i}`}
-          x={0}
-          y={CEIL - 14 + i * 3}
-          width={W}
-          height={3}
-          fill="#000000"
-          opacity={0.02 + i * 0.014}
-        />
-      ))}
-      {px(0, CEIL - 3, W, 1, M.white.lo)}
-      {px(0, CEIL - 2, W, 2, "#c4c0b3")}
-      <AO x={0} y={CEIL} w={W} h={4} from="top" op={0.2} />
-      {px(232, 8, 26, 1, "#dcd8cd")}
-      {px(258, 9, 16, 1, "#dcd8cd")}
-      {px(240, 9, 1, 5, "#dcd8cd")}
-      {[168, 236, 304, 372].map((x) => (
-        <g key={`sp${x}`}>
-          {px(x - 6, CEIL - 7, 12, 5, "#cec9be")}
-          {px(x - 6, CEIL - 7, 12, 1, "#ded9cf")}
-          {px(x - 4, CEIL - 5, 8, 3, lightOn ? "#fff8e0" : "#b3afa3")}
-          {lightOn ? (
-            <g>
-              <rect
-                x={x - 8}
-                y={CEIL - 2}
-                width={16}
-                height={2}
-                fill="#fff3cf"
-                opacity={0.4 * gain + 0.15}
-              />
-              <rect
-                x={x - 5}
-                y={CEIL}
-                width={10}
-                height={2}
-                fill="#fff3cf"
-                opacity={0.24 * gain + 0.08}
-              />
-            </g>
-          ) : null}
-        </g>
-      ))}
-      {px(716, CEIL - 6, 20, 4, "#dcd8cd")}
-      {px(716, CEIL - 6, 20, 1, "#e8e5db")}
-      {px(724, CEIL, 3, 16, "#2e3033")}
-      {px(724, CEIL, 1, 16, "#454850")}
-      {px(710, CEIL + 16, 31, 3, "#2e3033")}
-      {px(710, CEIL + 16, 31, 1, "#454850")}
-      {px(713, CEIL + 19, 25, 7, lightOn ? C.warm : "#8f8468")}
-      {px(713, CEIL + 19, 25, 1, lightOn ? "#ffeec0" : "#9d9578")}
-      {px(716, CEIL + 26, 19, 2, lightOn ? "#ffe6b0" : "#7d7460")}
-      {gain > 0.2 ? (
+      {/* the yard lamp comes on with the streetlights */}
+      {px(700, 96, 2, 44, "#3a3e44")}
+      {px(696, 92, 10, 5, "#4a4e55")}
+      {ph === "dusk" || night ? (
         <g>
-          <rect x={700} y={CEIL - 4} width={52} height={4} fill="#ffe6a8" opacity={0.18 * gain} />
-          <rect x={690} y={CEIL - 8} width={72} height={4} fill="#ffe6a8" opacity={0.09 * gain} />
+          {px(698, 94, 6, 2, K.warmHi)}
+          <path d={pxPath(steppedEllipse(701, 118, 16, 22, 2))} fill={K.warm} opacity={0.12} />
         </g>
       ) : null}
-      {px(468, CEIL - 8, 14, 6, "#e2e0da")}
-      {px(468, CEIL - 8, 14, 1, "#f0eee8")}
-      <rect x={472} y={CEIL - 6} width={2} height={2} fill="#ff5050">
-        <animate attributeName="opacity" values="0;0;1;0;0" dur="9s" repeatCount="indefinite" />
-      </rect>
-      {px(596, CEIL - 5, 4, 3, M.steel.lo)}
+      {/* one crow crossing the yard, unhurried */}
+      {!night ? (
+        <g>
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0;-960 -14"
+            dur="52s"
+            begin="-20s"
+            repeatCount="indefinite"
+          />
+          {px(912, 34, 4, 1, "#2a2d33")}
+          {px(913, 33, 2, 1, "#2a2d33")}
+        </g>
+      ) : null}
+      {/* rain over the yard — two sheets, offset */}
+      {rain ? (
+        <g opacity={0.45}>
+          <path d={pxPath(repeat(24, 40, [4, 0, 1, 8] as Rect))} fill="#c8d4de">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              values="0 -20;6 160"
+              dur="1.1s"
+              repeatCount="indefinite"
+            />
+          </path>
+          <path d={pxPath(repeat(24, 40, [22, 0, 1, 7] as Rect))} fill="#b6c4d0">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              values="0 -80;5 100"
+              dur="0.9s"
+              begin="-0.4s"
+              repeatCount="indefinite"
+            />
+          </path>
+        </g>
+      ) : null}
     </g>
   );
 }
 
-function Walls({ ph, lightOn }: { ph: Ph; lightOn: boolean }) {
-  const night = ph === "night";
+/* === PLANE 2 — middleBackground: the shell of the room ========================= */
+
+function Ceiling({ ph }: { ph: Ph }) {
   return (
     <g>
-      {px(0, CEIL, 112, 104, M.greige.base)}
-      {stripes(112, CEIL, 104, 70, M.greige.mid, 0)}
-      <rect x={0} y={CEIL} width={112} height={104} fill="url(#st-plaster)" />
-      <AO x={0} y={CEIL} w={112} h={6} from="top" op={0.2} />
-      {px(108, CEIL, 4, 104, M.greige.deep)}
-      {px(108, CEIL, 1, 104, M.greige.lo)}
-      {[
-        [112, CEIL, 104, 104],
-        [278, CEIL, 126, 104],
-        [216, CEIL, 62, 12],
-        [216, 106, 62, 44],
-      ].map(([wx, wy, ww, wh]) => (
-        <g key={`kw${wx}${wy}`}>
-          {px(wx, wy, ww, wh, "#e4e1d8")}
-          <rect x={wx} y={wy} width={ww} height={wh} fill="url(#st-plaster)" />
+      {px(0, 0, W, CEIL, KWALL[ph].hi)}
+      <rect x={0} y={0} width={W} height={CEIL} fill="url(#px-roller)" opacity={0.3} />
+      {/* stepped falloff instead of a gradient */}
+      <path d={pxPath([[0, 0, W, 8]])} fill={dth("n", "12")} />
+      <path d={pxPath([[0, 8, W, 8]])} fill={dth("n", "06")} />
+      {/* cornice */}
+      {px(0, CEIL - 4, W, 2, KWALL[ph].base)}
+      {px(0, CEIL - 2, W, 2, KWALL[ph].lo)}
+      {/* the settlement crack over the living corner, painted over once already */}
+      <path
+        d={pxPath([
+          [688, 0, 1, 6],
+          [689, 6, 1, 4],
+        ])}
+        fill={KWALL[ph].lo}
+        opacity={0.4}
+      />
+      {/* downlight trims */}
+      {SPOT_XS.map((x) => (
+        <g key={x}>
+          {px(x - 4, CEIL - 2, 8, 2, "#4a4e55")}
+          {px(x - 3, CEIL, 6, 2, "#2e3238")}
         </g>
       ))}
-      <AO x={112} y={CEIL} w={292} h={6} from="top" op={0.18} />
-      {[
-        [112, 104],
-        [278, 126],
-      ].map(([tx, tw]) => (
-        <g key={`tl${tx}`}>
-          {px(tx, 78, tw, 34, M.tile.base)}
-          {stripes(tw, 78, 34, 40, M.tile.mid, tx)}
-          {px(tx, 78, tw, 1, M.tile.hi)}
-          {px(tx, 94, tw, 1, M.tile.lo)}
-          {px(tx, 95, tw, 1, M.tile.hi)}
-          {px(tx, 111, tw, 1, M.tile.deep)}
-          <rect x={tx} y={78} width={tw} height={34} fill="url(#st-grain)" />
-          <AO x={tx} y={78} w={tw} h={3} from="top" op={0.16} />
-        </g>
-      ))}
-      {[
-        [404, CEIL, 130, 104],
-        [672, CEIL, 248, 104],
-        [534, CEIL, 138, 8],
-      ].map(([wx, wy, ww, wh]) => (
-        <g key={`cw${wx}${wy}`}>
-          {px(wx, wy, ww, wh, M.clay.base)}
-          {stripes(ww, wy, wh, 96, M.clay.mid, wx)}
-          <rect x={wx} y={wy} width={ww} height={wh} fill="url(#st-plaster)" />
-        </g>
-      ))}
-      <AO x={404} y={CEIL} w={516} h={6} from="top" op={0.18} />
-      {px(404, CEIL, 2, 104, M.clay.deep)}
-      {px(406, CEIL, 1, 104, M.clay.lo)}
-      {px(404, CEIL, 130, 1, M.clay.hi)}
-      {px(672, CEIL, 248, 1, M.clay.hi)}
-      {px(842, 96, 44, 10, M.clay.lo)}
-      {px(842, 96, 44, 1, M.clay.mid)}
-      <AO x={0} y={140} w={W} h={6} from="bottom" op={0.16} />
-      {px(0, 146, W, 4, "#4a4438")}
-      {px(0, 146, W, 1, "#66604f")}
-      {px(0, 149, W, 1, "#332f26")}
-      {px(560, 146, 100, 4, "#3f3a2f")}
-      <Bevel x={116} y={90} w={10} h={14} mat={M.white} />
-      {px(119, 94, 4, 6, lightOn ? M.brass.base : "#8f8a7c")}
-      {px(119, 94, 4, 1, lightOn ? M.brass.hi : "#9c978a")}
-      {px(115, 105, 12, 1, "#00000026")}
-      <Bevel x={115} y={128} w={12} h={12} mat={M.white} />
-      {px(118, 131, 6, 6, M.white.lo)}
-      {px(119, 132, 2, 2, "#8a8d92")}
-      {px(122, 132, 2, 2, "#8a8d92")}
-      {night ? <rect x={0} y={CEIL} width={W} height={104} fill="#141d2a" opacity={0.12} /> : null}
+      {/* smoke alarm, blinking its one red eye every nine seconds */}
+      {px(464, 40, 10, 4, "#e2ded2")}
+      {px(466, 44, 6, 2, "#c9c5b8")}
+      <path d={pxPath([[471, 42, 1, 1]])} fill={K.red}>
+        <animate
+          attributeName="opacity"
+          calcMode="discrete"
+          values="0;0;0;1;0"
+          dur="9s"
+          begin="-4s"
+          repeatCount="indefinite"
+        />
+      </path>
+      {/* the pendant drop over the kitchen table */}
+      {px(155, CEIL, 2, 22, "#3a3e44")}
     </g>
   );
 }
 
-function KitchenWindow({
-  ph,
-  open,
-  smoked,
-  amb,
-}: {
-  ph: Ph;
-  open: boolean;
-  smoked: boolean;
-  amb: Ambient;
-}) {
-  const night = ph === "night";
-  const glass =
-    ph === "night"
-      ? C.glassNight
-      : ph === "dusk"
-        ? C.glassDusk
-        : ph === "dawn"
-          ? C.glassDawn
-          : C.glassDay;
+function Walls({ ph }: { ph: Ph }) {
   return (
     <g>
-      {px(212, 50, 70, 60, M.white.lo)}
-      {px(212, 50, 70, 1, M.white.hi)}
-      <AO x={216} y={54} w={62} h={5} from="top" op={0.3} />
-      <AO x={216} y={54} w={5} h={52} from="left" op={0.24} />
-      <Bevel x={216} y={54} w={62} h={52} mat={M.white} flat />
-      {px(216, 54, 62, 2, M.white.hi)}
-      {px(276, 54, 2, 52, M.white.deep)}
-      {px(220, 58, 54, night ? 20 : 12, M.white.base)}
-      {px(220, 58, 54, 1, M.white.hi)}
-      {px(220, 58 + (night ? 18 : 10), 54, 2, M.white.lo)}
-      {[24, 32, 40, 48].map((o) => px(220 + o, 58, 1, night ? 20 : 12, M.white.mid, `bl${o}`))}
-      <rect x={220} y={58} width={26} height={44} fill={glass} opacity={night ? 0.66 : 0.34} />
-      <GlassSheen id="kw1" x={236} y={60} h={40} w={8} op={0.14} />
+      {/* three fields: greige entry, kitchen off-white, clay living */}
+      {px(0, CEIL, 112, FLOOR - CEIL, GREIGE[ph].base)}
+      <rect x={0} y={CEIL} width={112} height={FLOOR - CEIL} fill="url(#px-roller)" opacity={0.5} />
+      {px(108, CEIL, 4, FLOOR - CEIL, GREIGE[ph].deep)}
+      {/* the kitchen field is rails around the window's hole — the yard shows through */}
+      <path
+        d={pxPath([
+          [112, CEIL, 292, 6],
+          [112, 52, 104, 52],
+          [278, 52, 126, 52],
+          [112, 104, 292, FLOOR - 104],
+        ])}
+        fill={KWALL[ph].base}
+      />
+      <rect
+        x={112}
+        y={CEIL}
+        width={104}
+        height={FLOOR - CEIL}
+        fill="url(#px-stucco)"
+        opacity={0.4}
+      />
+      <rect
+        x={278}
+        y={CEIL}
+        width={126}
+        height={FLOOR - CEIL}
+        fill="url(#px-stucco)"
+        opacity={0.4}
+      />
+      {px(404, CEIL, 2, FLOOR - CEIL, CLAY[ph].deep)}
+      {/* the clay field likewise skips the balcony opening */}
+      <path
+        d={pxPath([
+          [406, CEIL, 122, FLOOR - CEIL],
+          [680, CEIL, 240, FLOOR - CEIL],
+          [528, CEIL, 152, 8],
+        ])}
+        fill={CLAY[ph].base}
+      />
+      <rect
+        x={406}
+        y={CEIL}
+        width={122}
+        height={FLOOR - CEIL}
+        fill="url(#px-roller)"
+        opacity={0.55}
+      />
+      <rect
+        x={680}
+        y={CEIL}
+        width={240}
+        height={FLOOR - CEIL}
+        fill="url(#px-roller)"
+        opacity={0.55}
+      />
+      {/* the splashback tile, two runs either side of the window */}
+      {px(112, UNIT_BOT, 100, WORKTOP - UNIT_BOT, TILE[ph].base)}
+      {px(284, UNIT_BOT, 120, WORKTOP - UNIT_BOT, TILE[ph].base)}
+      <path
+        d={pxPath([
+          [112, 100, 100, 1],
+          [284, 100, 120, 1],
+          [112, 108, 100, 1],
+          [284, 108, 120, 1],
+        ])}
+        fill={TILE[ph].lo}
+        opacity={0.7}
+      />
+      <path
+        d={pxPath([
+          [140, UNIT_BOT, 1, 23],
+          [168, UNIT_BOT, 1, 23],
+          [196, UNIT_BOT, 1, 23],
+          [312, UNIT_BOT, 1, 23],
+          [340, UNIT_BOT, 1, 23],
+          [368, UNIT_BOT, 1, 23],
+        ])}
+        fill={TILE[ph].lo}
+        opacity={0.7}
+      />
+      {/* skirting, all the way round */}
+      {px(0, SKIRT, W, 4, KWALL[ph].mid)}
+      {px(0, SKIRT, W, 1, KWALL[ph].hi)}
+      {px(0, SKIRT + 4, W, 2, KWALL[ph].deep)}
+      {/* scuffs: the sofa leg, years of the same chair */}
+      {px(836, SKIRT, 10, 4, CLAY[ph].deep)}
+      {px(190, SKIRT, 8, 4, KWALL[ph].deep)}
+      {/* the ghost where a poster hung through two tenancies, above the TV */}
+      {px(756, 56, 30, 22, CLAY[ph].hi)}
+      <path
+        d={pxPath([
+          [756, 56, 30, 1],
+          [756, 77, 30, 1],
+          [756, 56, 1, 22],
+          [785, 56, 1, 22],
+        ])}
+        fill="#e8d2a8"
+        opacity={0.6}
+      />
+      {/* two screw holes, and the tape corners that outlived the poster */}
+      <path
+        d={pxPath([
+          [760, 60, 1, 1],
+          [781, 60, 1, 1],
+        ])}
+        fill={CLAY[ph].deep}
+      />
+      <path
+        d={pxPath([
+          [756, 56, 3, 2],
+          [783, 56, 3, 2],
+          [756, 75, 3, 2],
+        ])}
+        fill="#d9cdb0"
+        opacity={0.8}
+      />
+      {px(770, 53, 2, 2, M.brass.lo)}
+      {/* sockets and their day jobs */}
+      {px(100, 126, 8, 8, KWALL[ph].hi)}
+      {px(103, 129, 2, 2, KWALL[ph].deep)}
+      {px(166, 98, 12, 8, KWALL[ph].hi)}
+      <path
+        d={pxPath([
+          [169, 101, 2, 2],
+          [173, 101, 2, 2],
+        ])}
+        fill={KWALL[ph].deep}
+      />
+      {px(456, 126, 8, 8, CLAY[ph].hi)}
+      {px(459, 129, 2, 2, CLAY[ph].deep)}
+      {px(782, 126, 8, 8, CLAY[ph].hi)}
+      {px(785, 129, 2, 2, CLAY[ph].deep)}
+      <AOSet set={WALL_AO} op={0.8} />
+    </g>
+  );
+}
+
+function Entry({ ph, opening, lit }: { ph: Ph; opening: string | null; lit: boolean }) {
+  const open = opening === "frontdoor";
+  return (
+    <g>
+      {/* the front door: steel frame, anthracite leaf, two locks like everyone's */}
+      {px(10, 64, 52, 86, STEEL[ph].lo)}
+      {px(12, 66, 48, 84, STEEL[ph].base)}
       {open ? (
         <g>
-          <g style={{ transform: "scaleX(0.45)", transformOrigin: "248px 58px" }}>
-            <rect x={248} y={58} width={26} height={44} fill={glass} opacity={0.75} />
-            {px(248, 58, 26, 2, M.white.base)}
-            {px(270, 78, 3, 8, M.steel.base)}
-          </g>
-          <rect x={246} y={58} width={4} height={44} fill="#f4f0e4" opacity={0.9}>
-            <animate attributeName="width" values="4;7;4" dur="3.2s" repeatCount="indefinite" />
-          </rect>
+          {px(16, 70, 40, 80, "#14161a")}
+          {px(16, 70, 40, 8, "#1d2027")}
+          {/* the corridor's own light leaking in */}
+          <path d={pxPath([[18, 74, 36, 74]])} fill={dth("w", "12")} opacity={0.4} />
         </g>
-      ) : (
-        <g>
-          <rect x={248} y={58} width={26} height={44} fill={glass} opacity={night ? 0.66 : 0.34} />
-          <GlassSheen id="kw2" x={264} y={60} h={40} w={8} op={0.11} />
-          {px(268, 78, 3, 8, M.steel.base)}
-          {px(268, 78, 3, 1, M.steel.hi)}
-        </g>
-      )}
-      {px(245, 58, 4, 44, M.white.base)}
-      {px(245, 58, 1, 44, M.white.hi)}
-      {px(248, 58, 1, 44, M.white.deep)}
-      {amb.skyGain > 0.15 ? (
-        <PixelWash
-          id="kwlight"
-          x={214}
-          y={104}
-          w={66}
-          h={12}
-          color={ph === "dusk" ? "#ffb87a" : "#e8f0ff"}
-          op={0.2 * amb.skyGain}
-          q={3}
-        />
       ) : null}
-      {open && smoked
-        ? [0, 1.4].map((d) => (
-            <circle key={d} cx={260} cy={62} r={2} fill="#c9c4b6" opacity={0}>
-              <animate
-                attributeName="opacity"
-                values="0;0.4;0"
-                begin={`${d}s`}
-                dur="3.4s"
-                repeatCount="indefinite"
-              />
-              <animate
-                attributeName="cy"
-                values="62;48"
-                begin={`${d}s`}
-                dur="3.4s"
-                repeatCount="indefinite"
-              />
-              <animate
-                attributeName="r"
-                values="2;6"
-                begin={`${d}s`}
-                dur="3.4s"
-                repeatCount="indefinite"
-              />
-            </circle>
-          ))
-        : null}
-      {px(212, 104, 70, 4, "#dcd9d0")}
-      {px(212, 104, 70, 1, "#eceae2")}
-      {px(212, 107, 70, 1, "#b8b5ac")}
-      <AO x={212} y={108} w={70} h={4} from="top" op={0.26} />
-      {px(220, 96, 8, 8, "#a8613f")}
-      {px(220, 96, 8, 1, "#c07a52")}
-      {px(227, 96, 1, 8, "#8a4e33")}
-      {px(219, 103, 10, 1, "#00000033")}
-      {px(222, 90, 5, 7, M.leaf.base)}
-      {px(222, 90, 2, 7, M.leaf.hi)}
-      {px(221, 88, 3, 3, M.leaf.hi)}
-      {px(226, 87, 3, 3, M.leaf.mid)}
-      {px(234, 98, 7, 6, "#b6c9d2")}
-      {px(234, 98, 7, 1, "#d2e0e6")}
-      {px(235, 100, 5, 3, M.brass.base)}
-      {open ? px(266, 100, 6, 3, "#c94040") : px(268, 99, 4, 5, "#8a8f96")}
-    </g>
-  );
-}
-
-function BalconyDoor({ ph, opening }: { ph: Ph; opening: boolean }) {
-  const night = ph === "night";
-  const glass =
-    ph === "night"
-      ? C.glassNight
-      : ph === "dusk"
-        ? C.glassDusk
-        : ph === "dawn"
-          ? C.glassDawn
-          : C.glassDay;
-  const tint = night ? 0.6 : 0.28;
-  return (
-    <g>
-      {px(530, 46, 12, 104, "#8a5a4a")}
-      {px(530, 46, 3, 104, "#a06a56")}
-      {px(539, 46, 3, 104, "#6d4638")}
-      <rect x={530} y={46} width={12} height={104} fill="url(#st-wood)" />
-      {px(664, 46, 12, 104, "#8a5a4a")}
-      {px(664, 46, 3, 104, "#a06a56")}
-      {px(673, 46, 3, 104, "#6d4638")}
-      <rect x={664} y={46} width={12} height={104} fill="url(#st-wood)" />
-      <AO x={542} y={50} w={124} h={5} from="top" op={0.28} />
-      {px(542, 50, 124, 4, M.steel.base)}
-      {px(542, 50, 124, 1, M.steel.hi)}
-      {px(542, 53, 124, 1, M.steel.deep)}
-      {px(542, 146, 124, 4, M.steel.lo)}
-      {px(542, 146, 124, 1, M.steel.mid)}
-      <rect x={546} y={54} width={56} height={92} fill={glass} opacity={tint} />
-      <GlassSheen id="bd1" x={584} y={56} h={88} w={12} op={0.15} />
-      {px(602, 54, 4, 92, M.steel.base)}
-      {px(602, 54, 1, 92, M.steel.hi)}
-      {px(605, 54, 1, 92, M.steel.deep)}
       <g
         style={{
-          transition: "transform 380ms ease-in",
-          transform: opening ? "translateX(-54px)" : "none",
+          transition: STEP_SLIDE,
+          transform: open ? "scaleX(0.16)" : "none",
+          transformOrigin: "16px 70px",
         }}
       >
-        <rect x={604} y={54} width={58} height={92} fill={glass} opacity={tint} />
-        <GlassSheen id="bd2" x={644} y={56} h={88} w={10} op={0.11} />
-        {px(604, 54, 58, 3, M.steel.base)}
-        {px(604, 54, 58, 1, M.steel.hi)}
-        {px(604, 54, 2, 92, M.steel.mid)}
-        {px(606, 96, 3, 12, M.steel.base)}
-        {px(606, 96, 3, 1, M.steel.hi)}
-        {px(606, 107, 3, 1, M.steel.deep)}
+        <Bev set={FRONTDOOR_LEAF} mat={GRAPHITE[ph]} />
+        <rect x={16} y={70} width={40} height={80} fill="url(#px-satin)" opacity={0.35} />
+        {/* spyhole at eye height, brass ring */}
+        {px(34, 87, 4, 4, M.brass.lo)}
+        {px(35, 88, 2, 2, "#14161a")}
+        {/* handle and the two locks */}
+        <Bevel boxes={[[48, HANDLE_Y, 5, 4]]} mat={M.brass} />
+        {px(49, HANDLE_Y + 8, 3, 3, M.brass.lo)}
+        {px(49, HANDLE_Y + 14, 3, 3, M.brass.lo)}
+        {/* the chain, in its parked position */}
+        {px(20, 92, 1, 6, "#6d6650")}
+        {px(20, 98, 4, 1, "#6d6650")}
       </g>
-      {opening ? (
-        <rect x={600} y={54} width={6} height={92} fill="#f4f0e4" opacity={0.5}>
-          <animate attributeName="width" values="6;11;6" dur="3.6s" repeatCount="indefinite" />
-        </rect>
+      {/* the hall wardrobe: one oak door, one mirror */}
+      <Bev set={WARDROBE_SET} mat={OAK[ph]} />
+      <rect x={66} y={56} width={32} height={92} fill="url(#px-wood)" opacity={0.5} />
+      {px(80, 56, 2, 92, OAK[ph].deep)}
+      {/* the mirror door reflects the room's own light, or doesn't */}
+      {px(
+        84,
+        60,
+        12,
+        84,
+        lit ? "#c3ccd2" : ph === "night" ? "#2e3742" : ph === "dusk" ? "#a8887a" : "#9aa6ae",
+      )}
+      <path
+        d={pxPath([
+          [85, 62, 2, 78],
+          [88, 64, 1, 70],
+        ])}
+        fill="#ffffff"
+        opacity={lit ? 0.35 : 0.15}
+      />
+      {px(74, HANDLE_Y - 4, 2, 8, M.brass.base)}
+      {px(96, HANDLE_Y - 4, 2, 8, M.brass.base)}
+      {/* dry cleaning ticket still taped to the mirror edge */}
+      {px(84, 70, 4, 6, K.linen)}
+      {/* intercom on the strip by the kitchen: one green standby eye */}
+      {px(100, 86, 8, 12, K.linen)}
+      {px(101, 87, 6, 5, "#2a2d33")}
+      {px(102, 94, 4, 1, "#c9c5b8")}
+      <path d={pxPath([[105, 96, 1, 1]])} fill={K.green}>
+        <animate
+          attributeName="opacity"
+          calcMode="discrete"
+          values="1;1;0.3;1"
+          dur="6s"
+          begin="-2s"
+          repeatCount="indefinite"
+        />
+      </path>
+      {/* key hooks: his, the spare, the one nobody can place */}
+      {px(98, 104, 14, 2, OAK[ph].mid)}
+      <path
+        d={pxPath([
+          [100, 106, 1, 3],
+          [105, 106, 1, 3],
+          [110, 106, 1, 3],
+        ])}
+        fill={M.brass.lo}
+      />
+      {px(99, 109, 3, 4, M.brass.base)}
+      {px(109, 109, 3, 4, "#8a4a3a")}
+      {/* the light switch, on the kitchen side where you actually reach it */}
+      {px(117, HANDLE_Y - 2, 10, 12, KWALL[ph].hi)}
+      {px(120, HANDLE_Y + (lit ? 0 : 3), 4, 4, lit ? M.brass.base : KWALL[ph].lo)}
+    </g>
+  );
+}
+
+function KitchenWindow({ ph, s }: { ph: Ph; s: StudioSt }) {
+  const glass = K.glass[ph];
+  const night = ph === "night";
+  return (
+    <g>
+      {/* a glazed opening is rails around a hole — the yard shows through */}
+      <Bev set={WINDOW_FRAME} mat={KWALL[ph]} />
+      {px(212, 52, 4, 52, KWALL[ph].mid)}
+      {px(278, 52, 4, 52, KWALL[ph].mid)}
+      {px(245, 52, 4, 52, KWALL[ph].mid)}
+      {/* fixed pane — a temperature over the yard, not a picture of one */}
+      <rect x={216} y={52} width={29} height={52} fill={glass} opacity={night ? 0.55 : 0.32} />
+      <rect x={216} y={52} width={29} height={52} fill="url(#px-satin)" opacity={0.35} />
+      {ph === "day" ? (
+        <path d={pxPath([[216, 52, 29, 10]])} fill={dth("c", "25")} opacity={0.5} />
       ) : null}
-      <g opacity={0.5}>
-        {px(546, 54, 26, 92, "#f4f0e4")}
-        {px(552, 54, 4, 92, "#faf7ec")}
-        {px(562, 54, 3, 92, "#faf7ec")}
-        {px(549, 54, 2, 92, "#e6e0d2")}
-        <rect x={572} y={54} width={8} height={92} fill="#f4f0e4" opacity={0.6}>
-          <animate attributeName="width" values="8;13;8" dur="4.2s" repeatCount="indefinite" />
-        </rect>
-      </g>
-      {px(528, 44, 152, 3, M.walnut.base)}
-      {px(528, 44, 152, 1, M.walnut.hi)}
-      {px(528, 43, 4, 5, M.brass.base)}
-      {px(676, 43, 4, 5, M.brass.base)}
-      {px(650, 47, 22, 100, "#8a6a76")}
-      {px(650, 47, 22, 2, "#a07f8c")}
-      {px(670, 47, 2, 100, "#6d5260")}
-      {[656, 664].map((fx) => (
-        <g key={`fold${fx}`}>
-          {px(fx, 50, 3, 96, "#7a5c68")}
-          {px(fx + 3, 50, 1, 96, "#9a7986")}
-        </g>
-      ))}
-      <rect x={650} y={47} width={22} height={100} fill="url(#st-weave)" />
-      {px(544, 148, 124, 2, C.shadow)}
-    </g>
-  );
-}
-
-function Floor({ ph, sh }: { ph: Ph; sh: Shadow }) {
-  return (
-    <g>
-      <Defs />
-      {px(0, FLOOR, 404, 30, M.floorS.base)}
-      {stripes(404, FLOOR, 30, 56, M.floorS.mid, 28)}
-      <rect x={0} y={FLOOR} width={404} height={30} fill="url(#st-grain)" />
-      {px(0, 164, 404, 1, M.floorS.lo)}
-      {px(0, 165, 404, 1, M.floorS.hi)}
-      {px(0, 176, 404, 1, M.floorS.lo)}
-      <AO x={0} y={FLOOR} w={404} h={5} from="top" op={0.28} />
-      {px(402, FLOOR, 4, 30, "#9a8258")}
-      {px(402, FLOOR, 1, 30, "#c0a878")}
-      {px(405, FLOOR, 1, 30, "#6f5c3a")}
-      {px(406, FLOOR, 514, 30, M.floorT.base)}
-      {stripes(514, FLOOR, 30, 30, M.floorT.mid, 421)}
-      <rect x={406} y={FLOOR} width={514} height={30} fill="url(#st-wood)" />
-      {[163, 171].map((y) => (
-        <g key={`bd${y}`}>
-          {px(406, y, 514, 1, M.floorT.lo)}
-          {px(406, y + 1, 514, 1, M.floorT.hi)}
-        </g>
-      ))}
-      {[470, 618, 742, 858].map((x) => px(x, FLOOR, 1, 9, M.floorT.deep, `bj${x}`))}
-      <AO x={406} y={FLOOR} w={514} h={5} from="top" op={0.3} />
-      {sh.strength > 0.3
-        ? [0, 1, 2].map((i) => (
-            <rect
-              key={`gl${i}`}
-              x={406}
-              y={FLOOR + 1 + i * 2}
-              width={514}
-              height={2}
-              fill="#ffffff"
-              opacity={0.05 * (3 - i) * sh.strength}
-            />
-          ))
-        : null}
-      {px(748, 152, 164, 26, M.wool.base)}
-      {px(748, 152, 164, 1, M.wool.hi)}
-      {px(748, 177, 164, 1, M.wool.deep)}
-      <rect x={748} y={152} width={164} height={26} fill="url(#st-weave)" />
-      {px(748, 152, 2, 26, M.wool.lo)}
-      {px(910, 152, 2, 26, M.wool.lo)}
-      {px(766, 160, 128, 8, M.wool.mid)}
-      {[770, 790, 810, 830, 850, 870].map((x) => (
-        <g key={`rp${x}`}>
-          {px(x, 161, 8, 6, M.wool.hi)}
-          {px(x, 161, 8, 1, "#aaa7b4")}
-        </g>
-      ))}
-      <AO x={748} y={152} w={164} h={3} from="top" op={0.18} />
-      {px(746, 152, 2, 26, "#00000026")}
-      {px(226, 154, 52, 12, "#5d6b6a")}
-      {px(226, 154, 52, 1, "#71807e")}
-      {px(226, 165, 52, 1, "#48534f")}
-      <rect x={226} y={154} width={52} height={12} fill="url(#st-weave)" />
-      {px(16, FLOOR, 46, 6, "#5a5d62")}
-      {px(16, FLOOR, 46, 1, "#70747a")}
-      {px(16, 155, 46, 1, "#43464a")}
-      {[20, 28, 36, 44, 52].map((x) => px(x, 151, 3, 4, "#4a4d52", `dm${x}`))}
-      {px(700, 174, 22, 1, M.floorT.lo)}
-      {ph === "dawn" ? px(626, 168, 18, 2, "#b39268") : null}
-    </g>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// entry — the shoe bench has moved to the foreground
-// ---------------------------------------------------------------------------
-
-function Entry({ opening, ph, sh }: { opening: string | null; ph: Ph; sh: Shadow }) {
-  return (
-    <g>
-      <Bevel x={8} y={52} w={58} h={98} mat={M.steel} />
-      <AO x={10} y={54} w={54} h={5} from="top" op={0.3} />
-      {px(10, 54, 54, 96, M.steel.mid)}
-      <DoorLeaf x={14} y={58} w={46} h={92} opening={opening === "frontdoor"}>
-        <Bevel x={14} y={58} w={46} h={92} mat={M.graphite} />
-        {px(16, 60, 42, 88, M.graphite.mid)}
-        {px(16, 60, 42, 1, M.graphite.hi)}
-        <rect x={16} y={60} width={42} height={88} fill="url(#st-brushed)" />
-        {[
-          [74, 30],
-          [108, 28],
-        ].map(([py, phh]) => (
-          <g key={`pn${py}`}>
-            {px(20, py, 34, phh, M.graphite.lo)}
-            {px(20, py, 34, 1, M.graphite.deep)}
-            {px(20, py, 1, phh, M.graphite.deep)}
-            {px(53, py, 1, phh, M.graphite.hi)}
-            {px(20, py + phh - 1, 34, 1, M.graphite.hi)}
+      {/* opening sash */}
+      {s.winOpen ? (
+        <g>
+          <g style={{ transform: "scaleX(0.45)", transformOrigin: "249px 52px" }}>
+            <rect x={249} y={52} width={29} height={52} fill={glass} opacity={0.7} />
+            {px(274, 74, 3, 8, STEEL[ph].base)}
           </g>
-        ))}
-        {px(50, 92, 3, 22, M.steel.base)}
-        {px(50, 92, 3, 1, M.steel.hi)}
-        {px(52, 92, 1, 22, M.steel.lo)}
-        {px(49, 114, 5, 2, "#00000044")}
-        {px(32, 72, 3, 3, "#26282c")}
-        {px(32, 72, 3, 1, M.steel.base)}
-        {px(50, 118, 3, 4, M.steel.lo)}
-        {px(50, 124, 3, 4, M.steel.lo)}
-      </DoorLeaf>
-      <Cast x={66} w={40} sh={sh} />
-      <Bevel x={66} y={56} w={40} h={92} mat={M.oak} />
-      <rect x={66} y={56} width={40} height={92} fill="url(#st-wood)" />
-      {px(86, 58, 2, 88, M.oak.deep)}
-      {px(88, 58, 1, 88, M.oak.hi)}
-      {px(80, 98, 3, 9, M.steel.base)}
-      {px(89, 98, 3, 9, M.steel.base)}
-      {px(80, 98, 3, 1, M.steel.hi)}
-      {px(89, 98, 3, 1, M.steel.hi)}
-      {px(70, 62, 14, 42, "#c4d4dc")}
-      {px(70, 62, 14, 1, "#e2eef2")}
-      {px(83, 62, 1, 42, "#9cb0b8")}
-      {px(71, 64, 4, 34, "#dfe8ee")}
-      {px(74, 76, 8, 16, "#b6c6ce")}
-      {px(76, 80, 3, 5, "#cfe0e6")}
-      <GlassSheen id="mir" x={80} y={64} h={38} w={6} op={0.14} />
-      {ph === "night" || ph === "dusk" ? (
-        <g>
-          {px(50, 124, 10, 17, "#5f7053")}
-          {px(50, 124, 10, 1, "#748a64")}
-        </g>
-      ) : null}
-      {px(94, 108, 16, 4, M.oak.base)}
-      {px(94, 108, 16, 1, M.oak.hi)}
-      <AO x={94} y={112} w={16} h={3} from="top" op={0.3} />
-      {px(97, 112, 2, 4, M.brass.base)}
-      {px(103, 112, 2, 4, M.brass.base)}
-      {px(96, 104, 5, 4, M.brass.base)}
-      {px(96, 104, 5, 1, M.brass.hi)}
-      {px(102, 103, 6, 5, "#b6c9d2")}
-      {px(102, 103, 6, 1, "#d4e2e8")}
-      <Bevel x={96} y={84} w={14} h={20} mat={M.white} />
-      {px(98, 87, 10, 9, M.white.lo)}
-      {px(98, 87, 10, 1, M.white.deep)}
-      <rect x={100} y={98} width={3} height={3} fill="#3ddc84">
-        <animate attributeName="opacity" values="1;0.3;1" dur="3.6s" repeatCount="indefinite" />
-      </rect>
-    </g>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// kitchen
-// ---------------------------------------------------------------------------
-
-function Kitchen({
-  world,
-  ph,
-  lightOn,
-  x,
-  sh,
-  amb,
-}: {
-  world: WorldState;
-  ph: Ph;
-  lightOn: boolean;
-  x: { dishesDone: boolean; binEmptied: boolean };
-  sh: Shadow;
-  amb: Ambient;
-}) {
-  const cooking = world.cookerState === "on";
-  const dishes = !x.dishesDone && (ph === "dawn" || ph === "day");
-  const binFull = !x.binEmptied && (ph === "dusk" || ph === "night");
-  const ledGain = lightOn ? amb.lampGain : 0;
-  const unit = (ux: number, uw: number, seams: number[]) => (
-    <g key={`u${ux}`}>
-      <Bevel x={ux} y={50} w={uw} h={26} mat={M.white} />
-      <rect x={ux} y={50} width={uw} height={26} fill="url(#st-plaster)" />
-      {seams.map((s) => (
-        <g key={`sm${s}`}>
-          {px(s, 52, 1, 24, M.white.deep)}
-          {px(s + 1, 52, 1, 24, M.white.hi)}
-        </g>
-      ))}
-      {px(ux, 74, uw, 2, M.white.lo)}
-      <AO x={ux} y={76} w={uw} h={4} from="top" op={0.3} />
-    </g>
-  );
-  return (
-    <g>
-      {unit(120, 92, [150, 180])}
-      {unit(284, 120, [314, 344, 374])}
-      {[134, 164, 194, 298, 358, 388].map((hx) => (
-        <g key={`uh${hx}`}>
-          {px(hx, 70, 12, 2, M.steel.base)}
-          {px(hx, 70, 12, 1, M.steel.hi)}
-          {px(hx, 72, 12, 1, "#00000033")}
-        </g>
-      ))}
-      {px(120, 76, 92, 2, lightOn ? "#ffe6a8" : "#a8a49a")}
-      {px(284, 76, 120, 2, lightOn ? "#ffe6a8" : "#a8a49a")}
-      {ledGain > 0.1 ? (
-        <g>
-          <PixelWash
-            id="led1"
-            x={120}
-            y={78}
-            w={92}
-            h={18}
-            color="#ffe6a8"
-            op={0.3 * ledGain}
-            q={3}
-          />
-          <PixelWash
-            id="led2"
-            x={284}
-            y={78}
-            w={120}
-            h={18}
-            color="#ffe6a8"
-            op={0.3 * ledGain}
-            q={3}
-          />
-          <rect
-            x={120}
-            y={90}
-            width={92}
-            height={4}
-            fill="url(#st-dither-lite)"
-            opacity={0.1 * ledGain}
-          />
-          <rect
-            x={284}
-            y={90}
-            width={120}
-            height={4}
-            fill="url(#st-dither-lite)"
-            opacity={0.1 * ledGain}
-          />
-        </g>
-      ) : null}
-      <Bevel x={298} y={76} w={48} h={12} mat={M.steel} />
-      <rect x={298} y={76} width={48} height={12} fill="url(#st-brushed)" />
-      {px(300, 88, 44, 2, cooking ? "#ffe6a8" : M.steel.lo)}
-      <Bevel x={316} y={58} w={12} h={18} mat={M.steel} />
-      {cooking ? (
-        <g>
-          <rect x={300} y={88} width={44} height={3} fill="#ffe6a8" opacity={0.6}>
+          {/* outside air finding its way in */}
+          <path d={pxPath([[247, 52, 5, 52]])} fill={dth("c", "50")} opacity={0.5}>
             <animate
               attributeName="opacity"
-              values="0.6;0.45;0.6"
-              dur="3s"
+              calcMode="discrete"
+              values="0.5;0.35;0.5;0.4"
+              dur="3.4s"
               repeatCount="indefinite"
             />
-          </rect>
-          <PixelWash id="hood" x={300} y={91} w={44} h={12} color="#ffd98a" op={0.24} q={3} />
-        </g>
-      ) : null}
-      {px(116, 106, 288, 6, M.oak.base)}
-      {px(116, 106, 288, 1, M.oak.hi)}
-      {px(116, 107, 288, 1, "#c8a670")}
-      {px(116, 110, 288, 1, M.oak.mid)}
-      {px(116, 111, 288, 1, M.oak.deep)}
-      <rect x={116} y={106} width={288} height={6} fill="url(#st-wood)" />
-      <AO x={116} y={112} w={288} h={5} from="top" op={0.34} />
-      {px(116, 112, 288, 36, M.graphite.base)}
-      <rect x={116} y={112} width={288} height={36} fill="url(#st-brushed)" />
-      {[146, 196, 246, 296, 346].map((sx) => (
-        <g key={`sm${sx}`}>
-          {px(sx, 114, 1, 34, M.graphite.deep)}
-          {px(sx + 1, 114, 1, 34, M.graphite.hi)}
-        </g>
-      ))}
-      {[
-        [120, 22],
-        [152, 40],
-        [252, 40],
-        [352, 40],
-      ].map(([hx, hw]) => (
-        <g key={`lh${hx}`}>
-          {px(hx, 118, hw, 2, M.steel.base)}
-          {px(hx, 118, hw, 1, M.steel.hi)}
-          {px(hx, 120, hw, 1, "#00000044")}
-        </g>
-      ))}
-      {px(116, 144, 288, 4, M.graphite.deep)}
-      {px(116, 148, 288, 2, "#00000055")}
-      {px(126, 96, 34, 3, M.oak.base)}
-      {px(126, 96, 34, 1, M.oak.hi)}
-      <AO x={126} y={99} w={34} h={3} from="top" op={0.34} />
-      {[
-        ["#7a8a4a", 128, 6, 10],
-        ["#a34a3a", 136, 6, 8],
-        [M.brass.base, 144, 6, 9],
-        [M.walnut.base, 152, 5, 7],
-      ].map(([c, jx, jw, jh]) => (
-        <g key={`jar${jx}`}>
-          {px(jx as number, 96 - (jh as number), jw as number, jh as number, c as string)}
-          {px(jx as number, 96 - (jh as number), jw as number, 1, "#ffffff44")}
-          {px(
-            (jx as number) + (jw as number) - 1,
-            96 - (jh as number),
-            1,
-            jh as number,
-            "#00000033",
-          )}
-          {px(jx as number, 96 - (jh as number) - 2, jw as number, 2, "#c9c5ba")}
-        </g>
-      ))}
-      <Bevel x={158} y={88} w={22} h={18} mat={M.white} />
-      {px(160, 86, 18, 3, M.steel.base)}
-      {px(160, 86, 18, 1, M.steel.hi)}
-      {px(178, 92, 5, 8, M.steel.base)}
-      <GlassSheen id="ket" x={168} y={89} h={16} w={4} op={0.2} />
-      {px(160, 102, 18, 2, world.kettleOn ? "#4a90d9" : M.steel.mid)}
-      {world.kettleOn ? (
-        <g>
-          <rect x={160} y={102} width={18} height={2} fill="#8fc0f0">
-            <animate attributeName="opacity" values="1;0.5;1" dur="1.8s" repeatCount="indefinite" />
-          </rect>
-          <PixelWash id="ketglow" x={155} y={104} w={28} h={4} color="#4a90d9" op={0.24} q={2} />
-        </g>
-      ) : null}
-      {px(157, 106, 24, 1, "#00000044")}
-      {px(222, 100, 50, 6, M.steel.mid)}
-      {px(222, 100, 50, 1, M.steel.hi)}
-      {px(224, 102, 46, 4, M.steel.lo)}
-      <AO x={224} y={102} w={46} h={3} from="top" op={0.4} />
-      {px(224, 105, 46, 1, M.steel.hi)}
-      {px(230, 96, 3, 6, M.steel.base)}
-      {px(230, 96, 1, 6, M.steel.hi)}
-      {px(230, 94, 14, 3, M.steel.base)}
-      {px(230, 94, 14, 1, M.steel.hi)}
-      {px(243, 96, 2, 4, M.steel.lo)}
-      {px(262, 100, 8, 3, "#e8c445")}
-      {px(262, 100, 8, 1, "#f2d86a")}
-      {dishes ? (
-        <g>
-          {px(226, 92, 10, 9, "#c8d4da")}
-          {px(226, 92, 10, 1, "#e2ecf0")}
-          {px(238, 94, 8, 7, "#dfe8ee")}
-          {px(248, 93, 9, 8, "#c8d4da")}
-          {px(248, 93, 9, 1, "#e2ecf0")}
-        </g>
-      ) : null}
-      {px(206, 96, 32, 10, M.steel.mid)}
-      {px(206, 96, 32, 1, M.steel.hi)}
-      {[209, 214, 219, 224, 229, 234].map((rx) => px(rx, 92, 1, 5, M.steel.base, `dr${rx}`))}
-      <AO x={206} y={106} w={32} h={3} from="top" op={0.3} />
-      {dishes ? (
-        <g>
-          {[
-            [208, 88, 7, 9, "#e8e6e0"],
-            [216, 87, 7, 10, "#dfe8ee"],
-            [224, 88, 7, 9, "#e8e6e0"],
-            [232, 90, 5, 7, "#c8d4da"],
-          ].map(([dx, dy, dw, dh, c]) => (
-            <g key={`pl${dx}`}>
-              {px(dx as number, dy as number, dw as number, dh as number, c as string)}
-              {px(dx as number, dy as number, dw as number, 1, "#ffffff")}
-              {px((dx as number) + (dw as number) - 1, dy as number, 1, dh as number, "#00000026")}
-            </g>
-          ))}
-        </g>
-      ) : (
-        px(210, 90, 8, 7, "#e8e6e0")
-      )}
-      {px(274, 84, 30, 3, M.walnut.base)}
-      {px(274, 84, 30, 1, M.walnut.hi)}
-      {[277, 283, 289, 295].map((kx, i) => (
-        <g key={`kn${kx}`}>
-          {px(kx, 87, 2, 8 + i, M.steel.base)}
-          {px(kx, 87, 1, 8 + i, M.steel.hi)}
-          {px(kx, 95 + i, 2, 4, "#3a3128")}
-          {px(kx, 99 + i, 2, 1, "#00000033")}
-        </g>
-      ))}
-      {px(278, 92, 12, 14, M.oak.lo)}
-      {px(278, 92, 12, 1, M.oak.base)}
-      {px(289, 92, 1, 14, M.oak.deep)}
-      {px(300, 114, 44, 3, M.steel.base)}
-      {px(300, 114, 44, 1, M.steel.hi)}
-      {world.cookerState === "open" ? (
-        <g>
-          {px(300, 117, 44, 29, "#100d0b")}
-          <AO x={300} y={117} w={44} h={6} from="top" op={0.55} />
-          {px(303, 122, 38, 2, "#4a4438")}
-          {px(303, 122, 38, 1, "#5f5748")}
-          {px(303, 132, 38, 2, "#4a4438")}
-          {px(306, 128, 32, 4, "#6d6258")}
-          {px(306, 128, 32, 1, "#847869")}
-          {px(308, 126, 12, 3, "#8a5a3a")}
-          {px(324, 126, 8, 3, "#a3542f")}
-          {px(304, 119, 36, 3, "#ffb340")}
-          <PixelGlow
-            id="ovenopen"
-            cx={322}
-            cy={132}
-            rx={28}
-            ry={14}
-            color="#ffb340"
-            op={0.26}
-            q={3}
-          />
-          {px(296, 146, 52, 6, "#26282c")}
-          {px(296, 146, 52, 1, "#454850")}
-          {px(300, 147, 44, 3, "#3f4a55")}
-          {px(302, 147, 12, 2, "#5a6a78")}
+          </path>
         </g>
       ) : (
         <g>
-          {px(300, 117, 44, 29, M.graphite.mid)}
-          {px(300, 117, 44, 1, M.graphite.hi)}
-          {px(302, 119, 40, 4, "#31353a")}
-          <PixelText
-            x={306}
-            y={119}
-            text={cooking ? "18:40" : "12:00"}
-            fill={cooking ? "#ff8a3a" : "#4a5058"}
-          />
-          {px(304, 125, 36, 14, "#14161a")}
-          <AO x={304} y={125} w={36} h={3} from="top" op={0.5} />
-          {cooking ? (
-            <g>
-              {px(306, 127, 32, 10, "#3a2416")}
-              <rect x={308} y={128} width={28} height={8} fill="#e8843a" opacity={0.72}>
-                <animate
-                  attributeName="opacity"
-                  values="0.72;0.44;0.72"
-                  dur="1.6s"
-                  repeatCount="indefinite"
-                />
-              </rect>
-              {px(310, 134, 24, 2, "#ffb340")}
-              {px(314, 130, 12, 4, "#8a5a3a")}
-              {px(314, 130, 12, 1, "#a06a44")}
-            </g>
-          ) : (
-            <g>
-              {px(306, 127, 12, 10, "#26313c")}
-              {px(306, 127, 4, 10, "#3a4c5c")}
-            </g>
-          )}
-          {px(318, 141, 10, 3, M.steel.base)}
-          {px(318, 141, 10, 1, M.steel.hi)}
-          {px(317, 144, 12, 1, "#00000044")}
+          <rect x={249} y={52} width={29} height={52} fill={glass} opacity={night ? 0.55 : 0.32} />
+          <rect x={249} y={52} width={29} height={52} fill="url(#px-satin)" opacity={0.35} />
+          {px(253, 56, 3, 32, night ? "#2e3742" : "#c3d4de")}
+          {px(272, 76, 3, 6, STEEL[ph].base)}
         </g>
       )}
-      {px(298, 104, 48, 3, "#14161a")}
-      {px(298, 104, 48, 1, "#2c3036")}
-      {px(306, 105, 10, 1, cooking ? "#e84a3a" : "#33363a")}
-      {px(326, 105, 10, 1, "#33363a")}
-      {cooking ? (
-        <g>
-          {px(304, 94, 16, 11, M.steel.mid)}
-          {px(304, 94, 16, 1, M.steel.hi)}
-          {px(319, 94, 1, 11, M.steel.deep)}
-          <GlassSheen id="pot" x={310} y={95} h={9} w={3} op={0.22} />
-          {px(305, 92, 14, 2, M.steel.base)}
-          {px(310, 90, 4, 2, M.steel.lo)}
-          {px(303, 104, 18, 1, "#00000055")}
-          <circle cx={312} cy={88} r={2} fill="#e8e6e0" opacity={0}>
-            <animate
-              attributeName="opacity"
-              values="0;0.55;0"
-              dur="2.1s"
-              repeatCount="indefinite"
-            />
-            <animate attributeName="cy" values="88;76" dur="2.1s" repeatCount="indefinite" />
-            <animate attributeName="r" values="2;6" dur="2.1s" repeatCount="indefinite" />
-          </circle>
-        </g>
-      ) : null}
-      <Bevel x={358} y={82} w={30} h={24} mat={M.graphite} />
-      <rect x={358} y={82} width={30} height={24} fill="url(#st-brushed)" />
-      {px(360, 80, 26, 3, M.graphite.hi)}
-      {px(366, 96, 12, 4, M.steel.mid)}
-      {px(366, 96, 12, 1, M.steel.hi)}
-      {px(368, 100, 8, 6, M.white.base)}
-      {px(368, 100, 8, 1, M.white.hi)}
-      <rect x={369} y={101} width={6} height={4} fill="#6b4a2f">
-        <animate
-          attributeName="height"
-          values="0;4;4;0"
-          keyTimes="0;0.2;0.9;1"
-          dur="34s"
-          repeatCount="indefinite"
-        />
-        <animate
-          attributeName="y"
-          values="105;101;101;105"
-          keyTimes="0;0.2;0.9;1"
-          dur="34s"
-          repeatCount="indefinite"
-        />
-      </rect>
-      {px(382, 86, 4, 6, "#c94040")}
-      {px(382, 86, 4, 1, "#e05a50")}
-      {px(360, 86, 16, 8, "#14161a")}
-      <rect x={362} y={88} width={12} height={4} fill="#7ee08c" opacity={0.8}>
-        <animate attributeName="opacity" values="0.8;0.4;0.8" dur="4s" repeatCount="indefinite" />
-      </rect>
-      {px(362, 76, 7, 5, "#a3542f")}
-      {px(362, 76, 7, 1, "#c9863f")}
-      {px(371, 77, 6, 4, "#a3542f")}
-      {px(357, 106, 32, 1, "#00000044")}
-      <Bevel x={344} y={118} w={20} h={30} mat={M.steel} />
-      <rect x={344} y={118} width={20} height={30} fill="url(#st-brushed)" />
-      {px(346, 116, 16, 3, M.steel.base)}
-      {px(346, 116, 16, 1, M.steel.hi)}
-      {px(350, 146, 8, 3, M.graphite.lo)}
-      {binFull ? (
-        <g>
-          {px(348, 112, 12, 6, "#c8ccd2")}
-          {px(348, 112, 12, 1, "#e2e6ea")}
-          {px(352, 110, 6, 4, "#e8e6e0")}
-        </g>
-      ) : null}
-      <Cast x={126} w={60} sh={sh} />
-      {px(126, 120, 60, 5, M.oak.base)}
-      {px(126, 120, 60, 1, M.oak.hi)}
-      {px(126, 121, 60, 1, "#c8a670")}
-      {px(126, 124, 60, 1, M.oak.deep)}
-      <rect x={126} y={120} width={60} height={5} fill="url(#st-wood)" />
-      <AO x={126} y={125} w={60} h={4} from="top" op={0.3} />
-      {[132, 178].map((lx) => (
-        <g key={`tl${lx}`}>
-          {px(lx, 125, 4, 23, M.oak.lo)}
-          {px(lx, 125, 1, 23, M.oak.base)}
-          {px(lx + 3, 125, 1, 23, M.oak.deep)}
-        </g>
-      ))}
-      {px(140, 128, 34, 2, M.oak.lo)}
-      {px(190, 116, 5, 32, M.walnut.base)}
-      {px(190, 116, 1, 32, M.walnut.hi)}
-      {px(188, 116, 9, 3, M.walnut.mid)}
-      {px(186, 130, 14, 4, M.walnut.base)}
-      {px(186, 130, 14, 1, M.walnut.hi)}
-      {ph === "dawn" ? (
-        <g>
-          {px(140, 112, 9, 8, M.white.base)}
-          {px(140, 112, 9, 1, M.white.hi)}
-          {px(139, 111, 11, 2, M.steel.mid)}
-          {px(139, 119, 11, 1, "#00000033")}
-          {px(152, 114, 12, 6, M.brass.base)}
-          {px(152, 114, 12, 1, M.brass.hi)}
-        </g>
-      ) : (
-        <g>
-          {px(144, 114, 14, 6, "#b6c9d2")}
-          {px(144, 114, 14, 1, "#d4e2e8")}
-          {px(146, 112, 10, 3, "#8fa8b8")}
-          {px(143, 119, 16, 1, "#00000033")}
-          {px(164, 116, 12, 4, M.white.lo)}
-        </g>
-      )}
-    </g>
-  );
-}
-
-function Fridge({ open, ph, sh }: { open: boolean; ph: Ph; sh: Shadow }) {
-  return (
-    <g>
-      <Cast x={352} w={48} sh={sh} />
-      {open ? (
-        <g>
-          {px(320, 56, 28, 92, M.graphite.lo)}
-          {px(320, 56, 28, 1, M.graphite.hi)}
-          {px(346, 56, 2, 92, M.graphite.deep)}
-          {px(322, 60, 24, 84, "#2c2f33")}
-          <AO x={322} y={60} w={24} h={5} from="top" op={0.4} />
-          {[70, 96, 122].map((ry) => (
-            <g key={`fr${ry}`}>
-              {px(324, ry, 20, 3, M.steel.mid)}
-              {px(324, ry, 20, 1, M.steel.hi)}
-            </g>
-          ))}
-          {px(326, 62, 6, 8, M.white.base)}
-          {px(334, 63, 6, 7, "#e8843a")}
-          {px(326, 88, 5, 8, "#c94040")}
-          {px(333, 90, 5, 6, "#7a8a4a")}
-          {px(327, 114, 6, 8, "#e8c433")}
-          {px(335, 116, 5, 6, "#4a90d9")}
-          {px(352, 54, 48, 94, "#eef4f7")}
-          {px(352, 54, 48, 2, "#f8fbfc")}
-          {px(398, 54, 2, 94, "#cdd8de")}
-          {[82, 108, 130].map((sy) => (
-            <g key={`sh${sy}`}>
-              {px(354, sy, 44, 2, "#c8d4da")}
-              {px(354, sy, 44, 1, "#e6eef2")}
-              <AO x={354} y={sy + 2} w={44} h={4} from="top" op={0.22} />
-            </g>
-          ))}
-          {[
-            [358, 70, 14, 10, "#c8ccd2"],
-            [376, 72, 8, 8, C.linen],
-            [386, 74, 8, 6, C.linen],
-            [358, 96, 10, 10, "#a34a3a"],
-            [372, 94, 8, 12, M.brass.base],
-            [384, 98, 10, 8, "#7a8a4a"],
-            [358, 118, 16, 10, "#4e7a52"],
-            [378, 120, 12, 8, "#e8c433"],
-            [358, 136, 20, 8, "#c8ccd2"],
-            [382, 134, 14, 10, M.white.lo],
-          ].map(([ix, iy, iw, ih, c]) => (
-            <g key={`it${ix}${iy}`}>
-              {px(ix as number, iy as number, iw as number, ih as number, c as string)}
-              {px(ix as number, iy as number, iw as number, 1, "#ffffff55")}
-              {px((ix as number) + (iw as number) - 1, iy as number, 1, ih as number, "#00000033")}
-            </g>
-          ))}
-          <rect x={352} y={54} width={48} height={94} fill={C.cold} opacity={0.18}>
-            <animate
-              attributeName="opacity"
-              values="0.18;0.08;0.18"
+      {/* rain on the glass, when there is rain to be on it */}
+      {s.weather === "rain" ? (
+        <g opacity={0.6}>
+          <path
+            d={pxPath([
+              [222, 54, 1, 6],
+              [236, 62, 1, 8],
+              [258, 56, 1, 7],
+              [270, 68, 1, 6],
+            ])}
+            fill={K.waterHi}
+          >
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              values="0 0;0 34"
               dur="2.2s"
               repeatCount="indefinite"
             />
-          </rect>
+          </path>
+        </g>
+      ) : null}
+      {/* sill, herb pot, the glass someone left */}
+      {px(208, SILL, 78, 4, KWALL[ph].hi)}
+      {px(208, SILL + 4, 78, 2, KWALL[ph].lo)}
+      {px(218, SILL - 8, 10, 8, M.red.lo)}
+      {px(219, SILL - 12, 8, 4, M.leaf.base)}
+      {px(221, SILL - 14, 4, 2, M.leaf.hi)}
+      {px(262, SILL - 7, 6, 7, "#c3d4de")}
+      {px(263, SILL - 5, 4, 4, "#a8c2d4")}
+    </g>
+  );
+}
+
+function DoorsNook({
+  ph,
+  s,
+  bathLit,
+  studyLit,
+}: {
+  ph: Ph;
+  s: StudioSt;
+  bathLit: boolean;
+  studyLit: boolean;
+}) {
+  return (
+    <g>
+      <InteriorDoor
+        ph={ph}
+        x={410}
+        open={s.opening === "door-bath"}
+        lit={bathLit}
+        set={BATH_LEAF}
+      />
+      {/* two frames between the doors: the parents, and Gross as a puppy */}
+      {px(455, 82, 8, 10, OAK[ph].lo)}
+      {px(456, 83, 6, 8, K.linen)}
+      {px(457, 85, 4, 4, "#8a8368")}
+      {px(455, 96, 8, 8, M.brass.lo)}
+      {px(456, 97, 6, 6, "#c9a878")}
+      {px(457, 98, 3, 3, "#a06a3a")}
+      <InteriorDoor
+        ph={ph}
+        x={466}
+        open={s.opening === "door-study"}
+        lit={studyLit}
+        set={STUDY_LEAF}
+      />
+      {/* transom vent over the bathroom, and the conduit they ran to the spot */}
+      {px(422, 54, 20, 8, CLAY[ph].lo)}
+      <path
+        d={pxPath([
+          [424, 56, 16, 1],
+          [424, 59, 16, 1],
+        ])}
+        fill={CLAY[ph].deep}
+      />
+      {px(492, 52, 8, 6, K.linen)}
+      {px(494, 54, 4, 2, "#8a8368")}
+      <path
+        d={pxPath([
+          [468, 51, 24, 1],
+          [466, 51, 2, 2],
+        ])}
+        fill={CLAY[ph].lo}
+      />
+      {/* the radiator, ticking as it heats */}
+      <Bev set={RADIATOR_SET} mat={WHITE[ph]} />
+      <path
+        d={pxPath([
+          [515, 120, 3, 22],
+          [521, 120, 3, 22],
+          [527, 120, 3, 22],
+        ])}
+        fill={WHITE[ph].mid}
+      />
+      <path
+        d={pxPath([
+          [515, 120, 1, 22],
+          [521, 120, 1, 22],
+          [527, 120, 1, 22],
+        ])}
+        fill={WHITE[ph].hi}
+      />
+      {px(534, 138, 3, 4, M.brass.base)}
+      {px(512, 144, 2, 6, WHITE[ph].lo)}
+      {px(533, 144, 2, 6, WHITE[ph].lo)}
+      {/* heat shimmer on the wall above, cold phases only */}
+      {ph !== "day" ? (
+        <path d={pxPath([[512, 106, 24, 12]])} fill={dth("w", "12")} opacity={0.5} />
+      ) : null}
+      {/* two prints above: the Hutsul print from home, a city map */}
+      {px(509, 62, 13, 17, OAK[ph].lo)}
+      {px(510, 63, 11, 15, K.linen)}
+      <path
+        d={pxPath([
+          [511, 66, 9, 2],
+          [513, 70, 5, 2],
+          [511, 74, 9, 1],
+        ])}
+        fill="#a4553f"
+      />
+      {px(526, 64, 12, 15, M.graphite.base)}
+      {px(527, 65, 10, 13, "#d8d5ca")}
+      <path
+        d={pxPath([
+          [528, 67, 3, 1],
+          [532, 69, 4, 1],
+          [529, 72, 5, 1],
+          [531, 74, 3, 1],
+        ])}
+        fill="#6a7280"
+      />
+    </g>
+  );
+}
+
+/** A white-panel interior door in a clay wall. Swings in stepped increments. */
+function InteriorDoor({
+  ph,
+  x,
+  open,
+  lit,
+  set,
+}: {
+  ph: Ph;
+  x: number;
+  open: boolean;
+  lit: boolean;
+  set: ReturnType<typeof bevelPaths>;
+}) {
+  return (
+    <g>
+      {px(x, 66, 44, 84, CLAY[ph].deep)}
+      {px(x + 2, 68, 40, 82, WHITE[ph].lo)}
+      {open ? (
+        <g>
+          {px(x + 4, LEAF_TOP, 36, 78, "#14161a")}
+          {px(x + 4, LEAF_TOP, 36, 8, "#1d2027")}
+          {lit ? (
+            <path
+              d={pxPath([[x + 6, LEAF_TOP + 4, 32, 72]])}
+              fill={dth("w", "12")}
+              opacity={0.45}
+            />
+          ) : null}
+        </g>
+      ) : null}
+      <g
+        style={{
+          transition: STEP_SLIDE,
+          transform: open ? "scaleX(0.16)" : "none",
+          transformOrigin: `${x + 4}px ${LEAF_TOP}px`,
+        }}
+      >
+        <Bev set={set} mat={WHITE[ph]} />
+        <Bevel boxes={[[x + 34, HANDLE_Y, 5, 4]]} mat={M.brass} />
+        {px(x + 35, HANDLE_Y + 6, 2, 3, M.brass.lo)}
+      </g>
+      {/* the warm line under a lived-in door */}
+      {!open && lit ? (
+        <path d={pxPath([[x + 4, 148, 36, 2]])} fill={dth("w", "25")} opacity={0.7} />
+      ) : null}
+    </g>
+  );
+}
+
+function BalconyWall({ ph, s }: { ph: Ph; s: StudioSt }) {
+  const glass = K.glass[ph];
+  const open = s.opening === "balcony";
+  return (
+    <g>
+      {/* transom strip and head rail */}
+      {px(528, CEIL, 152, 10, CLAY[ph].base)}
+      {px(528, 54, 152, 4, OAK[ph].mid)}
+      {/* jambs */}
+      {px(528, 54, 18, 96, CLAY[ph].base)}
+      {px(542, 54, 4, 96, OAK[ph].mid)}
+      {px(662, 54, 18, 96, CLAY[ph].base)}
+      {px(662, 54, 4, 96, OAK[ph].mid)}
+      {/* bottom rail and track */}
+      {px(546, 144, 116, 6, OAK[ph].mid)}
+      {px(546, 144, 116, 1, OAK[ph].hi)}
+      {/* fixed pane 546–602 — a tint over the yard, never a painting of it */}
+      <rect
+        x={546}
+        y={58}
+        width={56}
+        height={86}
+        fill={glass}
+        opacity={ph === "night" ? 0.38 : 0.28}
+      />
+      <rect x={546} y={58} width={56} height={86} fill="url(#px-satin)" opacity={0.3} />
+      {ph === "night" && s.lit ? (
+        <path
+          d={pxPath([
+            [566, 66, 2, 44],
+            [584, 78, 1, 30],
+          ])}
+          fill={K.warm}
+          opacity={0.14}
+        />
+      ) : null}
+      {px(602, 54, 4, 96, OAK[ph].base)}
+      {/* sliding leaf 606–662, shifted along its track when someone is going out */}
+      <g style={{ transition: STEP_SLIDE, transform: open ? "translateX(-54px)" : "none" }}>
+        {px(606, 54, 4, 96, OAK[ph].base)}
+        {px(658, 54, 4, 96, OAK[ph].base)}
+        <rect
+          x={610}
+          y={58}
+          width={48}
+          height={86}
+          fill={glass}
+          opacity={ph === "night" ? 0.38 : 0.28}
+        />
+        <rect x={610} y={58} width={48} height={86} fill="url(#px-satin)" opacity={0.3} />
+        {px(654, 96, 3, 10, STEEL[ph].base)}
+      </g>
+      {open ? (
+        <path d={pxPath([[604, 58, 6, 86]])} fill={dth("c", "50")} opacity={0.5}>
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="0.5;0.3;0.5;0.4"
+            dur="3.1s"
+            repeatCount="indefinite"
+          />
+        </path>
+      ) : null}
+      {/* rain running down the big glass */}
+      {s.weather === "rain" ? (
+        <g opacity={0.55}>
+          <path
+            d={pxPath([
+              [556, 62, 1, 9],
+              [578, 76, 1, 7],
+              [594, 60, 1, 8],
+              [622, 70, 1, 9],
+              [640, 88, 1, 7],
+              [652, 62, 1, 6],
+            ])}
+            fill={K.waterHi}
+          >
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              values="0 0;0 70"
+              dur="2.8s"
+              repeatCount="indefinite"
+            />
+          </path>
+        </g>
+      ) : null}
+      {/* reflections: three stepped strokes, nothing smooth */}
+      <path
+        d={pxPath([
+          [552, 64, 2, 60],
+          [560, 72, 1, 44],
+          [618, 66, 2, 56],
+        ])}
+        fill="#ffffff"
+        opacity={ph === "night" ? 0.06 : 0.14}
+      />
+      {/* curtain rail, the tulle, and the heavy plum curtain bunched right */}
+      {px(532, 52, 144, 2, M.brass.lo)}
+      <g style={{ transformOrigin: "560px 54px" }}>
+        {s.winOpen || open ? (
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            values="0 560 54;-2 560 54;1 560 54;0 560 54"
+            dur="6.4s"
+            repeatCount="indefinite"
+          />
+        ) : null}
+        {px(548, 54, 34, 88, K.tulle)}
+        <path
+          d={pxPath([
+            [552, 54, 1, 88],
+            [560, 54, 1, 88],
+            [568, 54, 1, 88],
+            [576, 54, 1, 88],
+          ])}
+          fill="#ffffff"
+          opacity={0.5}
+        />
+      </g>
+      {px(652, 54, 24, 92, K.curtain)}
+      <rect x={652} y={54} width={24} height={92} fill="url(#px-weave)" opacity={0.6} />
+      <path
+        d={pxPath([
+          [656, 54, 2, 92],
+          [664, 54, 2, 92],
+          [671, 54, 2, 92],
+        ])}
+        fill={K.curtainLo}
+      />
+      {px(650, 108, 28, 4, K.curtainLo)}
+    </g>
+  );
+}
+
+/* === PLANE 3 — ground: the floor ============================================== */
+
+function Floor({ ph, s }: { ph: Ph; s: StudioSt }) {
+  return (
+    <g>
+      {/* stone tile from the door to the nook, oak boards beyond */}
+      {px(0, FLOOR, 406, H - FLOOR, STONE[ph].base)}
+      <rect x={0} y={FLOOR} width={406} height={H - FLOOR} fill="url(#px-agg)" opacity={0.4} />
+      <path d={FLOOR_TILE.rows} fill={STONE[ph].lo} opacity={0.7} />
+      <path d={FLOOR_TILE.cols} fill={STONE[ph].lo} opacity={0.5} />
+      {px(402, FLOOR, 6, H - FLOOR, OAK[ph].lo)}
+      {px(408, FLOOR, W - 408, H - FLOOR, BOARD[ph].base)}
+      <rect
+        x={408}
+        y={FLOOR}
+        width={W - 408}
+        height={H - FLOOR}
+        fill="url(#px-wood)"
+        opacity={0.5}
+      />
+      <path d={FLOOR_BOARDS.seams} fill={BOARD[ph].lo} />
+      <path d={FLOOR_BOARDS.joints} fill={BOARD[ph].deep} opacity={0.7} />
+      {/* the doormat, ribbed, older than the door */}
+      {px(14, 152, 48, 14, pcol("#6f5e48", ph))}
+      <path d={pxPath(repeat(6, 8, [16, 154, 4, 10] as Rect))} fill={pcol("#5e4e3a", ph)} />
+      {px(14, 152, 48, 1, pcol("#8a7658", ph))}
+      {/* the kitchen runner — grey stripes, permanently slightly crooked */}
+      {px(190, 156, 110, 20, pcol("#8d8a94", ph))}
+      <path d={pxPath(repeat(9, 12, [194, 158, 6, 16] as Rect))} fill={pcol("#7f7c88", ph)} />
+      {px(190, 156, 110, 1, pcol("#a09daa", ph))}
+      {px(296, 174, 4, 2, pcol("#7f7c88", ph))}
+      {/* the living rug: wool, a border, one corner that never lies flat */}
+      {px(748, 152, 164, 26, pcol(K.rug, ph))}
+      <rect x={748} y={152} width={164} height={26} fill="url(#px-weave)" opacity={0.5} />
+      <path
+        d={pxPath([
+          [752, 154, 156, 1],
+          [752, 175, 156, 1],
+          [752, 154, 1, 22],
+          [907, 154, 1, 22],
+        ])}
+        fill={pcol(K.rugPat, ph)}
+      />
+      <path
+        d={pxPath([
+          [780, 162, 8, 2],
+          [820, 168, 8, 2],
+          [864, 160, 8, 2],
+        ])}
+        fill={pcol(K.rugPat, ph)}
+        opacity={0.7}
+      />
+      {px(748, 152, 8, 3, pcol(K.rugLo, ph))}
+      {/* dust where the mop does not reach */}
+      <path
+        d={pxPath([
+          [238, 151, 26, 1],
+          [446, 151, 22, 1],
+          [700, 151, 24, 1],
+        ])}
+        fill={KWALL[ph].deep}
+        opacity={0.6}
+      />
+      {/* slippers outside the bathroom, toes to the door */}
+      <path
+        d={pxPath([
+          [438, 146, 8, 3],
+          [448, 146, 8, 3],
+        ])}
+        fill={pcol("#8d6a5a", ph)}
+      />
+      <path
+        d={pxPath([
+          [438, 146, 8, 1],
+          [448, 146, 8, 1],
+        ])}
+        fill={pcol("#a4826e", ph)}
+      />
+      {/* the rope toy that migrated to the nook and was abandoned there */}
+      <path
+        d={pxPath([
+          [498, 146, 7, 3],
+          [500, 145, 3, 1],
+        ])}
+        fill={pcol("#7d6448", ph)}
+      />
+      {/* paw prints between the bed and the bowls, faint, in dog order */}
+      <path
+        d={pxPath([
+          [590, 160, 2, 2],
+          [596, 166, 2, 2],
+          [604, 158, 2, 2],
+          [612, 164, 2, 2],
+          [620, 157, 2, 2],
+        ])}
+        fill={BOARD[ph].deep}
+        opacity={0.45}
+      />
+      {/* one sock that never made it to the wash, under the sofa's shadow */}
+      {px(806, 154, 7, 3, "#5e5952")}
+      {px(806, 154, 7, 1, "#6f6a62")}
+      {/* the guitar pick that fell and was declared lost */}
+      {px(786, 162, 2, 2, "#c9762a")}
+      <Contact set={FLOOR_CONTACT} op={s.lit ? 0.9 : 0.6} />
+    </g>
+  );
+}
+
+/* === PLANE 4 — staticObjects: the kitchen run ================================= */
+
+function Kitchen({ ph, s }: { ph: Ph; s: StudioSt }) {
+  const ledOn = s.lit;
+  return (
+    <g>
+      {/* wall units, left run: three doors and the open shelf over the kettle */}
+      <Bevel boxes={[[116, UNIT_TOP, 94, UNIT_BOT - UNIT_TOP]]} mat={KWALL[ph]} />
+      <path
+        d={pxPath([
+          [146, UNIT_TOP, 1, 27],
+          [178, UNIT_TOP, 1, 27],
+        ])}
+        fill={KWALL[ph].deep}
+      />
+      <path
+        d={pxPath([
+          [136, 88, 8, 1],
+          [168, 88, 8, 1],
+          [196, 88, 8, 1],
+        ])}
+        fill={KWALL[ph].deep}
+      />
+      {/* wall units, right of the window: one door, then the hood, the microwave */}
+      <Bevel boxes={[[284, UNIT_TOP, 22, UNIT_BOT - UNIT_TOP]]} mat={KWALL[ph]} />
+      {px(292, 88, 8, 1, KWALL[ph].deep)}
+      <Bev set={HOOD_SET} mat={STEEL[ph]} />
+      {px(308, 76, 30, 2, STEEL[ph].deep)}
+      {s.cooker === "on" ? (
+        <path d={pxPath([[310, 80, 26, 2]])} fill={dth("w", "25")} opacity={0.8} />
+      ) : null}
+      {/* the microwave in its niche, clock forever unset after the last outage */}
+      <Bevel boxes={[[344, UNIT_TOP, 30, UNIT_BOT - UNIT_TOP]]} mat={KWALL[ph]} />
+      <Bev set={MICRO_SET} mat={GRAPHITE[ph]} />
+      {px(348, 74, 16, 14, "#1d2027")}
+      {px(350, 76, 12, 10, "#12141a")}
+      {px(366, 74, 6, 14, GRAPHITE[ph].lo)}
+      {/* the unset clock: two green dots, blinking since the last outage */}
+      <path
+        d={pxPath([
+          [368, 78, 1, 1],
+          [368, 80, 1, 1],
+        ])}
+        fill={K.green}
+        opacity={0.8}
+      >
+        <animate
+          attributeName="opacity"
+          calcMode="discrete"
+          values="0.8;0;0.8"
+          dur="2s"
+          repeatCount="indefinite"
+        />
+      </path>
+      {/* the LED strip under the units */}
+      <path
+        d={pxPath([
+          [118, UNIT_BOT, 92, 1],
+          [286, UNIT_BOT, 88, 1],
+        ])}
+        fill={ledOn ? K.ledCool : KWALL[ph].deep}
+        opacity={ledOn ? 0.9 : 0.6}
+      />
+      {/* spice shelf on the splashback — the small jars run the whole kitchen */}
+      {px(126, 100, 36, 2, OAK[ph].base)}
+      {px(126, 100, 36, 1, OAK[ph].hi)}
+      <path
+        d={pxPath([
+          [129, 94, 5, 6],
+          [136, 93, 5, 7],
+          [143, 94, 5, 6],
+          [150, 95, 5, 5],
+        ])}
+        fill="#8a6a3a"
+      />
+      <path
+        d={pxPath([
+          [129, 94, 5, 2],
+          [136, 93, 5, 2],
+          [143, 94, 5, 2],
+          [150, 95, 5, 2],
+        ])}
+        fill="#c9a24b"
+      />
+      {/* the kitchen clock, five minutes fast on purpose */}
+      {px(186, 50, 12, 12, K.linen)}
+      {px(186, 50, 12, 1, "#f6f0e0")}
+      {px(187, 51, 10, 10, "#f2ede0")}
+      <path
+        d={pxPath([
+          [191, 53, 2, 4],
+          [193, 56, 3, 1],
+        ])}
+        fill="#3a3e44"
+      />
+      {/* worktop and the graphite carcass under it */}
+      {px(112, WORKTOP, 264, 4, OAK[ph].base)}
+      {px(112, WORKTOP, 264, 1, OAK[ph].hi)}
+      {px(112, WORKTOP + 4, 264, 2, OAK[ph].deep)}
+      {px(112, 122, 264, 28, GRAPHITE[ph].base)}
+      <rect x={112} y={122} width={264} height={28} fill="url(#px-satin)" opacity={0.25} />
+      <path
+        d={pxPath([
+          [148, 122, 1, 28],
+          [180, 122, 1, 28],
+          [212, 122, 1, 28],
+          [280, 122, 1, 28],
+          [308, 122, 1, 28],
+          [336, 122, 1, 28],
+        ])}
+        fill={GRAPHITE[ph].deep}
+      />
+      {/* drawer fronts left, then door handles */}
+      <path
+        d={pxPath([
+          [116, 128, 28, 1],
+          [116, 138, 28, 1],
+        ])}
+        fill={GRAPHITE[ph].deep}
+      />
+      <path
+        d={pxPath([
+          [126, 124, 8, 1],
+          [126, 131, 8, 1],
+          [126, 141, 8, 1],
+          [160, 126, 8, 1],
+          [192, 126, 8, 1],
+          [288, 126, 8, 1],
+        ])}
+        fill={STEEL[ph].base}
+      />
+      {/* plinth */}
+      {px(112, 146, 264, 4, GRAPHITE[ph].deep)}
+      {/* the tea towel through the oven rail, striped */}
+      {px(196, 122, 10, 14, K.linen)}
+      <path
+        d={pxPath([
+          [196, 125, 10, 1],
+          [196, 130, 10, 1],
+        ])}
+        fill="#a4553f"
+      />
+      {/* kettle on its base, spout to the wall */}
+      {px(160, 114, 20, 2, GRAPHITE[ph].lo)}
+      <Bevel boxes={[[162, 100, 15, 14]]} mat={STEEL[ph]} />
+      {px(176, 102, 3, 8, STEEL[ph].lo)}
+      {px(166, 98, 8, 2, STEEL[ph].base)}
+      <path d={pxPath([[164, 110, 2, 2]])} fill={s.kettleOn ? "#4a90d9" : STEEL[ph].deep}>
+        {s.kettleOn ? (
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="1;0.5;1"
+            dur="1.2s"
+            repeatCount="indefinite"
+          />
+        ) : null}
+      </path>
+      {/* its cord, to the socket that also feeds the machine */}
+      <path
+        d={pxPath([
+          [178, 112, 1, 4],
+          [173, 104, 1, 1],
+        ])}
+        fill="#4a4e55"
+      />
+      {/* the small table, two stools — one usually holding a jacket */}
+      <Bev set={TABLE_SET} mat={OAK[ph]} />
+      <rect x={126} y={121} width={60} height={5} fill="url(#px-wood)" opacity={0.5} />
+      <path
+        d={pxPath([
+          [130, 126, 3, 24],
+          [179, 126, 3, 24],
+        ])}
+        fill={OAK[ph].lo}
+      />
+      {px(132, 136, 48, 2, OAK[ph].mid)}
+      {/* stools tucked in, mostly */}
+      <path
+        d={pxPath([
+          [138, 130, 14, 3],
+          [140, 133, 2, 17],
+          [148, 133, 2, 17],
+        ])}
+        fill={OAK[ph].mid}
+      />
+      <path
+        d={pxPath([
+          [160, 130, 14, 3],
+          [162, 133, 2, 17],
+          [170, 133, 2, 17],
+        ])}
+        fill={OAK[ph].mid}
+      />
+      {ph === "dawn" ? (
+        <g>
+          {/* breakfast: the bowl, the mug, the board with bread */}
+          {px(136, 117, 8, 4, "#3f6fd9")}
+          {px(148, 116, 5, 5, K.linen)}
+          {px(158, 118, 12, 3, OAK[ph].lo)}
+          {px(161, 116, 6, 2, "#c9a24b")}
         </g>
       ) : (
         <g>
-          <Bevel x={352} y={54} w={48} h={94} mat={M.graphite} />
-          <rect x={352} y={54} width={48} height={94} fill="url(#st-brushed)" />
-          {px(354, 90, 44, 2, M.graphite.deep)}
-          {px(354, 92, 44, 1, M.graphite.hi)}
-          {px(390, 62, 3, 20, M.steel.base)}
-          {px(390, 62, 3, 1, M.steel.hi)}
-          {px(390, 96, 3, 26, M.steel.base)}
-          {px(390, 96, 3, 1, M.steel.hi)}
-          {px(389, 82, 5, 1, "#00000055")}
-          {px(389, 122, 5, 1, "#00000055")}
-          {[
-            [358, 62, 8, 10, C.linen],
-            [370, 66, 5, 5, "#c94040"],
-            [360, 76, 10, 7, "#e8c433"],
-            [376, 78, 6, 6, "#4a90d9"],
-            [366, 100, 12, 9, M.white.base],
-          ].map(([mx, my, mw, mh, c]) => (
-            <g key={`mg${mx}${my}`}>
-              {px(mx as number, my as number, mw as number, mh as number, c as string)}
-              {px(mx as number, my as number, mw as number, 1, "#ffffff66")}
-              {px(mx as number, (my as number) + (mh as number), mw as number, 1, "#00000044")}
-            </g>
-          ))}
-          {px(359, 63, 6, 5, "#7a8f9f")}
-          {px(361, 78, 8, 1, M.brass.deep)}
-          {px(367, 102, 10, 1, "#8a8d92")}
-          {ph === "dawn" ? px(380, 104, 8, 8, "#e8c445") : null}
+          {/* the fruit bowl that keeps the table honest */}
+          {px(146, 117, 14, 4, TILE[ph].lo)}
+          <path
+            d={pxPath([
+              [148, 115, 4, 2],
+              [153, 114, 4, 3],
+              [150, 113, 3, 2],
+            ])}
+            fill="#c9762a"
+          />
         </g>
       )}
+      {ph === "dusk" || ph === "night" ? (
+        <g>
+          {/* the jacket over the far stool */}
+          {px(159, 127, 16, 8, "#4a5a48")}
+          {px(159, 127, 16, 2, "#5a6a58")}
+          <path d={pxPath([[162, 135, 4, 6]])} fill="#42513f" />
+        </g>
+      ) : null}
+      {/* the speaker, playing or not */}
+      <Bevel boxes={[[190, 104, 14, 12]]} mat={GRAPHITE[ph]} />
+      <path d={pxPath([[193, 107, 8, 6]])} fill={GRAPHITE[ph].deep} />
+      <path d={pxPath([[201, 105, 1, 1]])} fill={s.radioOn ? K.green : "#4a4d52"} />
+      {s.radioOn ? (
+        <g>
+          <rect x={193} y={109} width={2} height={3} fill={K.green} opacity={0.8}>
+            <animate
+              attributeName="height"
+              calcMode="discrete"
+              values="3;5;2;4"
+              dur="0.9s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="y"
+              calcMode="discrete"
+              values="109;107;110;108"
+              dur="0.9s"
+              repeatCount="indefinite"
+            />
+          </rect>
+          <rect x={196} y={108} width={2} height={4} fill={K.green} opacity={0.8}>
+            <animate
+              attributeName="height"
+              calcMode="discrete"
+              values="4;2;5;3"
+              dur="1.1s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="y"
+              calcMode="discrete"
+              values="108;110;107;109"
+              dur="1.1s"
+              repeatCount="indefinite"
+            />
+          </rect>
+        </g>
+      ) : null}
+      {/* dish rack; the pan never fully dries */}
+      {px(206, 112, 20, 4, STEEL[ph].lo)}
+      <path
+        d={pxPath([
+          [208, 104, 2, 8],
+          [213, 104, 2, 8],
+          [218, 104, 2, 8],
+        ])}
+        fill={s.dishes ? KWALL[ph].lo : K.linen}
+      />
+      {px(222, 106, 4, 6, STEEL[ph].base)}
+      {/* the sink: rim, tap, and the morning's dishes until somebody deals with them */}
+      {px(228, 114, 44, 2, STEEL[ph].hi)}
+      {px(230, WORKTOP, 40, 2, STEEL[ph].mid)}
+      {px(246, 98, 3, 16, STEEL[ph].base)}
+      {px(246, 96, 10, 3, STEEL[ph].hi)}
+      {px(254, 99, 2, 3, STEEL[ph].lo)}
+      {s.dishes ? (
+        <g>
+          {/* the stack: two plates, the pot, a mug at an angle */}
+          <path
+            d={pxPath([
+              [232, 110, 14, 2],
+              [234, 108, 10, 2],
+            ])}
+            fill={KWALL[ph].lo}
+          />
+          {px(236, 102, 10, 6, STEEL[ph].mid)}
+          {px(237, 100, 3, 2, STEEL[ph].lo)}
+          {px(250, 108, 6, 6, "#a8c2d4")}
+        </g>
+      ) : null}
+      {/* washing-up liquid and the sponge that has seen things */}
+      {px(262, 104, 4, 10, K.green)}
+      {px(263, 102, 2, 2, "#2a8a5a")}
+      {px(268, 110, 6, 4, "#e8c832")}
+      {/* knife strip and the leaning board */}
+      {px(278, 96, 24, 2, GRAPHITE[ph].lo)}
+      <path
+        d={pxPath([
+          [281, 98, 2, 9],
+          [287, 98, 2, 8],
+          [293, 98, 2, 10],
+          [299, 98, 2, 7],
+        ])}
+        fill={STEEL[ph].base}
+      />
+      <path
+        d={pxPath([
+          [281, 96, 2, 2],
+          [287, 96, 2, 2],
+          [293, 96, 2, 2],
+          [299, 96, 2, 2],
+        ])}
+        fill={OAK[ph].lo}
+      />
+      {px(284, 102, 14, 14, OAK[ph].base)}
+      {px(284, 102, 14, 1, OAK[ph].hi)}
+      {/* the cooker: induction top, oven below, the display that knows the time */}
+      {px(308, 112, 28, 4, "#14161a")}
+      <path
+        d={pxPath([
+          [312, 113, 6, 2],
+          [324, 113, 6, 2],
+        ])}
+        fill={s.cooker === "on" ? K.ember : "#2e3238"}
+      />
+      {s.cooker === "on" ? (
+        <path d={pxPath([[312, 113, 6, 2]])} fill="#ff9e58">
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="1;0.6;1;0.8"
+            dur="1.6s"
+            repeatCount="indefinite"
+          />
+        </path>
+      ) : null}
+      <Bevel boxes={[[308, 118, 28, 28]]} mat={GRAPHITE[ph]} />
+      {px(310, 121, 24, 2, STEEL[ph].base)}
+      <PixelText
+        x={312}
+        y={125}
+        text={s.cooker === "on" ? "18:40" : "12:00"}
+        fill={s.cooker === "on" ? K.ember : "#5a5e66"}
+        gap={0}
+      />
+      {s.cooker === "open" ? (
+        <g>
+          {/* the door is down: racks, the tray that remembers Friday */}
+          {px(310, 130, 24, 14, "#1d2027")}
+          <path
+            d={pxPath([
+              [312, 134, 20, 1],
+              [312, 139, 20, 1],
+            ])}
+            fill="#4a4e55"
+          />
+          {px(314, 137, 14, 2, STEEL[ph].lo)}
+          {px(306, 144, 32, 4, GRAPHITE[ph].hi)}
+        </g>
+      ) : (
+        <g>
+          {px(312, 132, 20, 10, s.cooker === "on" ? "#3a2a20" : "#1d2027")}
+          {s.cooker === "on" ? (
+            <rect x={314} y={134} width={16} height={6} fill={K.ember} opacity={0.5}>
+              <animate
+                attributeName="opacity"
+                calcMode="discrete"
+                values="0.5;0.7;0.45;0.6"
+                dur="2.1s"
+                repeatCount="indefinite"
+              />
+            </rect>
+          ) : null}
+        </g>
+      )}
+      {/* the pot, only when something is actually cooking */}
+      {s.cooker === "on" ? (
+        <g>
+          {px(312, 104, 16, 8, STEEL[ph].base)}
+          {px(312, 104, 16, 1, STEEL[ph].hi)}
+          {px(310, 103, 20, 2, STEEL[ph].lo)}
+          {px(328, 106, 4, 2, STEEL[ph].deep)}
+        </g>
+      ) : null}
+      {/* the pedal bin, and at dusk the bag that has crested the rim */}
+      <Bevel boxes={[[346, 122, 16, 26]]} mat={STEEL[ph]} />
+      {px(346, 122, 16, 2, STEEL[ph].hi)}
+      {px(352, 146, 6, 2, STEEL[ph].deep)}
+      {s.binFull ? (
+        <g>
+          {px(347, 114, 14, 8, "#3a4048")}
+          {px(349, 112, 8, 4, "#4a525c")}
+          {px(352, 110, 4, 3, "#2e343c")}
+          {/* the flattened box leaning beside it, waiting for the trip down */}
+          {px(338, 128, 6, 20, K.cardboard)}
+          {px(338, 128, 6, 2, "#c9a24b")}
+        </g>
+      ) : null}
+      {/* the espresso machine — it hisses like it's judging you */}
+      <Bevel boxes={[[356, 98, 18, 18]]} mat={GRAPHITE[ph]} />
+      {px(358, 100, 14, 4, STEEL[ph].base)}
+      {px(361, 108, 8, 3, STEEL[ph].lo)}
+      {px(362, 111, 6, 5, K.linen)}
+      <path d={pxPath([[370, 100, 2, 2]])} fill={s.lit ? K.warm : "#4a4d52"} opacity={0.9} />
+      {/* its cord to the shared socket */}
+      <path
+        d={pxPath([
+          [372, 108, 1, 8],
+          [368, 104, 1, 1],
+        ])}
+        fill="#4a4e55"
+      />
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// doors nook — the calendar is gone; it sat across both architraves
-// ---------------------------------------------------------------------------
-
-function DoorsNook({
-  opening,
-  ph,
-  lightOn,
-  sh,
-}: {
-  opening: string | null;
-  ph: Ph;
-  lightOn: boolean;
-  sh: Shadow;
-}) {
-  const cold = ph === "night" || ph === "dawn" || ph === "dusk";
+function Fridge({ ph, s }: { ph: Ph; s: StudioSt }) {
   return (
     <g>
-      <InteriorDoor x={408} opening={opening === "door-bath"} lit={false} plate="drop" />
-      <InteriorDoor
-        x={464}
-        opening={opening === "door-study"}
-        lit={ph === "night" && lightOn}
-        plate="moon"
-      />
-      <Cast x={496} w={30} sh={sh} depth={4} />
-      {px(496, 108, 30, 34, "#dfe0dc")}
-      {px(496, 108, 30, 1, "#f0f1ee")}
-      {[499, 505, 511, 517].map((fx) => (
-        <g key={`rf${fx}`}>
-          {px(fx, 110, 4, 30, "#d2d4cf")}
-          {px(fx, 110, 1, 30, "#f0f1ee")}
-          {px(fx + 3, 110, 1, 30, "#b0b2ad")}
-        </g>
-      ))}
-      {px(496, 142, 30, 3, "#bcbeb9")}
-      {px(496, 145, 30, 1, "#00000033")}
-      {px(499, 145, 3, 4, M.steel.lo)}
-      {px(519, 145, 3, 4, M.steel.lo)}
-      {px(506, 104, 14, 34, C.linen)}
-      {px(506, 104, 14, 1, "#f2ede0")}
-      {px(519, 104, 1, 34, "#c9c2b0")}
-      {px(506, 118, 14, 1, "#d6cfbc")}
-      {cold ? (
+      {s.fridgeOpen ? (
         <g>
-          <PixelWash id="rad" x={494} y={100} w={34} h={9} color="#ffd0a8" op={0.22} q={3} />
-          <rect x={494} y={103} width={34} height={3} fill="url(#st-dither-lite)" opacity={0.08}>
+          {/* the box, open: shelves, the light that still works */}
+          {px(377, 78, 24, 72, WHITE[ph].lo)}
+          {px(379, 80, 20, 66, "#e8f2f6")}
+          <path
+            d={pxPath([
+              [379, 96, 20, 1],
+              [379, 112, 20, 1],
+              [379, 128, 20, 1],
+            ])}
+            fill="#b0c2ca"
+          />
+          {/* eggs, butter, yesterday's soup; the milk in the door that left with it */}
+          {px(381, 90, 6, 6, K.linen)}
+          {px(389, 91, 5, 5, "#e8c832")}
+          {px(382, 104, 8, 8, STEEL[ph].base)}
+          {px(392, 106, 5, 6, "#a4553f")}
+          {px(383, 120, 5, 8, "#f2f4ee")}
+          {px(390, 122, 6, 6, M.leaf.base)}
+          {ph === "dawn" ? px(382, 131, 8, 5, "#f2e6c0") : null}
+          <rect x={379} y={80} width={20} height={66} fill={K.ledCool} opacity={0.2}>
             <animate
               attributeName="opacity"
-              values="0.08;0.03;0.08"
-              dur="6s"
+              calcMode="discrete"
+              values="0.2;0.3;0.2"
+              dur="2.4s"
               repeatCount="indefinite"
             />
           </rect>
+          {/* the door, swung to the left over the counter */}
+          {px(352, 78, 25, 68, WHITE[ph].base)}
+          {px(352, 78, 25, 2, WHITE[ph].hi)}
+          {px(352, 144, 25, 2, WHITE[ph].deep)}
+          <path
+            d={pxPath([
+              [354, 84, 21, 6],
+              [354, 94, 21, 6],
+            ])}
+            fill="#dce4e8"
+          />
         </g>
-      ) : null}
-      <Cast x={516} w={16} sh={sh} depth={4} />
-      {px(516, 130, 16, 18, "#8d8478")}
-      {px(516, 130, 16, 1, "#a29a8d")}
-      {px(531, 130, 1, 18, "#6f675c")}
-      <rect x={516} y={130} width={16} height={18} fill="url(#st-grain)" />
-      {px(518, 128, 12, 3, "#7a776f")}
-      {px(518, 128, 12, 1, "#8f8c83")}
-      {[
-        [512, 108, 11, 24, M.leaf.base],
-        [521, 100, 11, 32, M.leaf.hi],
-        [516, 96, 9, 10, "#63915f"],
-        [524, 94, 7, 8, M.leaf.mid],
-      ].map(([lx, ly, lw, lh, c]) => (
-        <g key={`lf${lx}${ly}`}>
-          {px(lx as number, ly as number, lw as number, lh as number, c as string)}
-          {px(lx as number, ly as number, Math.round((lw as number) / 2), 1, "#7fae76")}
-          {px((lx as number) + (lw as number) - 1, ly as number, 1, lh as number, "#33482f")}
+      ) : (
+        <g>
+          <Bev set={FRIDGE_SET} mat={WHITE[ph]} />
+          <rect x={377} y={78} width={24} height={68} fill="url(#px-satin)" opacity={0.3} />
+          {px(377, 100, 24, 2, WHITE[ph].deep)}
+          {px(378, 82, 2, 14, STEEL[ph].base)}
+          {px(378, 104, 2, 20, STEEL[ph].base)}
+          {/* the door archive: magnets, the shopping list, a postcard from home */}
+          {px(384, 84, 5, 6, "#dfe8ec")}
+          {px(390, 86, 3, 3, K.red)}
+          {px(382, 106, 7, 9, K.linen)}
+          <path
+            d={pxPath([
+              [383, 108, 5, 1],
+              [383, 111, 4, 1],
+            ])}
+            fill="#8a8368"
+          />
+          {px(391, 108, 7, 5, K.flagBlue)}
+          {px(391, 111, 7, 2, K.flagYellow)}
+          {px(386, 122, 6, 7, "#c9a878")}
+          {px(387, 123, 4, 4, "#8a6a3a")}
         </g>
-      ))}
-      {px(520, 132, 3, 14, "#3f5b3f")}
+      )}
+      {px(377, 146, 24, 4, GRAPHITE[ph].deep)}
+      {/* the three-litre jars on top — the debt carried quietly */}
+      <path
+        d={pxPath([
+          [380, 68, 6, 10],
+          [388, 70, 6, 8],
+          [396, 68, 5, 10],
+        ])}
+        fill="#b8c9b0"
+        opacity={0.8}
+      />
+      <path
+        d={pxPath([
+          [381, 67, 4, 1],
+          [389, 69, 4, 1],
+          [397, 67, 3, 1],
+        ])}
+        fill={M.brass.base}
+      />
+      <path
+        d={pxPath([
+          [381, 70, 1, 7],
+          [389, 72, 1, 5],
+        ])}
+        fill="#ffffff"
+        opacity={0.4}
+      />
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// living
-// ---------------------------------------------------------------------------
-
-function Living({
-  world: _world,
-  ph,
-  lightOn,
-  guitarOut,
-  sh,
-  amb,
-}: {
-  world: WorldState;
-  ph: Ph;
-  lightOn: boolean;
-  guitarOut: boolean;
-  sh: Shadow;
-  amb: Ambient;
-}) {
-  const dark = ph === "night" || ph === "dusk";
-  const gain = lightOn ? amb.lampGain : 0;
+function DogCorner({ ph, s }: { ph: Ph; s: StudioSt }) {
   return (
     <g>
-      {px(674, 54, 44, 36, "#00000022")}
-      <Bevel x={676} y={52} w={40} h={34} mat={M.graphite} />
-      {px(679, 55, 34, 28, C.linen)}
-      <AO x={679} y={55} w={34} h={3} from="top" op={0.24} />
-      {px(681, 58, 10, 10, "#c94040")}
-      {px(693, 57, 7, 14, "#2b5aa8")}
-      {px(688, 68, 14, 6, "#e8c433")}
-      {px(703, 60, 7, 7, "#3a7d84")}
-      {px(682, 76, 24, 3, "#a3547c")}
-      <GlassSheen id="art" x={698} y={56} h={26} w={6} op={0.1} />
-      <Cast x={674} w={44} sh={sh} />
-      <Bevel x={674} y={92} w={44} h={56} mat={M.oak} />
-      <rect x={674} y={92} width={44} height={56} fill="url(#st-wood)" />
-      {[110, 128].map((sy) => (
-        <g key={`bs${sy}`}>
-          {px(674, sy, 44, 2, M.oak.lo)}
-          {px(674, sy, 44, 1, M.oak.hi)}
-          <AO x={676} y={sy + 2} w={40} h={4} from="top" op={0.34} />
-        </g>
-      ))}
-      <AO x={676} y={94} w={40} h={4} from="top" op={0.34} />
-      {[
-        ["#2b5aa8", 678, 5, 14],
-        ["#a33a30", 684, 4, 13],
-        ["#4e6b4e", 689, 5, 14],
-        [M.brass.base, 695, 4, 12],
-        [M.walnut.base, 700, 6, 14],
-      ].map(([c, bx, bw, bh]) => (
-        <g key={`bk${bx}`}>
-          {px(bx as number, 96 + (14 - (bh as number)), bw as number, bh as number, c as string)}
-          {px(bx as number, 96 + (14 - (bh as number)), bw as number, 1, "#ffffff44")}
-          {px(
-            (bx as number) + (bw as number) - 1,
-            96 + (14 - (bh as number)),
-            1,
-            bh as number,
-            "#00000044",
-          )}
-        </g>
-      ))}
-      {[
-        ["#7a5a48", 678, 6, 15],
-        ["#3a7d84", 685, 5, 13],
-        ["#c94040", 691, 4, 15],
-        ["#8a8f96", 696, 6, 12],
-      ].map(([c, bx, bw, bh]) => (
-        <g key={`bk2${bx}`}>
-          {px(bx as number, 114 + (15 - (bh as number)), bw as number, bh as number, c as string)}
-          {px(bx as number, 114 + (15 - (bh as number)), bw as number, 1, "#ffffff44")}
-          {px(
-            (bx as number) + (bw as number) - 1,
-            114 + (15 - (bh as number)),
-            1,
-            bh as number,
-            "#00000044",
-          )}
-        </g>
-      ))}
-      {px(704, 116, 12, 12, C.linen)}
-      {px(704, 116, 12, 1, "#f2ede0")}
-      {px(706, 118, 8, 7, "#8ba0a8")}
-      {px(680, 132, 10, 14, "#4e7a52")}
-      {px(680, 132, 5, 1, "#6d9668")}
-      {px(682, 130, 6, 4, M.leaf.hi)}
-      {px(696, 132, 8, 14, M.brass.base)}
-      {px(696, 132, 8, 1, M.brass.hi)}
-      {px(703, 132, 1, 14, M.brass.deep)}
-      <Cast x={718} w={86} sh={sh} />
-      <Bevel x={718} y={116} w={86} h={32} mat={M.oak} />
-      <rect x={718} y={116} width={86} height={32} fill="url(#st-wood)" />
-      <AO x={720} y={119} w={82} h={4} from="top" op={0.3} />
-      {[748, 778].map((dx) => (
-        <g key={`md${dx}`}>
-          {px(dx, 120, 2, 26, M.oak.deep)}
-          {px(dx + 2, 120, 1, 26, M.oak.hi)}
-        </g>
-      ))}
-      {px(736, 122, 22, 20, M.white.base)}
-      {px(736, 122, 22, 1, M.white.hi)}
-      {px(757, 122, 1, 20, M.white.deep)}
-      {px(740, 122, 3, 20, "#26282c")}
-      {px(738, 124, 1, 16, "#4a90d9")}
-      {px(735, 142, 24, 1, "#00000044")}
-      {px(764, 134, 14, 8, "#26282c")}
-      {px(764, 134, 14, 1, "#454850")}
-      {px(767, 136, 3, 3, "#4a90d9")}
-      {[
-        ["#2b5aa8", 722, 5, 18],
-        ["#c94040", 729, 5, 16],
-        ["#3a7d84", 784, 5, 17],
-        [M.brass.base, 791, 5, 15],
-      ].map(([c, bx, bw, bh]) => (
-        <g key={`gb${bx}`}>
-          {px(bx as number, 144 - (bh as number), bw as number, bh as number, c as string)}
-          {px(bx as number, 144 - (bh as number), bw as number, 1, "#ffffff44")}
-          {px(
-            (bx as number) + (bw as number) - 1,
-            144 - (bh as number),
-            1,
-            bh as number,
-            "#00000044",
-          )}
-        </g>
-      ))}
-      {px(802, 130, 10, 1, "#4a4d52")}
-      {px(810, 130, 1, 16, "#4a4d52")}
-      {px(804, 146, 12, 2, "#4a4d52")}
-      {guitarOut || ph !== "night" ? (
-        <g>
-          <Cast x={766} w={18} sh={sh} depth={4} />
-          {px(772, 96, 4, 34, "#6b4a2f")}
-          {px(772, 96, 1, 34, "#9a7350")}
-          {px(775, 96, 1, 34, "#4a3220")}
-          {px(769, 92, 10, 6, M.walnut.base)}
-          {px(769, 92, 10, 1, M.walnut.hi)}
-          {px(770, 93, 3, 3, M.steel.hi)}
-          {px(768, 128, 14, 20, "#c9863f")}
-          {px(768, 128, 14, 1, "#e0a25a")}
-          {px(781, 128, 1, 20, "#9a6329")}
-          {px(766, 134, 18, 12, "#c9863f")}
-          {px(766, 134, 18, 1, "#e0a25a")}
-          {px(783, 134, 1, 12, "#9a6329")}
-          <rect x={766} y={128} width={18} height={20} fill="url(#st-wood)" />
-          {px(772, 136, 6, 6, "#5d3a20")}
-          <AO x={772} y={136} w={6} h={3} from="top" op={0.5} />
-          {px(773, 130, 4, 16, "#e8e2d2")}
-        </g>
-      ) : null}
-      <Cast x={788} w={70} sh={sh} />
-      {px(788, 132, 70, 4, M.oak.base)}
-      {px(788, 132, 70, 1, M.oak.hi)}
-      {px(788, 133, 70, 1, "#c8a670")}
-      {px(788, 135, 70, 1, M.oak.deep)}
-      <rect x={788} y={132} width={70} height={4} fill="url(#st-wood)" />
-      <AO x={788} y={136} w={70} h={4} from="top" op={0.3} />
-      {[792, 850].map((lx) => (
-        <g key={`ctl${lx}`}>
-          {px(lx, 136, 4, 12, M.oak.lo)}
-          {px(lx, 136, 1, 12, M.oak.base)}
-        </g>
-      ))}
-      {px(792, 144, 62, 2, M.oak.lo)}
-      {px(800, 128, 24, 4, M.steel.mid)}
-      {px(800, 128, 24, 1, M.steel.hi)}
-      {px(802, 112, 20, 16, M.sofa.base)}
-      {px(802, 112, 20, 1, M.sofa.hi)}
-      {px(821, 112, 1, 16, M.sofa.deep)}
-      {px(804, 114, 16, 12, dark || !lightOn ? "#9fc7d6" : "#7ea8b8")}
-      <AO x={804} y={114} w={16} h={2} from="top" op={0.28} />
-      {px(806, 116, 8, 2, "#e8f4f8")}
-      {px(806, 120, 12, 1, "#e8f4f8")}
-      {px(806, 123, 7, 1, "#e8f4f8")}
-      <rect x={818} y={116} width={2} height={2} fill="#e8f4f8">
-        <animate attributeName="opacity" values="1;1;0;0" dur="1.2s" repeatCount="indefinite" />
+      {/* the robot vacuum on its dock, holding the line of the truce */}
+      {px(532, 138, 4, 12, GRAPHITE[ph].base)}
+      {px(532, 138, 4, 1, GRAPHITE[ph].hi)}
+      <Bevel boxes={[[536, 142, 15, 8]]} mat={GRAPHITE[ph]} />
+      {px(541, 143, 4, 2, STEEL[ph].base)}
+      <path d={pxPath([[534, 140, 1, 1]])} fill={K.green}>
+        <animate
+          attributeName="opacity"
+          calcMode="discrete"
+          values="1;0.3;1;1"
+          dur="3.2s"
+          begin="-1s"
+          repeatCount="indefinite"
+        />
+      </path>
+      {/* the feed sack, rolled shut at the top */}
+      {px(562, 128, 12, 22, pcol(K.cardboard, ph))}
+      <rect x={562} y={128} width={12} height={22} fill="url(#px-weave)" opacity={0.4} />
+      {px(562, 128, 12, 3, pcol("#8a6a3a", ph))}
+      {px(564, 136, 8, 6, pcol("#8a4a3a", ph))}
+      {/* the bowls on their mat; the water bobs, the kibble is a state read */}
+      {px(576, 146, 36, 3, pcol("#6f5e48", ph))}
+      {px(580, 141, 12, 6, "#3f6fd9")}
+      {px(581, 142, 10, 2, K.water)}
+      <rect x={581} y={142} width={10} height={1} fill={K.waterHi}>
+        <animate
+          attributeName="y"
+          calcMode="discrete"
+          values="142;143;142"
+          dur="2.8s"
+          repeatCount="indefinite"
+        />
       </rect>
-      <PixelWash id="lap" x={798} y={128} w={28} h={6} color="#9fc7d6" op={0.24} q={2} />
-      {px(832, 128, 10, 5, "#26282c")}
-      {px(832, 128, 10, 1, "#454850")}
-      {px(834, 129, 6, 3, "#4a90d9")}
-      {px(831, 133, 12, 1, "#00000044")}
-      {px(826, 126, 9, 7, "#3f6b7a")}
-      {px(826, 126, 9, 1, "#5f8f9e")}
-      {px(844, 129, 12, 4, "#2e3033")}
-      {px(846, 130, 2, 1, "#c94040")}
-      {px(850, 58, 48, 30, "#00000018")}
-      {px(892, 56, 4, 30, M.oak.lo)}
-      {px(852, 56, 44, 4, M.oak.lo)}
-      {px(852, 56, 44, 1, M.oak.hi)}
-      {px(856, 60, 36, 11, "#2b5aa8")}
-      {px(856, 71, 36, 11, "#e8c433")}
-      {px(856, 60, 36, 2, "#3a6cc0")}
-      {px(856, 80, 36, 2, "#d4b02a")}
-      {px(890, 62, 2, 18, "#254e92")}
-      {px(872, 60, 2, 22, "#00000018")}
-      <Cast x={816} w={102} sh={sh} />
-      <Bevel x={816} y={104} w={102} h={44} mat={M.sofa} />
-      <rect x={816} y={104} width={102} height={44} fill="url(#st-weave)" />
-      {px(816, 100, 15, 48, M.sofa.mid)}
-      {px(816, 100, 15, 1, M.sofa.hi)}
-      {px(830, 100, 1, 48, M.sofa.deep)}
-      {px(903, 100, 15, 48, M.sofa.mid)}
-      {px(903, 100, 15, 1, M.sofa.hi)}
-      {px(903, 100, 1, 48, M.sofa.hi)}
-      <AO x={831} y={104} w={72} h={4} from="top" op={0.26} />
-      {px(832, 112, 70, 10, M.sofa.lo)}
-      {px(832, 112, 70, 1, M.sofa.base)}
-      {px(832, 121, 70, 1, M.sofa.deep)}
-      {px(866, 112, 1, 34, M.sofa.deep)}
-      {px(867, 112, 1, 34, M.sofa.hi)}
-      {[
-        [834, M.brass.base, M.brass.hi, M.brass.lo],
-        [862, "#3a7d84", "#54a0a8", "#2b5f66"],
-      ].map(([cx, base, hi, lo]) => (
-        <g key={`cu${cx}`}>
-          {px(cx as number, 104, 24, 9, base as string)}
-          {px(cx as number, 104, 24, 1, hi as string)}
-          {px((cx as number) + 23, 104, 1, 9, lo as string)}
-          {px(cx as number, 112, 24, 1, "#00000033")}
-        </g>
-      ))}
-      {px(888, 106, 14, 7, "#8a3a50")}
-      {px(888, 106, 14, 1, "#a34a62")}
-      {px(818, 118, 14, 28, M.wool.base)}
-      {px(818, 118, 14, 1, M.wool.hi)}
-      {px(818, 128, 14, 1, M.wool.lo)}
-      {px(818, 136, 14, 1, M.wool.lo)}
-      <rect x={818} y={118} width={14} height={28} fill="url(#st-weave)" />
-      {px(822, 146, 10, 4, M.wool.mid)}
-      <Cast x={894} w={22} sh={sh} depth={4} />
-      {px(894, 124, 22, 4, M.walnut.base)}
-      {px(894, 124, 22, 1, M.walnut.hi)}
-      {px(894, 127, 22, 1, M.walnut.deep)}
-      <AO x={894} y={128} w={22} h={4} from="top" op={0.3} />
-      {px(897, 128, 3, 20, M.walnut.base)}
-      {px(910, 128, 3, 20, M.walnut.base)}
-      {px(897, 128, 1, 20, M.walnut.hi)}
-      {px(898, 106, 16, 12, lightOn ? "#f2dda8" : "#8f8674")}
-      {px(898, 106, 16, 1, lightOn ? "#fdf2cd" : "#a09781")}
-      {px(913, 106, 1, 12, lightOn ? "#cbb47f" : "#6f685a")}
-      {px(904, 118, 4, 6, M.brass.lo)}
-      {px(900, 122, 12, 2, M.brass.base)}
-      {px(896, 120, 8, 4, "#b6c9d2")}
-      {gain > 0.2 ? (
-        <PixelGlow
-          id="sidelamp"
-          cx={906}
-          cy={116}
-          rx={36}
-          ry={28}
-          color={C.warm}
-          op={0.34 * gain}
-          q={4}
+      {px(596, 141, 12, 6, "#c9762a")}
+      {s.fed ? (
+        <path
+          d={pxPath([
+            [598, 140, 3, 2],
+            [602, 139, 3, 2],
+            [605, 141, 2, 1],
+          ])}
+          fill={K.kibble}
         />
-      ) : null}
-      <Cast x={806} w={12} sh={sh} depth={4} />
-      {px(810, 92, 3, 56, M.graphite.mid)}
-      {px(810, 92, 1, 56, M.graphite.hi)}
-      {px(806, 148, 11, 2, M.graphite.lo)}
-      {px(802, 82, 20, 12, lightOn ? "#f2dda8" : "#8f8674")}
-      {px(802, 82, 20, 1, lightOn ? "#fdf2cd" : "#a09781")}
-      {px(821, 82, 1, 12, lightOn ? "#cbb47f" : "#6f685a")}
-      {px(804, 94, 16, 2, lightOn ? "#ffe6b0" : "#7d7460")}
-      {gain > 0.2 ? (
-        <PixelGlow
-          id="floorlamp"
-          cx={812}
-          cy={94}
-          rx={40}
-          ry={32}
-          color={C.warm}
-          op={0.32 * gain}
-          q={4}
-        />
-      ) : null}
+      ) : (
+        <path d={pxPath([[598, 143, 8, 1]])} fill="#8a5a2a" opacity={0.5} />
+      )}
+      {/* the bed he chose himself */}
+      {px(616, 134, 48, 16, pcol("#6a5f48", ph))}
+      {px(618, 132, 44, 4, pcol("#7d7058", ph))}
+      {px(622, 138, 36, 10, pcol("#8f8268", ph))}
+      <rect x={616} y={132} width={48} height={18} fill="url(#px-weave)" opacity={0.4} />
+      {px(650, 134, 14, 6, pcol("#a4553f", ph))}
+      {/* the toy of the week */}
+      {px(604, 146, 6, 4, K.red)}
+      {px(605, 145, 2, 1, "#ff8a7a")}
     </g>
   );
 }
 
-function DogCorner({ ph, bowlsFilled, sh }: { ph: Ph; bowlsFilled: boolean; sh: Shadow }) {
-  const fed = bowlsFilled || ph === "dawn" || ph === "dusk";
+/* === PLANE 4b — staticObjects: the living corner ============================== */
+
+function Living({ ph, s }: { ph: Ph; s: StudioSt }) {
   return (
     <g>
-      <Cast x={616} w={52} sh={sh} depth={4} />
-      {px(616, 130, 52, 18, "#7a5a48")}
-      {px(616, 130, 52, 1, "#96705a")}
-      {px(667, 130, 1, 18, "#5c4436")}
-      <rect x={616} y={130} width={52} height={18} fill="url(#st-weave)" />
-      {px(620, 126, 44, 8, "#8a6a56")}
-      {px(620, 126, 44, 1, "#a48069")}
-      <AO x={622} y={133} w={40} h={4} from="top" op={0.32} />
-      {px(622, 134, 40, 12, "#5d4a66")}
-      {px(624, 136, 36, 8, "#6a5675")}
-      {px(624, 136, 36, 1, "#7d6789")}
-      {px(650, 132, 18, 10, "#8a3a50")}
-      {px(650, 132, 18, 1, "#a44f66")}
-      {[596, 578].map((bx, i) => (
-        <g key={`bw${bx}`}>
-          {px(bx, 138, 14, 8, M.steel.mid)}
-          {px(bx, 138, 14, 1, M.steel.hi)}
-          {px(bx + 13, 138, 1, 8, M.steel.deep)}
-          <AO x={bx + 1} y={139} w={12} h={3} from="top" op={0.34} />
-          {i === 0 ? (
-            fed ? (
-              <g>
-                {px(bx + 2, 140, 10, 3, "#8a5a3a")}
-                {px(bx + 2, 140, 10, 1, "#a67049")}
-              </g>
-            ) : (
-              px(bx + 2, 141, 10, 2, M.steel.lo)
-            )
-          ) : (
-            <rect x={bx + 2} y={140} width={10} height={3} fill="#8fb0c4">
-              <animate
-                attributeName="y"
-                values="140;140.6;140"
-                dur="4.4s"
-                repeatCount="indefinite"
-              />
-            </rect>
-          )}
-          {px(bx - 1, 146, 16, 1, "#00000044")}
+      {/* the leash coiled on the shelf's flank — walks happen from here */}
+      {px(672, 96, 2, 3, M.brass.lo)}
+      <path
+        d={pxPath([
+          [669, 99, 7, 2],
+          [668, 101, 2, 6],
+          [674, 101, 2, 6],
+          [669, 107, 7, 2],
+        ])}
+        fill="#a4553f"
+      />
+      {/* the bookshelf, and the art brut shouting quietly above it */}
+      {px(688, 52, 36, 34, OAK[ph].deep)}
+      {px(690, 54, 32, 30, K.linen)}
+      <path
+        d={pxPath([
+          [693, 58, 8, 10],
+          [704, 62, 9, 8],
+          [696, 72, 12, 6],
+        ])}
+        fill="#c94a3a"
+      />
+      <path
+        d={pxPath([
+          [705, 57, 5, 4],
+          [694, 70, 4, 4],
+        ])}
+        fill="#3f6fd9"
+      />
+      <path d={pxPath([[700, 66, 6, 3]])} fill="#e8c832" />
+      <Bev set={SHELF_SET} mat={OAK[ph]} />
+      <rect x={676} y={90} width={44} height={58} fill="url(#px-wood)" opacity={0.5} />
+      <path
+        d={pxPath([
+          [678, 106, 40, 2],
+          [678, 124, 40, 2],
+        ])}
+        fill={OAK[ph].deep}
+      />
+      {/* top shelf: books at book angles, the pothos doing its slow escape */}
+      <path
+        d={pxPath([
+          [679, 94, 4, 12],
+          [684, 96, 4, 10],
+          [689, 93, 3, 13],
+          [693, 96, 4, 10],
+        ])}
+        fill="#5a6a8a"
+      />
+      <path
+        d={pxPath([
+          [684, 96, 4, 2],
+          [693, 96, 4, 2],
+        ])}
+        fill="#8a4a3a"
+      />
+      {px(698, 98, 8, 8, M.red.lo)}
+      <path
+        d={pxPath([
+          [700, 94, 6, 4],
+          [706, 98, 4, 3],
+          [708, 104, 4, 3],
+        ])}
+        fill={M.leaf.base}
+      />
+      {px(710, 96, 6, 10, K.linen)}
+      {px(711, 98, 4, 5, "#8a8368")}
+      {/* middle: the PS5 games, the dictionary, the box of cables */}
+      <path
+        d={pxPath([
+          [679, 112, 3, 12],
+          [683, 110, 3, 14],
+          [687, 112, 3, 12],
+        ])}
+        fill="#f2f4ee"
+      />
+      <path d={pxPath([[683, 110, 3, 3]])} fill="#3f6fd9" />
+      {px(692, 114, 12, 10, "#4a6a5a")}
+      {px(706, 116, 10, 8, K.cardboard)}
+      <path d={pxPath([[708, 118, 6, 2]])} fill="#4a4e55" />
+      {/* bottom: the heavy books lying down, as heavy books do */}
+      <path
+        d={pxPath([
+          [679, 138, 16, 4],
+          [681, 134, 12, 4],
+          [700, 140, 16, 3],
+        ])}
+        fill="#6a5a48"
+      />
+      <path d={pxPath([[681, 134, 12, 1]])} fill="#8a7658" />
+      {/* the media unit: doors shut on the cable chaos */}
+      <Bev set={MEDIA_SET} mat={OAK[ph]} />
+      <rect x={712} y={128} width={88} height={20} fill="url(#px-wood)" opacity={0.5} />
+      <path
+        d={pxPath([
+          [740, 128, 1, 20],
+          [770, 128, 1, 20],
+        ])}
+        fill={OAK[ph].deep}
+      />
+      <path
+        d={pxPath([
+          [724, 136, 6, 1],
+          [752, 136, 6, 1],
+        ])}
+        fill={STEEL[ph].base}
+      />
+      {/* router on the open end, one light that means everything is fine */}
+      {px(776, 120, 16, 8, "#f2f4ee")}
+      {px(778, 116, 2, 4, "#c9c5b8")}
+      <path d={pxPath([[788, 123, 2, 2]])} fill={K.green}>
+        <animate
+          attributeName="opacity"
+          calcMode="discrete"
+          values="1;1;0.4;1"
+          dur="2.1s"
+          begin="-0.7s"
+          repeatCount="indefinite"
+        />
+      </path>
+      {/* PS5 standing beside the TV: white fins, blue seam when the room is dark */}
+      {px(718, 112, 3, 16, "#f2f4ee")}
+      {px(724, 112, 3, 16, "#f2f4ee")}
+      {px(721, 114, 3, 14, "#1d2027")}
+      {s.tv !== "off" ? <path d={pxPath([[721, 114, 3, 1]])} fill="#4a90d9" opacity={0.9} /> : null}
+      {/* games stacked flat */}
+      <path
+        d={pxPath([
+          [758, 124, 10, 2],
+          [759, 122, 10, 2],
+        ])}
+        fill="#3f6fd9"
+      />
+      {/* the TV cable dropping behind the unit */}
+      {px(750, 111, 1, 17, "#2e3238")}
+      {/* the guitar on its stand — put away at night unless it has been out */}
+      {s.guitarOut ? (
+        <g>
+          <path
+            d={pxPath([
+              [767, 146, 7, 3],
+              [780, 146, 7, 3],
+              [770, 138, 2, 9],
+              [782, 138, 2, 9],
+            ])}
+            fill={GRAPHITE[ph].base}
+          />
+          {px(771, 122, 12, 24, "#c9762a")}
+          {px(773, 126, 8, 17, "#b05e1e")}
+          {px(775, 130, 4, 5, "#2e2218")}
+          {px(776, 110, 2, 12, "#5a4632")}
+          {px(774, 105, 6, 6, "#3a2c1e")}
+          <path
+            d={pxPath([
+              [773, 106, 1, 1],
+              [780, 106, 1, 1],
+              [773, 109, 1, 1],
+              [780, 109, 1, 1],
+            ])}
+            fill={M.brass.base}
+          />
+          <path d={pxPath([[776, 111, 1, 32]])} fill="#e8e2d2" opacity={0.5} />
         </g>
-      ))}
-      {px(ph === "night" ? 604 : 690, 144, 9, 6, "#c94040")}
-      {px(ph === "night" ? 604 : 690, 144, 9, 1, "#e05a50")}
-      {px(ph === "night" ? 606 : 692, 142, 5, 3, "#e05a50")}
-      {px(680, 96, 3, 4, M.brass.base)}
-      {px(678, 100, 7, 4, "#4a4438")}
-      {px(680, 104, 3, 14, "#4a4438")}
-      {px(678, 118, 7, 3, "#4a4438")}
-      {px(860, 170, 6, 6, "#c9d84a")}
-      {px(860, 170, 6, 1, "#dde85f")}
+      ) : (
+        <path
+          d={pxPath([
+            [767, 146, 7, 3],
+            [780, 146, 7, 3],
+            [770, 140, 2, 7],
+            [782, 140, 2, 7],
+          ])}
+          fill={GRAPHITE[ph].base}
+        />
+      )}
+      {/* the coffee table and its standing committee */}
+      <Bev set={CTABLE_SET} mat={OAK[ph]} />
+      <rect x={792} y={132} width={64} height={4} fill="url(#px-wood)" opacity={0.5} />
+      <path
+        d={pxPath([
+          [796, 136, 3, 14],
+          [849, 136, 3, 14],
+        ])}
+        fill={OAK[ph].lo}
+      />
+      {px(798, 142, 52, 2, OAK[ph].mid)}
+      <path
+        d={pxPath([
+          [806, 138, 16, 4],
+          [826, 139, 10, 3],
+        ])}
+        fill="#8a8368"
+      />
+      {/* the laptop, open to whatever was left running */}
+      {px(798, 128, 24, 4, GRAPHITE[ph].base)}
+      {px(800, 116, 20, 12, GRAPHITE[ph].lo)}
+      {px(802, 118, 16, 9, ph === "night" && !s.lit ? "#1a2a28" : K.crt)}
+      <path
+        d={pxPath([
+          [803, 120, 10, 1],
+          [803, 123, 7, 1],
+        ])}
+        fill={ph === "night" && !s.lit ? "#2a4a44" : "#5a7a6e"}
+      />
+      <path d={pxPath([[812, 125, 2, 1]])} fill="#8fd0b8">
+        <animate
+          attributeName="opacity"
+          calcMode="discrete"
+          values="1;1;0;0"
+          dur="1.1s"
+          repeatCount="indefinite"
+        />
+      </path>
+      {px(808, 112, 4, 4, "#c9c5b8")}
+      {/* its charger, down the table leg to the socket the lamp also wants */}
+      <path
+        d={pxPath([
+          [798, 130, 1, 4],
+          [797, 134, 1, 14],
+          [790, 147, 8, 1],
+          [789, 132, 1, 15],
+        ])}
+        fill="#4a4e55"
+      />
+      {/* the mug, the phone face down, the remote out of reach of the sofa */}
+      {px(824, 126, 7, 6, "#3f6fd9")}
+      {px(831, 128, 2, 3, "#3556a8")}
+      {px(836, 130, 9, 2, GRAPHITE[ph].base)}
+      {px(845, 129, 8, 3, GRAPHITE[ph].lo)}
+      <path d={pxPath([[846, 130, 1, 1]])} fill={K.red} opacity={0.8} />
+      {/* the arc lamp leaning over all of it */}
+      {px(780, 146, 18, 4, STEEL[ph].lo)}
+      {px(786, 92, 3, 54, STEEL[ph].base)}
+      <path
+        d={pxPath([
+          [787, 84, 8, 3],
+          [794, 78, 10, 3],
+          [803, 74, 12, 3],
+          [814, 72, 10, 3],
+        ])}
+        fill={STEEL[ph].base}
+      />
+      {px(812, 74, 18, 8, s.lit ? "#e8c98a" : STEEL[ph].mid)}
+      {px(812, 74, 18, 2, s.lit ? "#f2dda8" : STEEL[ph].hi)}
+      {/* the sofa: slate, deep, one throw, two cushions, a blanket for the dog nights */}
+      <Bev set={SOFA_SET} mat={SOFA[ph]} />
+      {px(832, 118, 70, 15, SOFA[ph].mid)}
+      <rect x={816} y={108} width={102} height={40} fill="url(#px-weave)" opacity={0.35} />
+      {px(832, 133, 70, 7, SOFA[ph].base)}
+      {px(832, 133, 70, 1, SOFA[ph].hi)}
+      {px(832, 140, 70, 8, SOFA[ph].lo)}
+      <path
+        d={pxPath([
+          [866, 118, 1, 15],
+          [866, 133, 1, 7],
+        ])}
+        fill={SOFA[ph].deep}
+      />
+      {/* legs */}
+      <path
+        d={pxPath([
+          [820, 148, 3, 2],
+          [896, 148, 3, 2],
+        ])}
+        fill={OAK[ph].deep}
+      />
+      {/* cushions: one striped, one from the market */}
+      {px(838, 120, 12, 10, "#a4553f")}
+      <path
+        d={pxPath([
+          [840, 120, 2, 10],
+          [845, 120, 2, 10],
+        ])}
+        fill="#8a4232"
+      />
+      {px(872, 120, 12, 10, "#c9a24b")}
+      <path d={pxPath([[875, 123, 6, 4]])} fill="#a8823a" />
+      {/* the throw over the left arm */}
+      {px(814, 106, 20, 12, K.throwRed)}
+      <rect x={814} y={106} width={20} height={12} fill="url(#px-weave)" opacity={0.5} />
+      {px(814, 106, 20, 2, "#b8664e")}
+      {/* the folded blanket on the right seat */}
+      <path
+        d={pxPath([
+          [886, 128, 14, 5],
+          [887, 126, 12, 2],
+        ])}
+        fill={K.duvet}
+      />
+      {/* the flag, and the shelf of small important things under it */}
+      {px(850, 54, 46, 16, K.flagBlue)}
+      {px(850, 70, 46, 15, K.flagYellow)}
+      <path
+        d={pxPath([
+          [858, 54, 1, 31],
+          [878, 54, 1, 31],
+        ])}
+        fill="#00000022"
+      />
+      <path
+        d={pxPath([
+          [851, 53, 2, 2],
+          [893, 53, 2, 2],
+        ])}
+        fill={M.brass.base}
+      />
+      <Bev set={FLAGSHELF_SET} mat={OAK[ph]} />
+      {/* on it: the framed three of them, a candle, the medal from Kharkiv juniors */}
+      {px(850, 88, 8, 8, M.brass.lo)}
+      {px(851, 89, 6, 6, K.linen)}
+      {px(852, 91, 4, 3, "#8a8368")}
+      {px(864, 90, 5, 6, "#e8e2d2")}
+      {px(866, 88, 1, 2, "#8a8368")}
+      <path
+        d={pxPath([
+          [876, 90, 6, 6],
+          [878, 87, 2, 3],
+        ])}
+        fill={M.brass.base}
+      />
+      <path d={pxPath([[878, 92, 2, 2]])} fill={M.brass.deep} />
+      {/* the side table and its lamp */}
+      <Bev set={SIDETABLE_SET} mat={OAK[ph]} />
+      <path
+        d={pxPath([
+          [896, 128, 2, 22],
+          [912, 128, 2, 22],
+        ])}
+        fill={OAK[ph].lo}
+      />
+      {px(896, 138, 18, 2, OAK[ph].mid)}
+      {/* headphones parked on the lower shelf */}
+      <path
+        d={pxPath([
+          [900, 132, 8, 2],
+          [899, 134, 2, 3],
+          [907, 134, 2, 3],
+        ])}
+        fill={GRAPHITE[ph].base}
+      />
+      {px(902, 112, 6, 12, M.brass.lo)}
+      {px(898, 102, 14, 10, s.lit ? "#e8c98a" : K.linen)}
+      {px(898, 102, 14, 2, s.lit ? "#f2dda8" : "#f2ede0")}
     </g>
   );
 }
 
-function Television({ world, ph }: { world: WorldState; ph: Ph }) {
-  const dark = ph === "night" || ph === "dusk";
+/* === PLANE 5 — gameplayObjects: the television ================================ */
+
+function Television({ ph, s }: { ph: Ph; s: StudioSt }) {
+  const off = s.tv === "off";
   return (
     <g>
-      {px(716, 78, 72, 36, "#00000022")}
-      <Bevel x={718} y={76} w={68} h={36} mat={M.graphite} />
-      {px(720, 78, 64, 32, "#14161a")}
-      <AO x={720} y={78} w={64} h={3} from="top" op={0.5} />
-      {world.tv === "off" ? (
+      {/* the panel: 55 inches of dark glass on a wall mount */}
+      {px(746, 111, 10, 4, GRAPHITE[ph].deep)}
+      {px(749, 115, 4, 12, GRAPHITE[ph].deep)}
+      {px(726, 82, 50, 31, "#14161a")}
+      {px(728, 84, 46, 27, off ? (ph === "night" && !s.lit ? "#0c0e12" : "#1a1d24") : "#10131a")}
+      {off ? (
+        <path
+          d={pxPath([
+            [732, 86, 8, 10],
+            [742, 90, 4, 14],
+          ])}
+          fill={s.lit ? "#262b34" : "#171b22"}
+        />
+      ) : null}
+      {s.tv === "film" ? (
         <g>
-          {px(722, 80, 60, 28, "#22262c")}
-          <GlassSheen id="tvoff" x={752} y={81} h={26} w={10} op={0.07} />
-          {px(742, 88, 14, 12, dark ? "#2b3038" : "#31404d")}
-          {px(726, 96, 8, 10, "#282d34")}
-          {px(722, 80, 60, 1, "#3a4048")}
+          {px(728, 84, 46, 27, "#5e4a34")}
+          <g>
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              calcMode="discrete"
+              values="0 0;-4 0;-8 0;0 0"
+              dur="8s"
+              repeatCount="indefinite"
+            />
+            {px(732, 90, 18, 12, "#b08a5e")}
+            {px(754, 88, 14, 16, "#7d6448")}
+            {px(748, 94, 6, 8, "#e8cba0")}
+          </g>
+          {px(728, 84, 46, 3, "#0c0e12")}
+          {px(728, 108, 46, 3, "#0c0e12")}
         </g>
       ) : null}
-      {world.tv === "film" ? (
+      {s.tv === "football" ? (
         <g>
-          {px(722, 80, 60, 28, "#26313c")}
-          {px(722, 84, 60, 20, "#5d7a8c")}
-          {px(722, 84, 60, 2, "#7593a5")}
-          {px(722, 80, 60, 4, "#14161a")}
-          {px(722, 104, 60, 4, "#14161a")}
-          <rect x={722} y={84} width={12} height={20} fill="#8fb0c4" opacity={0.5}>
-            <animate attributeName="x" values="722;770;722" dur="7s" repeatCount="indefinite" />
+          {px(728, 84, 46, 27, "#2a5a34")}
+          {px(728, 100, 46, 2, "#3a7a44")}
+          <path
+            d={pxPath([
+              [734, 92, 2, 4],
+              [752, 96, 2, 4],
+              [764, 90, 2, 4],
+            ])}
+            fill="#e84a3a"
+          />
+          <path
+            d={pxPath([
+              [742, 94, 2, 4],
+              [758, 92, 2, 4],
+            ])}
+            fill="#f2f4ee"
+          />
+          <rect x={746} y={98} width={2} height={2} fill="#f2f4ee">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              calcMode="discrete"
+              values="0 0;8 -2;16 0;10 2;0 0"
+              dur="3.4s"
+              repeatCount="indefinite"
+            />
           </rect>
-          {px(736, 98, 32, 2, "#c8d8e2")}
+          {px(730, 86, 12, 5, "#0c0e12")}
+          <PixelText x={731} y={87} text="0:2" fill="#f2f4ee" gap={0} />
         </g>
       ) : null}
-      {world.tv === "football" ? (
+      {s.tv === "static" ? (
         <g>
-          {px(722, 80, 60, 28, "#3d6b3d")}
-          {px(722, 80, 60, 6, "#478047")}
-          {px(722, 92, 60, 1, "#5f8a5f")}
-          {px(752, 81, 1, 26, "#5f8a5f")}
-          {px(722, 80, 16, 4, M.white.base)}
-          {px(724, 81, 5, 2, "#c94040")}
-          {px(722, 100, 60, 8, "#356035")}
-          <rect x={730} y={96} width={3} height={3} fill="#f2f0ea">
+          <rect x={728} y={84} width={46} height={27} fill="#3a4048">
             <animate
-              attributeName="x"
-              values="730;772;738;730"
-              dur="4.4s"
+              attributeName="fill"
+              calcMode="discrete"
+              values="#3a4048;#4a525c;#343a42;#454d58"
+              dur="0.32s"
               repeatCount="indefinite"
             />
-            <animate attributeName="y" values="96;86;100;96" dur="4.4s" repeatCount="indefinite" />
           </rect>
-          {px(740, 90, 3, 8, M.white.base)}
-          {px(762, 92, 3, 8, "#2b5aa8")}
+          <path
+            d={pxPath([
+              [730, 88, 10, 1],
+              [748, 94, 14, 1],
+              [736, 102, 18, 1],
+              [756, 86, 10, 1],
+            ])}
+            fill="#c8ced6"
+            opacity={0.5}
+          >
+            <animate
+              attributeName="opacity"
+              calcMode="discrete"
+              values="0.5;0.2;0.6;0.3"
+              dur="0.4s"
+              repeatCount="indefinite"
+            />
+          </path>
         </g>
       ) : null}
-      {world.tv === "static" ? (
-        <g>
-          {px(722, 80, 60, 28, "#6d6d6d")}
-          {[
-            { y: 82, h: 5, c: "#9a9a9a", d: "0.5s" },
-            { y: 90, h: 4, c: "#c9c9c9", d: "0.4s" },
-            { y: 97, h: 5, c: "#8a8a8a", d: "0.6s" },
-            { y: 104, h: 3, c: "#b0b0b0", d: "0.35s" },
-          ].map((b) => (
-            <rect key={b.y} x={722} y={b.y} width={60} height={b.h} fill={b.c}>
-              <animate
-                attributeName="opacity"
-                values="1;0.2;0.8;0.4;1"
-                dur={b.d}
-                repeatCount="indefinite"
-              />
-            </rect>
-          ))}
-          <rect x={722} y={80} width={60} height={2} fill="#f0f0f0" opacity={0.6}>
-            <animate attributeName="y" values="80;106;80" dur="3.4s" repeatCount="indefinite" />
-          </rect>
-        </g>
-      ) : null}
-      {world.tv !== "off" ? px(724, 80, 8, 3, "#e8f4f8") : null}
-      <rect x={750} y={112} width={3} height={2} fill={world.tv === "off" ? "#a33a30" : "#3ddc84"}>
-        <animate attributeName="opacity" values="1;0.4;1" dur="4s" repeatCount="indefinite" />
-      </rect>
-      {px(726, 112, 20, 2, "#26282c")}
-      {px(756, 112, 24, 2, "#26282c")}
+      {/* standby eye: red asleep, green awake */}
+      <path d={pxPath([[770, 112, 2, 1]])} fill={off ? K.red : K.green} opacity={0.9} />
     </g>
   );
 }
 
-// ---------------------------------------------------------------------------
-// the scene
-// ---------------------------------------------------------------------------
+/** The monstera by the nook. Watering it has visible consequences. */
+function Monstera({ watered }: { watered: boolean }) {
+  const leaf = watered ? M.leaf : dim(M.leaf, "#8f8878", 0.35);
+  return (
+    <g>
+      {px(516, 132, 18, 18, "#a05a3a")}
+      {px(516, 132, 18, 2, "#b86a46")}
+      {px(518, 134, 14, 3, watered ? K.soilWet : K.soil)}
+      <g transform={watered ? undefined : "translate(0,5)"} style={{ transition: STEP_DROOP }}>
+        <path
+          d={pxPath([
+            [523, 104, 2, 30],
+            [527, 112, 2, 22],
+            [519, 116, 2, 18],
+          ])}
+          fill={leaf.lo}
+        />
+        <path
+          d={pxPath([
+            [512, 96, 12, 10],
+            [524, 88, 12, 12],
+            [516, 108, 10, 8],
+            [528, 104, 10, 8],
+          ])}
+          fill={leaf.base}
+        />
+        <path
+          d={pxPath([
+            [514, 98, 4, 4],
+            [528, 92, 4, 4],
+            [530, 106, 4, 3],
+          ])}
+          fill={leaf.hi}
+        />
+        {watered ? <path d={pxPath([[536, 96, 5, 6]])} fill={leaf.hi} /> : null}
+      </g>
+    </g>
+  );
+}
 
-function StudioScene({ world, phase }: { world: WorldState; phase: string }) {
+/** The pendant over the kitchen table. The cord lives in the ceiling. */
+function Pendant({ ph, lit }: { ph: Ph; lit: boolean }) {
+  return (
+    <g>
+      {px(148, 68, 16, 8, lit ? "#e8c98a" : STEEL[ph].mid)}
+      {px(148, 68, 16, 2, lit ? "#f2dda8" : STEEL[ph].hi)}
+      {px(150, 76, 12, 1, lit ? "#f2dda8" : STEEL[ph].lo)}
+      {px(154, 66, 4, 2, STEEL[ph].lo)}
+    </g>
+  );
+}
+
+/* === composition ============================================================== */
+
+function StudioArt({ world, phase }: SceneRenderProps<WorldState>) {
   const ph = toPhase(phase);
-  const amb = AMBIENT[ph];
-  const lightOn = world.lights.studio;
-  const opening = world.doorOpening;
-  const win = world.windows["window-kitchen"];
-  const x = extras(world);
-  const sh = dominantLight(ph, lightOn, world.tv !== "off");
+  const s = state(world, ph);
   return (
     <LayeredScene
-      parallax={{ farBackground: 0.7, middleBackground: 1 }}
-      farBackground={<YardOutside ph={ph} />}
+      parallax={{ farBackground: 0.85, middleBackground: 1 }}
+      farBackground={<Yard ph={ph} rain={s.weather === "rain"} />}
       middleBackground={
         <g>
-          <Defs />
-          <Ceiling lightOn={lightOn} amb={amb} />
-          <Walls ph={ph} lightOn={lightOn} />
-          <KitchenWindow ph={ph} open={win.open} smoked={win.smoked} amb={amb} />
-          <BalconyDoor ph={ph} opening={opening === "balcony"} />
-          <Entry opening={opening} ph={ph} sh={sh} />
-          <DoorsNook opening={opening} ph={ph} lightOn={lightOn} sh={sh} />
-          <rect x={0} y={0} width={W} height={FLOOR} fill="url(#st-grain)" />
+          <Ceiling ph={ph} />
+          <Walls ph={ph} />
+          <Entry ph={ph} opening={s.opening} lit={s.lit} />
+          <KitchenWindow ph={ph} s={s} />
+          <DoorsNook ph={ph} s={s} bathLit={!!world.lights.bath} studyLit={!!world.lights.study} />
+          <BalconyWall ph={ph} s={s} />
         </g>
       }
-      ground={<Floor ph={ph} sh={sh} />}
+      ground={<Floor ph={ph} s={s} />}
       staticObjects={
         <g>
-          <Defs />
-          <Kitchen world={world} ph={ph} lightOn={lightOn} x={x} sh={sh} amb={amb} />
-          <Fridge open={world.fridgeOpen} ph={ph} sh={sh} />
-          <Bevel x={188} y={58} w={20} h={14} mat={M.graphite} />
-          {px(191, 61, 6, 6, M.graphite.lo)}
-          <AO x={191} y={61} w={6} h={2} from="top" op={0.4} />
-          {px(200, 61, 5, 5, world.radioOn ? "#3ddc84" : "#4a4d52")}
-          {px(187, 72, 22, 1, "#00000044")}
-          {world.radioOn
-            ? [192, 195, 198, 201].map((bx, i) => (
-                <rect key={bx} x={bx} y={68} width={2} height={3} fill="#3ddc84">
-                  <animate
-                    attributeName="height"
-                    values="1;3;2;3;1"
-                    dur={`${0.7 + i * 0.2}s`}
-                    repeatCount="indefinite"
-                  />
-                  <animate
-                    attributeName="y"
-                    values="70;68;69;68;70"
-                    dur={`${0.7 + i * 0.2}s`}
-                    repeatCount="indefinite"
-                  />
-                </rect>
-              ))
-            : null}
-          <Living
-            world={world}
-            ph={ph}
-            lightOn={lightOn}
-            guitarOut={x.guitarOut}
-            sh={sh}
-            amb={amb}
-          />
-          <DogCorner ph={ph} bowlsFilled={x.bowlsFilled} sh={sh} />
+          <Kitchen ph={ph} s={s} />
+          <Pendant ph={ph} lit={s.lit} />
+          <Fridge ph={ph} s={s} />
+          <Monstera watered={s.plantWatered} />
+          <DogCorner ph={ph} s={s} />
+          <Living ph={ph} s={s} />
         </g>
       }
-      gameplayObjects={
-        <g>
-          <Television world={world} ph={ph} />
-          {[0, 1.3, 2.6].map((d, i) => (
-            <g key={d} opacity={0}>
-              {px(652 + i * 2, 116, 5 + i, 1.5, M.white.base)}
-              {px(653 + i * 2, 118, 2, 1.5, M.white.base)}
-              {px(652 + i * 2, 120, 5 + i, 1.5, M.white.base)}
-              <animate
-                attributeName="opacity"
-                values="0;0.75;0"
-                begin={`${d}s`}
-                dur="3.9s"
-                repeatCount="indefinite"
-              />
-              <animateTransform
-                attributeName="transform"
-                type="translate"
-                values="0 0;4 -16"
-                begin={`${d}s`}
-                dur="3.9s"
-                repeatCount="indefinite"
-              />
-            </g>
-          ))}
-        </g>
-      }
+      gameplayObjects={<Television ph={ph} s={s} />}
     />
   );
 }
 
-// ---------------------------------------------------------------------------
-// effects — every light in the room, rasterised
-// ---------------------------------------------------------------------------
+/* === foreground ================================================================ */
 
-function Steam({ x, y, scale }: { x: number; y: number; scale: number }) {
+function StudioFront(p: SceneRenderProps<WorldState>) {
+  const ph = toPhase(p.phase);
+  const lit = !!p.world.lights.studio;
   return (
-    <div className="pointer-events-none absolute" style={{ left: x * scale, top: y * scale }}>
+    <svg
+      aria-hidden="true"
+      width="100%"
+      height="100%"
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0"
+    >
+      <g shapeRendering="crispEdges">
+        {/* the shoe bench inside the door — boots toes-in, because that is how they come off */}
+        {px(14, 148, 62, 6, OAK[ph].base)}
+        {px(14, 148, 62, 1, OAK[ph].hi)}
+        <path
+          d={pxPath([
+            [18, 154, 4, 22],
+            [66, 154, 4, 22],
+          ])}
+          fill={OAK[ph].lo}
+        />
+        {px(20, 142, 50, 6, pcol("#8d6a7a", ph))}
+        <rect x={20} y={142} width={50} height={6} fill="url(#px-weave)" opacity={0.5} />
+        <path
+          d={pxPath([
+            [22, 162, 12, 8],
+            [32, 166, 4, 4],
+          ])}
+          fill={pcol("#3a3e44", ph)}
+        />
+        <path d={pxPath([[22, 162, 12, 2]])} fill={pcol("#4a4e55", ph)} />
+        <path
+          d={pxPath([
+            [44, 166, 10, 5],
+            [56, 166, 10, 5],
+          ])}
+          fill="#f2f4ee"
+        />
+        <path
+          d={pxPath([
+            [44, 166, 10, 1],
+            [56, 166, 10, 1],
+          ])}
+          fill="#c9c5b8"
+        />
+        {/* the toy basket by the balcony — wicker, chewed at the rim */}
+        {px(556, 160, 44, 20, pcol("#a8865a", ph))}
+        <rect x={556} y={160} width={44} height={20} fill="url(#px-weave)" opacity={0.7} />
+        {px(556, 160, 44, 2, pcol("#c9a878", ph))}
+        {px(574, 158, 6, 4, pcol(K.red, ph))}
+        {px(584, 156, 8, 6, pcol("#3f6fd9", ph))}
+        {px(562, 158, 6, 4, pcol("#c9a24b", ph))}
+        {/* the pouf that drifts around the living corner */}
+        {px(700, 158, 46, 22, pcol("#8a5038", ph))}
+        <rect x={700} y={158} width={46} height={22} fill="url(#px-weave)" opacity={0.5} />
+        {px(700, 158, 46, 3, pcol("#a4553f", ph))}
+        <path d={pxPath([[720, 168, 8, 2]])} fill={pcol("#6d3f2c", ph)} />
+        {/* near dust, drifting the wrong way because it is near */}
+        <path d={MOTES_FRONT_D} fill="#fff6da" opacity={0.5}>
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0;-8 10;4 22;-5 8;0 0"
+            dur="23s"
+            begin="-7s"
+            repeatCount="indefinite"
+          />
+        </path>
+        {/* six pixels of near floor, so feet have an edge to sit behind */}
+        {px(0, H - 6, 406, 6, STONE[ph].deep)}
+        {px(406, H - 6, W - 406, 6, BOARD[ph].deep)}
+        {px(0, H - 6, W, 1, BOARD[ph].lo)}
+        {/* edge reveals */}
+        {px(0, 0, 6, H, GREIGE[ph].deep)}
+        {px(W - 6, 0, 6, H, CLAY[ph].deep)}
+        <Vignette set={VIG} strength={lit ? 0.75 : 1} />
+      </g>
+    </svg>
+  );
+}
+
+/* === effects =================================================================== */
+
+/** A colour cast, not a second darkness — roomDarkness still owns brightness. */
+const CAST: Record<Ph, { fill: string; lit: number; dark: number }> = {
+  dawn: { fill: DAWN_CAST, lit: 0.05, dark: 0.13 },
+  day: { fill: "#ffd9a0", lit: 0.03, dark: 0.07 },
+  dusk: { fill: DUSK_CAST, lit: 0.06, dark: 0.15 },
+  night: { fill: NIGHT_CAST, lit: 0.08, dark: 0.22 },
+};
+
+function Steam({ x, y, scale, slow }: { x: number; y: number; scale: number; slow?: boolean }) {
+  return (
+    <div
+      className="pointer-events-none absolute"
+      style={{ left: x * scale, top: y * scale, opacity: slow ? 0.6 : 1 }}
+    >
       <div className="steam" style={{ width: 3 * scale, height: 3 * scale }} />
       <div
         className="steam steam-2"
@@ -2390,14 +2782,27 @@ function Steam({ x, y, scale }: { x: number; y: number; scale: number }) {
   );
 }
 
-const MOTES = [
-  { x: 596, y: 132, dur: "11s" },
-  { x: 628, y: 146, dur: "14s" },
-  { x: 660, y: 138, dur: "12.5s" },
-  { x: 690, y: 152, dur: "16s" },
-  { x: 566, y: 148, dur: "13s" },
-  { x: 612, y: 120, dur: "18s" },
-];
+const HEART_D = pxPath([
+  [1, 0, 2, 1],
+  [4, 0, 2, 1],
+  [0, 1, 7, 2],
+  [1, 3, 5, 1],
+  [2, 4, 3, 1],
+  [3, 5, 1, 1],
+]);
+const NOTE_D = pxPath([
+  [0, 4, 2, 2],
+  [2, 0, 1, 5],
+  [3, 0, 2, 1],
+  [4, 1, 1, 2],
+]);
+const NOTE2_D = pxPath([
+  [0, 4, 2, 2],
+  [2, 0, 1, 5],
+  [5, 4, 2, 2],
+  [7, 0, 1, 5],
+  [3, 0, 5, 1],
+]);
 
 function StudioEffects({
   world,
@@ -2415,272 +2820,301 @@ function StudioEffects({
   dialogueOpen: boolean;
 }) {
   const ph = toPhase(phase);
-  const amb = AMBIENT[ph];
-  const darkness = roomDarkness(phase as DayPhase, world.lights.studio);
-  const lightOn = world.lights.studio;
-  const gain = lightOn ? amb.lampGain : 0;
-  /**
-   * What Gross is doing about you. He lives in this plane rather than in the
-   * artwork because this is the only one that knows what the player is up to —
-   * a dog that carries on sleeping through being scratched behind the ear is
-   * the one thing that would give the whole rig away.
-   */
+  const s = state(world, ph);
+  const gain = s.lit ? GAIN[ph] : 0;
+  const cast = CAST[ph];
+  const shaft = SHAFT[ph];
+  const chores = studioState(world);
   const gross =
     actionUi === "pet"
-      ? ANIMALS.gross.reactions.onPet
+      ? ANIMALS.gross.reactions?.onPet
       : actionUi
-        ? ANIMALS.gross.reactions.onNotice
-        : undefined;
+        ? ANIMALS.gross.reactions?.onNotice
+        : ph === "dusk" && !chores.bowlsFilled
+          ? ANIMALS.gross.reactions?.onCall
+          : undefined;
   return (
     <>
+      {/* steam is real DOM, so it can blur without breaking the pixel grid */}
+      {world.kettleOn ? <Steam x={166} y={92} scale={scale} /> : null}
+      {s.cooker === "on" ? <Steam x={318} y={94} scale={scale} slow /> : null}
+      {actionUi === "smoke" && s.winOpen ? <Steam x={258} y={56} scale={scale} /> : null}
+      {/* Gross, in the plane that can hear actionUi */}
       <svg
         aria-hidden="true"
         width="100%"
         height="100%"
-        viewBox={`0 0 ${W} 180`}
+        viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         className="pointer-events-none absolute inset-0"
       >
-        {/* built rather than drawn: the rig breathes on its own, so the old
-            translate hack that nudged the whole sprite up and down is gone
-            with it — his ribs move and the dog stays on his bed */}
         <AnimalActor animal={ANIMALS.gross} x={644} y={140} shadow={false} action={gross} />
       </svg>
-      <AnimatePresence>
-        {fx
-          .filter((f) => f.kind === "heart")
-          .map((heart) => (
-            <motion.div
-              key={heart.id}
-              className="pointer-events-none absolute"
-              style={{ left: heart.x * scale, width: 10 * scale, height: 8 * scale }}
-              initial={{ top: 124 * scale, opacity: 1 }}
-              animate={{ top: 102 * scale, opacity: 0 }}
-              transition={{ duration: 1, ease: "easeOut" }}
-            >
-              <svg aria-hidden="true" width="100%" height="100%" viewBox="0 0 10 8">
-                <PixelMap map={HEART} palette={HEART_PALETTE} />
-              </svg>
-            </motion.div>
-          ))}
-        {fx
-          .filter((f) => f.kind === "note")
-          .map((note) => (
-            <motion.div
-              key={note.id}
-              className="pointer-events-none absolute text-parchment/90"
-              style={{ left: note.x * scale, fontSize: 5 * scale }}
-              initial={{ top: 116 * scale, opacity: 0, x: 0 }}
-              animate={{
-                top: 90 * scale,
-                opacity: [0, 1, 1, 0],
-                x: (note.id % 2 ? 1 : -1) * 4 * scale,
-              }}
-              transition={{ duration: 1.5, ease: "easeOut" }}
-            >
-              {note.id % 2 ? "♪" : "♬"}
-            </motion.div>
-          ))}
-      </AnimatePresence>
-      {world.kettleOn ? <Steam x={164} y={76} scale={scale} /> : null}
-      {world.cookerState === "on" ? <Steam x={308} y={80} scale={scale} /> : null}
+      {/* his radio notes, when the kitchen is playing */}
       {world.radioOn ? (
         <div
           className="pointer-events-none absolute text-parchment"
-          style={{ left: 196 * scale, top: 46 * scale, fontSize: 6 * scale }}
+          style={{ left: 192 * scale, top: 88 * scale, fontSize: 7 * scale }}
         >
           <span className="note">♪</span>
           <span className="note note-2">♬</span>
         </div>
       ) : null}
-      {actionUi === "smoke" && world.windows["window-kitchen"].open ? (
-        <Steam x={258} y={62} scale={scale} />
-      ) : null}
       <svg
         aria-hidden="true"
         width="100%"
         height="100%"
-        viewBox={`0 0 ${W} 180`}
+        viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         className="pointer-events-none absolute inset-0"
       >
-        <defs>
-          <pattern id="st-dither-lite" width="2" height="2" patternUnits="userSpaceOnUse">
-            <rect x="0" y="0" width="1" height="1" fill="#ffffff" opacity="0.5" />
-            <rect x="1" y="1" width="1" height="1" fill="#ffffff" opacity="0.5" />
-          </pattern>
-        </defs>
-        {/* the phase tint, flat and quantised */}
-        <rect x={0} y={0} width={W} height={180} fill={amb.tint} opacity={amb.op} />
-        {/* the sun, as a staircase */}
-        {amb.sun ? (
-          <g>
-            <PixelBeam
-              id="sun"
-              topX={546}
-              topW={116}
-              botX={amb.sun.botX}
-              botW={amb.sun.botW}
-              topY={54}
-              botY={180}
-              color={amb.sun.color}
-              op={amb.sun.op}
-              q={6}
-              levels={5}
-            />
-            <PixelBeam
-              id="mull"
-              topX={602}
-              topW={6}
-              botX={ph === "dawn" ? 630 : 548}
-              botW={14}
-              topY={54}
-              botY={180}
-              color="#6b4a24"
-              op={0.16}
-              q={6}
-              levels={3}
-            />
-            {MOTES.map((m) => (
-              <rect key={m.x} x={m.x} y={m.y} width={1} height={1} fill="#fff6da" opacity={0}>
-                <animate
-                  attributeName="y"
-                  values={`${m.y};${m.y - 20};${m.y}`}
-                  dur={m.dur}
+        <g shapeRendering="crispEdges">
+          {/* (1) the cast */}
+          <rect
+            width={W}
+            height={H}
+            fill={cast.fill}
+            opacity={s.lit ? cast.lit : cast.dark}
+            style={{ transition: STEP_FADE }}
+          />
+          {/* (2) daylight */}
+          {shaft ? (
+            <g style={{ pointerEvents: "none" }}>
+              <Light set={shaft} />
+              <path d={MOTES_D} fill="#fff6da" opacity={0.75}>
+                <animateTransform
+                  attributeName="transform"
+                  type="translate"
+                  values="0 0;5 -12;-3 -22;4 -8;0 0"
+                  dur="16s"
+                  begin="-5s"
                   repeatCount="indefinite"
                 />
+              </path>
+            </g>
+          ) : null}
+          <Light set={WINDOW_WASH} op={WINDOW_WASH_OP[ph]} />
+          {/* (3) the artificial sources, all riding the one gain */}
+          {gain > 0.05 ? (
+            <g>
+              {SPOT_CONES.map((set, i) => (
+                <g key={SPOT_XS[i]}>
+                  <Light set={set} op={gain} />
+                  <Light set={SPOT_POOLS[i]} op={gain * 0.8} />
+                </g>
+              ))}
+              <Light set={PENDANT_POOL} op={gain} />
+              <Light set={PENDANT_TABLE} op={gain * 0.8} />
+              <Light set={UNDERCAB_L} op={gain * 0.7} />
+              <Light set={UNDERCAB_R} op={gain * 0.7} />
+              <Light set={ARC_POOL} op={gain} />
+              <Light set={SIDELAMP_POOL} op={gain * 0.85} />
+              {/* (4) the sources themselves */}
+              <path d={SPOT_SOURCES.core} fill={K.warmHi} opacity={0.9 * gain} />
+              <path d={PENDANT_SOURCE.core} fill={K.warmHi} opacity={0.95 * gain} />
+              <path d={ARC_SOURCE.core} fill={K.warmHi} opacity={0.9 * gain} />
+              <path d={SIDELAMP_SOURCE.core} fill={K.warmHi} opacity={0.85 * gain} />
+            </g>
+          ) : null}
+          {/* (5) appliance light — these do not care about the switch */}
+          {s.fridgeOpen ? (
+            <g>
+              <Light set={FRIDGE_WASH} op={s.lit ? 0.6 : 1} />
+              <Light set={FRIDGE_FLOOR} op={0.8} />
+            </g>
+          ) : null}
+          {s.cooker === "on" ? <Light set={OVEN_GLOW} /> : null}
+          {s.cooker === "open" ? <Light set={OVEN_OPEN_GLOW} op={0.7} /> : null}
+          {s.tv !== "off" ? (
+            <g>
+              <g>
+                <Light set={TV_GLOW[s.tv]} op={s.lit ? 0.5 : 1} />
                 <animate
-                  attributeName="x"
-                  values={`${m.x};${m.x + 4};${m.x - 3};${m.x}`}
-                  dur={m.dur}
+                  attributeName="opacity"
+                  calcMode="discrete"
+                  values="1;0.85;1;0.92;1"
+                  dur="2.7s"
+                  repeatCount="indefinite"
+                />
+              </g>
+              {roomDarkness(ph === "dawn" ? "morning" : ph, s.lit) > 0.3 ? (
+                <Light set={TV_FLOOR} op={0.7} />
+              ) : null}
+            </g>
+          ) : null}
+          {ph === "night" && !s.lit ? <Light set={LAPTOP_GLOW} /> : null}
+          {/* (8) ambient life */}
+          {gross === undefined ? (
+            <g>
+              <path
+                d={pxPath([
+                  [652, 118, 3, 1],
+                  [652, 116, 3, 1],
+                  [654, 117, 1, 1],
+                ])}
+                fill="#e8e4d8"
+                opacity={0.7}
+              >
+                <animateTransform
+                  attributeName="transform"
+                  type="translate"
+                  calcMode="discrete"
+                  values="0 0;1 -2;2 -4;3 -6;0 0"
+                  dur="3.6s"
                   repeatCount="indefinite"
                 />
                 <animate
                   attributeName="opacity"
-                  values="0;0.85;0.2;0"
-                  dur={m.dur}
+                  calcMode="discrete"
+                  values="0;0.7;0.5;0.3;0"
+                  dur="3.6s"
                   repeatCount="indefinite"
                 />
-              </rect>
-            ))}
-          </g>
-        ) : null}
-        {gain > 0.1 ? (
-          <g>
-            <PixelGlow
-              id="pendant"
-              cx={726}
-              cy={92}
-              rx={96}
-              ry={56}
-              color={C.warm}
-              op={0.4 * gain}
-              q={4}
-            />
-            <PixelGlow
-              id="pendantfloor"
-              cx={726}
-              cy={158}
-              rx={104}
-              ry={14}
-              color="#ffe6a8"
-              op={0.2 * gain}
-              q={2}
-            />
-            <PixelWash
-              id="ledfloor"
-              x={120}
-              y={150}
-              w={284}
-              h={9}
-              color="#ffe6a8"
-              op={0.16 * gain}
-              q={3}
-            />
-          </g>
-        ) : null}
-        {world.fridgeOpen ? (
-          <g>
-            <PixelWash id="fridge" x={344} y={54} w={64} h={96} color={C.cold} op={0.34} q={6} />
-            <PixelGlow
-              id="fridgefloor"
-              cx={376}
-              cy={152}
-              rx={54}
-              ry={9}
-              color="#b8e6ff"
-              op={0.24}
-              q={3}
-            />
-          </g>
-        ) : null}
-        {world.cookerState === "on" ? (
-          <PixelGlow id="oven" cx={322} cy={132} rx={44} ry={26} color="#ff9a3a" op={0.22} q={4} />
-        ) : null}
-        {world.cookerState === "open" ? (
-          <PixelGlow
-            id="ovenopenfx"
-            cx={322}
-            cy={140}
-            rx={54}
-            ry={30}
-            color="#ffb03a"
-            op={0.26}
-            q={4}
-          />
-        ) : null}
-        {world.tv !== "off" && darkness > 0.3 ? (
-          <g>
+              </path>
+            </g>
+          ) : null}
+          {ph === "night" && s.lit ? (
             <g>
-              <PixelGlow
-                id="tvglow"
-                cx={752}
-                cy={94}
-                rx={92}
-                ry={60}
-                color="#9fc7d6"
-                op={0.24}
-                q={4}
-              />
-              <animate
-                attributeName="opacity"
-                values="1;0.6;0.9;0.7;1"
-                dur="2.2s"
+              <rect x={826} y={70} width={2} height={2} fill="#e8dfc0" opacity={0.8} />
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                values="0 0;8 -5;-4 6;5 3;0 0"
+                dur="4.1s"
                 repeatCount="indefinite"
               />
             </g>
-            <PixelGlow
-              id="tvfloor"
-              cx={790}
-              cy={156}
-              rx={78}
-              ry={10}
-              color="#9fc7d6"
-              op={0.14}
-              q={2}
-            />
-          </g>
-        ) : null}
-        <PixelVignette op={0.5 + darkness * 0.5} />
+          ) : null}
+          {ph === "dusk" && s.binFull ? (
+            <g>
+              <rect x={354} y={108} width={1} height={1} fill="#2a2d33" />
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                values="0 0;6 -4;-3 -8;4 2;0 0"
+                dur="3.2s"
+                begin="-1s"
+                repeatCount="indefinite"
+              />
+            </g>
+          ) : null}
+          {/* (9) hearts and notes, one-shot SMIL — spawned by the handlers */}
+          {fx
+            .filter((f) => f.kind === "heart")
+            .map((f) => (
+              <g key={f.id} transform={`translate(${f.x - 3} 120)`}>
+                <path d={HEART_D} fill="#e05a6e">
+                  <animateTransform
+                    attributeName="transform"
+                    type="translate"
+                    values="0 0;0 -20"
+                    dur="1s"
+                    fill="freeze"
+                    repeatCount="1"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="1;1;0"
+                    keyTimes="0;0.6;1"
+                    dur="1s"
+                    fill="freeze"
+                    repeatCount="1"
+                  />
+                </path>
+              </g>
+            ))}
+          {fx
+            .filter((f) => f.kind === "note")
+            .map((f) => (
+              <g key={f.id} transform={`translate(${f.x} 112)`}>
+                <path d={f.id % 2 ? NOTE2_D : NOTE_D} fill={K.linen}>
+                  <animateTransform
+                    attributeName="transform"
+                    type="translate"
+                    values="0 0;3 -12;-2 -24"
+                    dur="1.5s"
+                    fill="freeze"
+                    repeatCount="1"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="0;1;1;0"
+                    keyTimes="0;0.15;0.7;1"
+                    dur="1.5s"
+                    fill="freeze"
+                    repeatCount="1"
+                  />
+                </path>
+              </g>
+            ))}
+        </g>
       </svg>
+      {/* while he sits, the sofa's seat edge comes forward and holds him */}
+      {actionUi === "sit" ? (
+        <svg
+          aria-hidden="true"
+          className="pixelated pointer-events-none absolute"
+          style={{
+            left: 830 * scale,
+            top: 126 * scale,
+            width: 74 * scale,
+            height: 26 * scale,
+            zIndex: 20,
+          }}
+          viewBox="830 126 74 26"
+          preserveAspectRatio="none"
+        >
+          <g shapeRendering="crispEdges">
+            {px(832, 133, 70, 7, SOFA[ph].base)}
+            {px(832, 133, 70, 1, SOFA[ph].hi)}
+            {px(832, 140, 70, 8, SOFA[ph].lo)}
+            <rect x={832} y={133} width={70} height={15} fill="url(#px-weave)" opacity={0.35} />
+          </g>
+        </svg>
+      ) : null}
     </>
   );
 }
 
-// ---------------------------------------------------------------------------
-// scene definition
-// ---------------------------------------------------------------------------
+/* === the scene ================================================================= */
 
-export const STUDIO_SCENE: SceneDef<WorldState> = {
+function studioArtKey(w: WorldState, phase: string): string {
+  const ph = toPhase(phase);
+  const s = state(w, ph);
+  return [
+    ph,
+    s.lit ? 1 : 0,
+    s.tv,
+    s.radioOn ? 1 : 0,
+    s.kettleOn ? 1 : 0,
+    s.cooker,
+    s.opening ?? "-",
+    s.winOpen ? 1 : 0,
+    s.winSmoked ? 1 : 0,
+    s.fridgeOpen ? 1 : 0,
+    s.dishes ? 1 : 0,
+    s.binFull ? 1 : 0,
+    s.fed ? 1 : 0,
+    s.guitarOut ? 1 : 0,
+    s.plantWatered ? 1 : 0,
+    s.weather,
+    w.lights.bath ? 1 : 0,
+    w.lights.study ? 1 : 0,
+  ].join("|");
+}
+
+export const STUDIO_SCENE: RuntimeSceneDef<WorldState> = {
   id: "studio",
   width: W,
+  spawnX: 70,
+  artKey: studioArtKey,
   objects: [
     {
       id: "frontdoor",
       kind: "flatdoor",
-      priority: 1,
       x: 37,
       range: 22,
+      priority: 1,
       to: { scene: "corridor", spawnX: 46 },
     },
     { id: "wardrobe-hall", kind: "openable", x: 85, range: 14 },
@@ -2692,41 +3126,44 @@ export const STUDIO_SCENE: SceneDef<WorldState> = {
     { id: "speaker", kind: "radio", x: 197, range: 10 },
     { id: "dishrack", kind: "flavor", x: 217, range: 10 },
     { id: "window-kitchen", kind: "window", x: 247, range: 16 },
-    { id: "sink-kitchen", kind: "flavor", x: 247, range: 6 },
+    { id: "sink-kitchen", kind: "dishes", x: 247, range: 6 },
     { id: "knives", kind: "flavor", x: 288, range: 10 },
     { id: "cooker", kind: "cooker", x: 322, range: 14 },
-    { id: "bin", kind: "flavor", x: 352, range: 8 },
+    { id: "bin", kind: "binbag", x: 352, range: 8 },
     { id: "espresso", kind: "flavor", x: 374, range: 12 },
     { id: "fridge", kind: "openable", x: 376, range: 16 },
+    { id: "jars", kind: "flavor", x: 396, range: 5 },
     {
       id: "door-bath",
       kind: "flatdoor",
-      priority: 1,
       x: 432,
       range: 18,
+      priority: 1,
       to: { scene: "bath", spawnX: 44 },
     },
     {
       id: "door-study",
       kind: "flatdoor",
-      priority: 1,
       x: 488,
       range: 18,
+      priority: 1,
       to: { scene: "study", spawnX: 44 },
     },
     { id: "radiator", kind: "flavor", x: 510, range: 9 },
-    { id: "plant-studio", kind: "flavor", x: 524, range: 7 },
+    { id: "plant-studio", kind: "plant", x: 524, range: 7 },
+    { id: "roomba", kind: "flavor", x: 541, range: 6 },
     {
       id: "balcony",
+      // the hitbox sits on the sliding leaf; the fixed pane does not open
       kind: "flatdoor",
+      x: 610,
+      range: 14,
       priority: 1,
-      x: 580,
-      range: 22,
       to: { scene: "balcony", spawnX: 48 },
     },
-    { id: "dogbowls", kind: "flavor", x: 594, range: 10 },
+    { id: "dogbowls", kind: "bowls", x: 594, range: 10 },
     { id: "dogbed", kind: "flavor", x: 630, range: 8 },
-    { id: "dog", kind: "dog", priority: 2, x: 648, range: 18 },
+    { id: "dog", kind: "dog", x: 648, range: 18, priority: 2 },
     { id: "artbrut", kind: "flavor", x: 696, range: 10 },
     { id: "bookshelf", kind: "panel", x: 700, range: 5, data: "skills" },
     { id: "tv", kind: "tv", x: 726, range: 10 },
@@ -2734,75 +3171,13 @@ export const STUDIO_SCENE: SceneDef<WorldState> = {
     { id: "guitar", kind: "guitar", x: 774, range: 14, priority: 1 },
     { id: "laptop", kind: "computer", x: 812, range: 8 },
     { id: "phone", kind: "panel", x: 836, range: 5, data: "links" },
-    { id: "sofa", kind: "sport", action: "sit", x: 862, range: 10, face: -1 },
+    { id: "sofa", kind: "sport", x: 862, range: 10, action: "sit", face: -1 },
     { id: "flag", kind: "flavor", x: 872, range: 7 },
     { id: "sidetable", kind: "flavor", x: 904, range: 10 },
   ],
-  Component: ({ world, phase }) => <StudioScene world={world} phase={phase} />,
+  Component: StudioArt,
   darkness: (phase, world) => roomDarkness(phase as DayPhase, world.lights.studio),
+  Foreground: (p) => <StudioFront {...p} />,
   Effects: StudioEffects,
-  Foreground: () => (
-    <svg
-      aria-hidden="true"
-      width="100%"
-      height="100%"
-      viewBox={`0 0 ${W} 180`}
-      preserveAspectRatio="none"
-      className="pointer-events-none absolute inset-0"
-    >
-      <g shapeRendering="crispEdges">
-        {/* the shoe bench, now up against the camera by the front door */}
-        {px(14, 152, 62, 6, "#8f7450")}
-        {px(14, 152, 62, 2, "#c9a86e")}
-        {px(14, 157, 62, 1, "#6d5738")}
-        {px(18, 158, 5, 22, "#8f7450")}
-        {px(18, 158, 2, 22, "#a8854f")}
-        {px(67, 158, 5, 22, "#8f7450")}
-        {px(67, 158, 2, 22, "#a8854f")}
-        {px(18, 168, 54, 4, "#7d6544")}
-        {px(18, 168, 54, 1, "#a8854f")}
-        {/* the cushion on the seat, and the shoes on the shelf under it */}
-        {px(24, 148, 40, 5, "#8a6a76")}
-        {px(24, 148, 40, 1, "#a5808e")}
-        {px(63, 148, 1, 5, "#6d5260")}
-        {px(24, 158, 16, 9, "#4a3a2b")}
-        {px(24, 158, 16, 2, "#63503d")}
-        {px(44, 159, 14, 8, "#2f2921")}
-        {px(44, 159, 14, 2, "#463d33")}
-        {px(26, 172, 15, 7, "#6d5f52")}
-        {px(26, 172, 15, 2, "#87786a")}
-        {px(46, 173, 14, 6, "#6d5f52")}
-        {px(12, 178, 66, 2, "#00000033")}
-        {/* the pouf */}
-        {px(700, 158, 46, 22, "#8a6a76")}
-        {px(700, 158, 46, 2, "#a5808e")}
-        {px(745, 158, 1, 22, "#6d5260")}
-        {px(700, 174, 46, 4, "#6a4f5b")}
-        {px(700, 178, 46, 2, "#523c47")}
-        {px(706, 162, 34, 2, "#7a5c68")}
-        {px(698, 178, 50, 2, "#00000033")}
-        {/* the basket of toys */}
-        {px(556, 162, 34, 18, "#c9a878")}
-        {px(556, 162, 34, 2, "#dcc096")}
-        {px(589, 162, 1, 18, "#a5875a")}
-        {px(560, 166, 26, 2, "#b09468")}
-        {px(562, 170, 10, 7, "#c94040")}
-        {px(562, 170, 10, 1, "#e05a50")}
-        {px(574, 171, 8, 6, "#4a90d9")}
-        {px(592, 174, 9, 6, "#e8c445")}
-        {px(554, 179, 38, 1, "#00000033")}
-        {/* the near chair */}
-        {px(150, 164, 40, 16, "#6d5842")}
-        {px(150, 164, 40, 3, "#8a6a4a")}
-        {px(189, 164, 1, 16, "#54432f")}
-        {px(154, 176, 6, 4, "#4a3a2b")}
-        {px(180, 176, 6, 4, "#4a3a2b")}
-        {/* the reveals at both ends of the room */}
-        {px(0, 0, 6, 180, "#b5ae9e")}
-        {px(5, 0, 1, 180, "#8f8878")}
-        {px(914, 0, 6, 180, "#b09468")}
-        {px(914, 0, 1, 180, "#c9a878")}
-      </g>
-    </svg>
-  ),
+  idleLean: true,
 };

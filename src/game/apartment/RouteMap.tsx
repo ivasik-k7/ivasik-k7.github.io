@@ -54,8 +54,8 @@ export function RouteMap({
     const target = reachable[pick];
     if (!target?.scene) return;
     playSfx("chime");
-    /* land on the platform by the doors, or on the square by the steps */
-    onTravel(target.scene, target.scene === "station" ? 520 : 250);
+    /* each station knows where its stair puts you — LINE carries the spawn */
+    onTravel(target.scene, target.spawnX);
   }, [pick, reachable, onTravel]);
 
   const selected = reachable[pick];

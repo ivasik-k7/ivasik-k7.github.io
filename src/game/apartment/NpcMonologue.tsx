@@ -168,7 +168,6 @@ export function NpcMonologue({
   // which in the district cost 853 ms over twenty idle seconds because the
   // layout it forced was of a nine-thousand-node scene. The bubble is sized by
   // its longest line, so measuring the finished text is also the correct answer.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure when the bubble reappears
   useLayoutEffect(() => {
     if (!line || !boxRef.current) return;
     setHalfWidth(boxRef.current.offsetWidth / 2 / scale);

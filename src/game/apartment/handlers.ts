@@ -1,7 +1,7 @@
 import type { DialogueTree, InteractionCtx, InteractionHandler } from "@/engine";
 import { playSfx } from "@/engine";
 import i18n from "@/i18n";
-import { TV_CYCLE, type TvChannel, type WorldState } from "@/lib/worldState";
+import { dayPhase, studioState, TV_CYCLE, type TvChannel, type WorldState } from "@/lib/worldState";
 
 /**
  * Interaction handlers — the apartment's verbs, ported 1:1 from the
@@ -176,17 +176,61 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
 
   flavor: ({ obj, showToast }) => showToast(t(`flavor.${obj.id}`)),
 
+  // The studio chores. Each one is done once and stays done — the art keeps
+  // falling back to what the clock says until the flag is actually set.
+  dishes: ({ world, updateWorld, showToast, startAction }) => {
+    if (studioState(world).dishesDone) {
+      showToast(t("flavor.sink-kitchen"));
+      return;
+    }
+    const timers: number[] = [];
+    startAction("use", {
+      onInterrupt: () => {
+        for (const timer of timers) window.clearTimeout(timer);
+      },
+    });
+    playSfx("water");
+    timers.push(window.setTimeout(() => playSfx("water"), 1500));
+    updateWorld((w) => ({ ...w, studio: { ...studioState(w), dishesDone: true } }));
+    showToast(t("toast.dishes"));
+  },
+
+  binbag: ({ world, updateWorld, showToast, startAction }) => {
+    if (studioState(world).binEmptied) {
+      showToast(t("flavor.bin"));
+      return;
+    }
+    startAction("use");
+    playSfx("thud");
+    updateWorld((w) => ({ ...w, studio: { ...studioState(w), binEmptied: true } }));
+    showToast(t("toast.binOut"));
+  },
+
+  bowls: ({ obj, world, updateWorld, showToast, startAction, spawnFx }) => {
+    if (studioState(world).bowlsFilled) {
+      showToast(t("flavor.dogbowls"));
+      return;
+    }
+    startAction("use");
+    playSfx("pour");
+    updateWorld((w) => ({ ...w, studio: { ...studioState(w), bowlsFilled: true } }));
+    spawnFx("heart", obj.x + 46, 1300);
+    showToast(t("toast.bowls"));
+  },
+
   // the guitar comes off the wall for one quiet loop of Am–F–C–G.
   // Strums are timed to the animation (320ms frames): first stroke as the
   // hand first crosses the strings, half-time while the head nods, the
   // last chord rung out with the chin up and left to decay.
-  guitar: ({ obj, startAction, spawnFx, queueToast, shakeCamera }) => {
+  guitar: ({ obj, startAction, spawnFx, queueToast, shakeCamera, updateWorld }) => {
     const timers: number[] = [];
     startAction("strum", {
       onInterrupt: () => {
         for (const timer of timers) window.clearTimeout(timer);
       },
     });
+    // once it has been played it stays on the stand, even after dark
+    updateWorld((w) => ({ ...w, studio: { ...studioState(w), guitarOut: true } }));
     const strums = [
       1280,
       1600,
@@ -277,8 +321,26 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
   trainDoor: ({ startAction, travel, queueToast }) => {
     playSfx("cardoor");
     startAction("use");
-    queueToast("toast.boarding", 260);
+    queueToast(t("toast.boarding"), 260);
     window.setTimeout(() => travel("train", 300), 620);
+  },
+
+  /**
+   * The kasownik. The machine two steps away sells the ticket and the
+   * conductor on the train asks to see it; this is the third corner of that
+   * triangle — the punch that makes the ticket a journey rather than a
+   * souvenir. There is nothing to punch if you have not bought one, and the
+   * machine says so the way they all do: with a red light and no sympathy.
+   */
+  kasownik: ({ world, showToast, startAction }) => {
+    startAction("use");
+    if (countOf(world, "ticket") < 1) {
+      playSfx("denied");
+      showToast(t("toast.punchNoTicket"));
+      return;
+    }
+    playSfx("click");
+    showToast(t("toast.ticketPunched"));
   },
 
   /**
@@ -381,6 +443,17 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
       "station-bench-sitter": BABCIA_TREE,
       "station-phone": WAITING_TREE,
       "station-looker": WAITING_TREE,
+      "station-smoker": SMOKER_TREE,
+      "station-golebiarka": GOLEBIARKA_TREE,
+      /* Ulica Elektryków */
+      bramkarz: BRAMKARZ_TREE,
+      "queue-girl": QUEUE_GIRL_TREE,
+      filozof: FILOZOF_TREE,
+      starer: STARER_TREE,
+      /* inside Turbina */
+      "dj-booth": DJ_TREE,
+      "tired-girl": TIRED_TREE,
+      "club-cleaner": CLEANER_TREE,
     };
     const tree = NPC_TREES[ctx.obj.id] ?? MAREK_TREE;
     ctx.startDialogue(tree as DialogueTree<never>);
@@ -449,8 +522,15 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     showToast(t("toast.parcelTaken"));
   },
 
-  plant: ({ world, updateWorld, showToast, startAction }) => {
+  plant: ({ scene, world, updateWorld, showToast, startAction }) => {
     startAction("use");
+    if (scene === "studio") {
+      const watered = !studioState(world).plantWatered;
+      if (watered) playSfx("pour");
+      updateWorld((w) => ({ ...w, studio: { ...studioState(w), plantWatered: watered } }));
+      showToast(t(watered ? "toast.plantWatered" : "toast.plantAdmired"));
+      return;
+    }
     const watered = !world.corridor.plantWatered;
     if (watered) playSfx("pour");
     updateWorld((w) => ({
@@ -466,6 +546,103 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     const open = !world.corridor.extOpen;
     updateWorld((w) => ({ ...w, corridor: { ...w.corridor, extOpen: open } }));
     showToast(t(open ? "toast.extOpen" : "toast.extClose"));
+  },
+
+  // --- Ulica Elektryków: the night economy ---------------------------------
+
+  /**
+   * The club door. The same door all day; what answers it is the hour. Closed
+   * it is a locked steel leaf and a toast; at soundcheck the bouncer turns you
+   * back politely; from dusk's end it swallows you with a half-second of the
+   * player actually stepping in, the way boarding a train already works.
+   */
+  clubdoor: ({ startAction, travel, showToast, queueToast }) => {
+    const ph = dayPhase(new Date().getHours());
+    if (ph === "morning" || ph === "day") {
+      playSfx("denied");
+      showToast(t("toast.clubClosed"));
+      return;
+    }
+    if (ph === "dusk") {
+      playSfx("doorshut");
+      showToast(t("toast.clubPrep"));
+      return;
+    }
+    playSfx("thud");
+    startAction("use");
+    queueToast(t("toast.clubIn"), 260);
+    window.setTimeout(() => travel("raveclub", 90), 620);
+  },
+
+  /** The container bar's hatch: a person, so it talks. */
+  barman: (ctx) => {
+    const ph = dayPhase(new Date().getHours());
+    if (ph === "morning" || ph === "day") {
+      ctx.showToast(t("toast.barShut"));
+      return;
+    }
+    ctx.startDialogue(buildBarmankaTree(ctx.world) as DialogueTree<never>);
+  },
+
+  /** The frytki trailer. The economy of small joys, fried. */
+  frytki: (ctx) => {
+    const ph = dayPhase(new Date().getHours());
+    if (ph === "morning" || ph === "day") {
+      ctx.showToast(t("toast.frytkiShut"));
+      return;
+    }
+    ctx.startDialogue(buildFrytkarzTree(ctx.world) as DialogueTree<never>);
+  },
+
+  /** The club's own bar. Water is free, which is the law and also kindness. */
+  clubbar: (ctx) => {
+    ctx.startDialogue(buildKlubowyTree(ctx.world) as DialogueTree<never>);
+  },
+
+  /** The portaloo, and the club WC: both are a door, a wait, and a lesson. */
+  portaloo: ({ blackout }) => {
+    playSfx("doorshut");
+    blackout(1600, t("toast.portaloo"));
+  },
+
+  /**
+   * The dance floor. There is no dance animation in the rig and there does not
+   * need to be: he dances the way he trains, which is footwork first, and the
+   * sambo drill at 126 bpm reads as exactly what a man who lifts does at a
+   * rave. The camera agrees with the bass.
+   */
+  dance: ({ startAction, showToast, queueToast, shakeCamera }) => {
+    startAction("sambo");
+    shakeCamera(1.5, 600);
+    showToast(t("toast.dance"));
+    queueToast(t("toast.dance2"), 4200);
+  },
+
+  /** Standing at the stack. You do not hear it so much as get leaned on. */
+  speaker: ({ showToast, shakeCamera }) => {
+    shakeCamera(2.5, 500);
+    showToast(t("toast.speaker"));
+  },
+
+  /** The earplug dispenser. Take them once; after that it only judges you. */
+  earplugs: ({ world, updateWorld, showToast, startAction }) => {
+    const taken = world.inventory.some((i) => i.itemId === "earplugs");
+    startAction("use");
+    if (taken) {
+      playSfx("denied");
+      showToast(t("toast.earplugsAgain"));
+      return;
+    }
+    playSfx("click");
+    updateWorld((w) => ({ ...w, inventory: addToInventory(w, "earplugs") }));
+    showToast(t("toast.earplugs"));
+  },
+
+  /** The fuse cabinet. Look, but the whole room hangs off what's in there. */
+  clubfuse: ({ obj, showToast, spawnFx }) => {
+    playSfx("click");
+    showToast(t("toast.clubFuse"));
+    spawnFx("spark", obj.x, 900);
   },
 
   liftdoors: (ctx) => {
@@ -1465,6 +1642,538 @@ const PIELEGNIARKA_TREE: DialogueTree<Ctx> = {
     },
   },
 };
+
+// --- Ulica Elektryków: the people of the night shift ---------------------------
+
+/**
+ * The bouncer. The joke every real bouncer is in on: total, unhurried calm.
+ * Nothing the player says raises his pulse, and the one thing that gets a full
+ * sentence out of him is the cranes, because his grandfather painted them.
+ */
+const BRAMKARZ_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [{ speaker: "Bramkarz", text: "Dobry. Spokojnie, wszyscy wejdą.", mood: "neutral" }],
+      choices: [
+        { label: "Duża kolejka dzisiaj?", next: "queue" },
+        { label: "Co to za miejsce w ogóle?", next: "place" },
+        { label: "To ja wchodzę.", next: "bye" },
+      ],
+    },
+    queue: {
+      lines: [
+        { speaker: "Bramkarz", text: "Normalna. W sobotę stoi do rogu.", mood: "neutral" },
+        {
+          speaker: "Bramkarz",
+          text: "Ludzie myślą, że selekcja. A ja po prostu liczę do stu dwudziestu. Przepisy przeciwpożarowe.",
+          mood: "amused",
+        },
+      ],
+      next: "start",
+    },
+    place: {
+      lines: [
+        {
+          speaker: "Bramkarz",
+          text: "Hala numer dwa. Dziadek malował te dźwigi, co tam stoją. Minię, przeciw rdzy.",
+          mood: "warm",
+        },
+        {
+          speaker: "Bramkarz",
+          text: "Teraz ja pilnuję drzwi do jego hali. Jakby wiedział, to by się śmiał. Albo nie.",
+          mood: "sad",
+        },
+      ],
+      next: "start",
+    },
+    bye: {
+      lines: [{ speaker: "Bramkarz", text: "Butelka zostaje. Miłej nocy.", mood: "neutral" }],
+    },
+  },
+};
+
+/** Front of the queue, an authority on rooms she has not entered yet. */
+const QUEUE_GIRL_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        {
+          speaker: "Dziewczyna z kolejki",
+          text: "Słyszysz? Jak barierka drga, to znaczy że gra dobry. Fizyka.",
+          mood: "warm",
+        },
+      ],
+      choices: [
+        { label: "Długo stoicie?", next: "long" },
+        { label: "Kto dzisiaj gra?", next: "who" },
+        { label: "Powodzenia na bramce.", next: "bye" },
+      ],
+    },
+    long: {
+      lines: [
+        {
+          speaker: "Dziewczyna z kolejki",
+          text: "Dwadzieścia minut. Ale w kolejce na Elektryków czas liczy się inaczej. Jak w saunie.",
+          mood: "amused",
+        },
+      ],
+      next: "start",
+    },
+    who: {
+      lines: [
+        {
+          speaker: "Dziewczyna z kolejki",
+          text: "Ktoś z Berlina. Albo z Gdyni. Na plakacie było małymi literami, a duże to była data.",
+          mood: "amused",
+        },
+      ],
+      next: "start",
+    },
+    bye: {
+      lines: [
+        { speaker: "Dziewczyna z kolejki", text: "Do zobaczenia w środku. Albo na frytkach." },
+      ],
+    },
+  },
+};
+
+/** Holding up hall A. Two beers into the philosophy of post-industry. */
+const FILOZOF_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        {
+          speaker: "Filozof",
+          text: "Patrz. Sto lat temu tu się spawało kadłuby. A teraz co? Teraz się spawamy my.",
+          mood: "neutral",
+        },
+      ],
+      choices: [
+        { label: "Głębokie.", next: "deep" },
+        { label: "Pracowałeś tu?", next: "work" },
+        { label: "Trzymaj się ściany.", next: "bye" },
+      ],
+    },
+    deep: {
+      lines: [
+        { speaker: "Filozof", text: "Nie moje. Z muralu. Ale mural mówi prawdę.", mood: "amused" },
+        {
+          speaker: "Filozof",
+          text: "Wszystko tu mówi prawdę po drugim piwie. Po czwartym zaczyna kłamać.",
+          mood: "warm",
+        },
+      ],
+      next: "start",
+    },
+    work: {
+      lines: [
+        {
+          speaker: "Filozof",
+          text: "Ojciec. Wydział elektryczny, W-cztery. Tam, gdzie napis.",
+          mood: "sad",
+        },
+        {
+          speaker: "Filozof",
+          text: "Mówił: synu, prąd jest jak rzeka. Ja robię w IT. Też rzeka, tylko zimniejsza.",
+          mood: "neutral",
+        },
+      ],
+      next: "start",
+    },
+    bye: {
+      lines: [{ speaker: "Filozof", text: "Ściana i ja mamy umowę. Idź, idź." }],
+    },
+  },
+};
+
+/**
+ * The man studying the brickwork from six centimetres. The rule of this tree:
+ * he is never explained. He is having a completely coherent experience that
+ * the player is simply not equipped to share, and both of them are fine.
+ */
+const STARER_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        { text: "He is very close to the wall. He does not turn around." },
+        { speaker: "Ten Gość", text: "Widzisz to?", mood: "neutral" },
+      ],
+      choices: [
+        { label: "Widzę... cegłę.", next: "brick" },
+        { label: "Wszystko w porządku?", next: "ok" },
+        { label: "Back away slowly.", next: "bye" },
+      ],
+    },
+    brick: {
+      lines: [
+        { speaker: "Ten Gość", text: "Nie tę. Tę obok.", mood: "neutral" },
+        {
+          text: "You look at the one beside it. It is, in every measurable way, an identical brick.",
+        },
+        { speaker: "Ten Gość", text: "No właśnie.", mood: "warm" },
+      ],
+      next: "bye2",
+    },
+    ok: {
+      lines: [
+        { speaker: "Ten Gość", text: "W najlepszym. Wszystko się zgadza.", mood: "warm" },
+        { text: "He says it with the deep peace of a man whose accounts have finally balanced." },
+      ],
+      next: "bye2",
+    },
+    bye: {
+      lines: [{ text: "You back away. He does not notice. The brick has him now." }],
+    },
+    bye2: {
+      lines: [{ text: "You leave him to it. Somewhere in there is a very good night out." }],
+    },
+  },
+};
+
+// --- inside Turbina ---------------------------------------------------------------
+
+/** The DJ. Two answers and a wall. The wall is part of the set. */
+const DJ_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        { text: "He lifts one headphone cup a centimetre. This is your entire audience window." },
+        { speaker: "DJ", text: "No?", mood: "neutral" },
+      ],
+      choices: [
+        { label: "Zagrasz coś...", next: "request" },
+        { label: "Dobre to. Co to jest?", next: "what" },
+        { label: "Nic, nic. Graj.", next: "bye" },
+      ],
+    },
+    request: {
+      lines: [
+        { speaker: "DJ", text: "Nie.", mood: "neutral" },
+        { text: "The headphone cup goes back down. The negotiation is complete." },
+      ],
+    },
+    what: {
+      lines: [
+        {
+          speaker: "DJ",
+          text: "Białe winylowe, bez nalepki. Kupione w Oliwie za pięć złotych.",
+          mood: "warm",
+        },
+        { speaker: "DJ", text: "Jak powiem ci tytuł, przestanie działać.", mood: "amused" },
+      ],
+      next: "bye",
+    },
+    bye: {
+      lines: [{ text: "He nods once, at you or at the kick drum. Hard to say." }],
+    },
+  },
+};
+
+/** On the sofa, heels in hand. The night's most honest person. */
+const TIRED_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        {
+          speaker: "Zmęczona",
+          text: "Nie, nie trzeba mi wody. Siedzę. Strategicznie.",
+          mood: "amused",
+        },
+      ],
+      choices: [
+        { label: "Dobra impreza?", next: "party" },
+        { label: "Która godzina, wiesz?", next: "time" },
+        { label: "Strategia to podstawa.", next: "bye" },
+      ],
+    },
+    party: {
+      lines: [
+        {
+          speaker: "Zmęczona",
+          text: "Najlepsza od miesiąca. Dlatego siedzę. Trzeba umieć dawkować.",
+          mood: "warm",
+        },
+        {
+          speaker: "Zmęczona",
+          text: "Jeszcze dwa kawałki i wracam. Może trzy. Może zaraz.",
+          mood: "amused",
+        },
+      ],
+      next: "start",
+    },
+    time: {
+      lines: [
+        {
+          speaker: "Zmęczona",
+          text: "Nie mów mi. Serio. W tym budynku nie ma godzin, jest tylko bas.",
+          mood: "warm",
+        },
+      ],
+      next: "start",
+    },
+    bye: {
+      lines: [{ speaker: "Zmęczona", text: "No. Idź tańczyć. Ktoś musi, ja pilnuję sofy." }],
+    },
+  },
+};
+
+/** The morning after. She has cleaned worse and says so. */
+const CLEANER_TREE: DialogueTree<Ctx> = {
+  start: "start",
+  nodes: {
+    start: {
+      lines: [
+        {
+          speaker: "Pani Sprzątająca",
+          text: "Ostrożnie, tu mokre. I brokat. Brokat jest wszędzie.",
+          mood: "neutral",
+        },
+      ],
+      choices: [
+        { label: "Ciężka noc była?", next: "night" },
+        { label: "Co ludzie zostawiają?", next: "lost" },
+        { label: "Powodzenia z brokatem.", next: "bye" },
+      ],
+    },
+    night: {
+      lines: [
+        {
+          speaker: "Pani Sprzątająca",
+          text: "Dla nich? Chyba dobra. Dla podłogi — średnia.",
+          mood: "amused",
+        },
+      ],
+      next: "start",
+    },
+    lost: {
+      lines: [
+        {
+          speaker: "Pani Sprzątająca",
+          text: "Jedna kurtka, cztery telefony, jeden but. Jeden!",
+          mood: "amused",
+        },
+        {
+          speaker: "Pani Sprzątająca",
+          text: "Jak ktoś wyszedł w jednym bucie i nie wrócił, to znaczy, że noc była naprawdę dobra.",
+          mood: "warm",
+        },
+      ],
+      next: "start",
+    },
+    bye: {
+      lines: [{ speaker: "Pani Sprzątająca", text: "Brokat wygra. Ale ja mam etat." }],
+    },
+  },
+};
+
+/** The container bar: mulled wine in a returnable cup, and the deposit saga. */
+function buildBarmankaTree(world: WorldState): DialogueTree<Ctx> {
+  const buys = [
+    {
+      label: "Grzaniec. (15 zł)",
+      next: canAfford(15),
+      effect: (ctx: Ctx) => buy(ctx, "grzaniec", 15),
+    },
+    {
+      label: "Piwo z kranu. (12 zł)",
+      next: canAfford(12),
+      effect: (ctx: Ctx) => buy(ctx, "beer", 12),
+    },
+    {
+      label: "Woda. (6 zł)",
+      next: canAfford(6),
+      effect: (ctx: Ctx) => buy(ctx, "water", 6),
+    },
+    { label: "Nic, tylko się grzeję.", next: "bye" },
+  ];
+  return {
+    start: "start",
+    nodes: {
+      start: {
+        lines: [
+          { text: `You have ${world.money} zł on you.` },
+          { speaker: "Barmanka", text: "No? Grzaniec się kończy, mówię od razu.", mood: "neutral" },
+        ],
+        choices: buys,
+      },
+      "sold-15": {
+        lines: [
+          {
+            speaker: "Barmanka",
+            text: "Kubek zwrotny. Oddasz — dostaniesz piątaka. Nie oddasz — masz pamiątkę.",
+            mood: "amused",
+          },
+        ],
+        next: "more",
+      },
+      "sold-12": {
+        lines: [{ speaker: "Barmanka", text: "Z pianą, bo umiem. Na zdrowie.", mood: "warm" }],
+        next: "more",
+      },
+      "sold-6": {
+        lines: [
+          {
+            speaker: "Barmanka",
+            text: "Woda. Szanuję. Ktoś tu jeszcze planuje jutro.",
+            mood: "amused",
+          },
+        ],
+        next: "more",
+      },
+      short: {
+        lines: [
+          {
+            speaker: "Barmanka",
+            text: "Brakuje ci. Bankomat jest... nigdzie. Nie ma bankomatu. Witaj na stoczni.",
+            mood: "amused",
+          },
+        ],
+        next: "more",
+      },
+      more: {
+        lines: [{ speaker: "Barmanka", text: "Coś jeszcze?" }],
+        choices: buys,
+      },
+      bye: {
+        lines: [{ speaker: "Barmanka", text: "Grzej się, grzej. Od tego jest kontener." }],
+      },
+    },
+  };
+}
+
+/** The frytki window. There is one menu item and a doctrine around it. */
+function buildFrytkarzTree(world: WorldState): DialogueTree<Ctx> {
+  return {
+    start: "start",
+    nodes: {
+      start: {
+        lines: [
+          { text: `You have ${world.money} zł on you.` },
+          {
+            speaker: "Frytkarz",
+            text: "Frytki. Duże. Innych nie ma, małe to porażka.",
+            mood: "neutral",
+          },
+        ],
+        choices: [
+          {
+            label: "Duże frytki. (14 zł)",
+            next: (ctx: Ctx) => (ctx.world.money >= 14 ? "sold" : "short"),
+            effect: (ctx: Ctx) => {
+              if (ctx.world.money < 14) return;
+              playSfx("register");
+              ctx.updateWorld((w) => ({ ...w, money: w.money - 14 }));
+              ctx.startAction("hotdog");
+            },
+          },
+          { label: "Majonez czy ketchup?", next: "sauce" },
+          { label: "Może później.", next: "bye" },
+        ],
+      },
+      sold: {
+        lines: [
+          {
+            speaker: "Frytkarz",
+            text: "Sól już jest. Sól jest zawsze. Pytanie było retoryczne.",
+            mood: "amused",
+          },
+          {
+            text: "They are too hot to eat and you eat them anyway, which is the whole point of frytki at night.",
+          },
+        ],
+      },
+      sauce: {
+        lines: [
+          { speaker: "Frytkarz", text: "Tak.", mood: "neutral" },
+          {
+            text: "You wait for more. There is no more. There is clearly a right answer and he is watching you find it.",
+          },
+        ],
+        next: "start",
+      },
+      short: {
+        lines: [
+          {
+            speaker: "Frytkarz",
+            text: "Czternaście. Masz mniej. Wróć bogatszy albo głodniejszy, jedno z dwóch pomaga.",
+            mood: "amused",
+          },
+        ],
+      },
+      bye: {
+        lines: [{ speaker: "Frytkarz", text: "Będziesz. O drugiej wszyscy są." }],
+      },
+    },
+  };
+}
+
+/** The club bar: free tap water, priced everything else, closed cards at 3. */
+function buildKlubowyTree(world: WorldState): DialogueTree<Ctx> {
+  const buys = [
+    {
+      label: "Woda. (0 zł)",
+      next: "water",
+      effect: () => playSfx("pour"),
+    },
+    {
+      label: "Izotonik. (10 zł)",
+      next: canAfford(10),
+      effect: (ctx: Ctx) => buy(ctx, "izotonik", 10),
+    },
+    {
+      label: "Piwo. (15 zł)",
+      next: canAfford(15),
+      effect: (ctx: Ctx) => buy(ctx, "beer", 15),
+    },
+    { label: "Nic. Odpoczywam od basu.", next: "bye" },
+  ];
+  return {
+    start: "start",
+    nodes: {
+      start: {
+        lines: [
+          { text: `You have ${world.money} zł on you. He reads lips; everyone here does.` },
+          { speaker: "Barman", text: "NO? CO PODAĆ?", mood: "neutral" },
+        ],
+        choices: buys,
+      },
+      water: {
+        lines: [
+          { speaker: "Barman", text: "KRANÓWA. DARMOWA. PIJ.", mood: "warm" },
+          {
+            text: "It is the best water you have ever drunk. Every water at 1 a.m. on a dance floor is.",
+          },
+        ],
+        next: "more",
+      },
+      "sold-10": {
+        lines: [{ speaker: "Barman", text: "MĄDRY WYBÓR. ELEKTROLITY.", mood: "warm" }],
+        next: "more",
+      },
+      "sold-15": {
+        lines: [{ speaker: "Barman", text: "PIĘTNAŚCIE. KUBEK NA BAR WRACA.", mood: "neutral" }],
+        next: "more",
+      },
+      short: {
+        lines: [{ speaker: "Barman", text: "MAŁO. WODA JEST DARMOWA.", mood: "amused" }],
+        next: "more",
+      },
+      more: {
+        lines: [{ speaker: "Barman", text: "COŚ JESZCZE?" }],
+        choices: buys,
+      },
+      bye: {
+        lines: [{ text: "He is already three orders ahead. The bar swallows you back out." }],
+      },
+    },
+  };
+}
 
 function buildCashierTree(world: WorldState): DialogueTree<Ctx> {
   const buys = [

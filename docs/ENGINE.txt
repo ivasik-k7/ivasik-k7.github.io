@@ -1,7 +1,3 @@
-Так. Тут я б не ставив агенту задачу «оптимізуй код». Це занадто вузько. Тобі потрібен **engine architecture audit + modernization program**, причому з вимогою зберегти існуючі сильні сторони та перетворити код із game-specific implementation на **reusable, public-quality 2D game engine/framework**.
-
-Нижче промпт, який я б дав сильному coding/research agent. Він спеціально змушує його спочатку **зрозуміти систему цілком**, потім провести аудит, сформувати architecture target, і лише після цього змінювати код.
-
 # Mission: Industrial-Grade Game Engine Architecture Audit, Modernization, and Public-Release Preparation
 
 You are acting as a **principal game-engine architect, senior TypeScript engineer, performance engineer, and open-source maintainer**.

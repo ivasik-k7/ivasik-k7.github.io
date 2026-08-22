@@ -1,0 +1,694 @@
+Create two new connected scenes that expand the Gdańsk world:
+
+1. `ulicaElektrykowScene`
+2. `raveClubScene`
+
+The first scene should represent **Ulica Elektryków at the Gdańsk Shipyard (Stocznia)** and become a major outdoor nightlife/industrial location.
+
+The second scene should be a connected **rave/club environment** located within the Ulica Elektryków area.
+
+Both scenes must remain fully consistent with the existing game's pixel-art style, rendering preset, character proportions, lighting system, interaction system, animation system, HUD, and general scene architecture.
+
+Use the existing high-quality scenes such as `streetScene` and the SKM/train scenes as references for technical architecture and quality.
+
+Do not make either scene look like a generic pixel-art nightclub or generic industrial area.
+
+The goal is to create a recognizable, atmospheric interpretation of Gdańsk's Stocznia nightlife environment through the game's established visual language.
+
+---
+
+# PART 1 — `ulicaElektrykowScene`
+
+## 1. Location & Identity
+
+Create an outdoor scene inspired by **Ulica Elektryków at the Gdańsk Shipyard**.
+
+The player should immediately understand that this is:
+
+* an industrial shipyard area;
+* converted into a nightlife/cultural space;
+* populated by young people;
+* active at night;
+* surrounded by old industrial architecture;
+* visually connected to Gdańsk Stocznia.
+
+The industrial identity should remain visible.
+
+Combine:
+
+**old shipyard infrastructure + modern nightlife + street culture + Gdańsk atmosphere.**
+
+---
+
+# 2. Industrial Environment
+
+Create a detailed environment containing elements such as:
+
+* old industrial buildings;
+* warehouses;
+* metal structures;
+* pipes;
+* cables;
+* industrial doors;
+* loading areas;
+* fences;
+* concrete;
+* steel structures;
+* old signs;
+* electrical infrastructure;
+* utility boxes;
+* cranes in the distance;
+* railway/industrial infrastructure;
+* shipping/shipyard remnants;
+* graffiti;
+* posters;
+* temporary event structures.
+
+The environment should not feel newly constructed.
+
+It should have:
+
+* rust;
+* dirt;
+* weathering;
+* repairs;
+* stickers;
+* graffiti;
+* old paint;
+* patched surfaces;
+* industrial wear.
+
+At the same time, nightlife businesses should introduce newer elements:
+
+* neon signs;
+* event posters;
+* temporary lighting;
+* outdoor bars;
+* tables;
+* benches;
+* food stands;
+* people gathering;
+* music-related signage.
+
+---
+
+# 3. Gdańsk Shipyard Background
+
+The background should strongly communicate the Stocznia location.
+
+Where appropriate, include:
+
+* shipyard cranes;
+* industrial halls;
+* railway infrastructure;
+* distant lights;
+* large industrial silhouettes;
+* Gdańsk skyline;
+* electrical infrastructure.
+
+The cranes should be visible but not necessarily dominate the composition.
+
+Use them as recognizable background landmarks.
+
+At night, some industrial structures should be partially illuminated.
+
+---
+
+# 4. Nighttime Atmosphere
+
+This should primarily be a nighttime scene.
+
+Use the existing `lightKit` and `pixelKit`.
+
+Lighting should include:
+
+* industrial lamps;
+* street lights;
+* neon;
+* colored event lighting;
+* building lights;
+* windows;
+* signage;
+* vehicle lights;
+* small localized light sources.
+
+Do not simply apply a blue/dark filter over the daytime environment.
+
+Night should be constructed through actual lighting relationships.
+
+Use:
+
+* dark ambient lighting;
+* local warm/cool lights;
+* strong localized highlights;
+* shadows;
+* atmospheric falloff.
+
+---
+
+# 5. Nightlife Population
+
+Populate the scene with many different NPC archetypes.
+
+Examples:
+
+* people arriving for events;
+* groups talking;
+* smokers;
+* couples;
+* drunk people;
+* people waiting outside clubs;
+* people dancing outside;
+* people sitting;
+* people checking phones;
+* people looking for friends;
+* people leaving;
+* security;
+* bartenders;
+* street performers;
+* unusual characters.
+
+NPCs should not all behave identically.
+
+Use varied idle animations and behavior patterns.
+
+---
+
+# 6. Weird / Unpredictable NPC Behavior
+
+Introduce a controlled amount of strange behavior.
+
+Some NPCs can:
+
+* stare into the distance;
+* dance alone;
+* suddenly start dancing;
+* walk in unusual patterns;
+* talk to objects;
+* dramatically gesture while talking;
+* sit on the ground;
+* follow a friend;
+* wander around;
+* repeatedly check the same place;
+* behave as if they are extremely tired;
+* have exaggerated reactions.
+
+The behavior should feel like nightlife chaos rather than random bugs.
+
+The player should occasionally see something and think:
+
+> "What the hell is that guy doing?"
+
+But the world should remain coherent.
+
+---
+
+# 7. Interactive Environment
+
+Make Ulica Elektryków substantially interactive.
+
+Potential interactions:
+
+* club entrances;
+* posters;
+* event boards;
+* outdoor bars;
+* vending machines;
+* benches;
+* industrial objects;
+* graffiti;
+* signs;
+* smoking areas;
+* NPC conversations;
+* food stands;
+* doors;
+* gates;
+* decorative objects.
+
+Not everything should be interactive.
+
+Prioritize objects that provide:
+
+* information;
+* atmosphere;
+* navigation;
+* gameplay;
+* character interaction;
+* environmental storytelling.
+
+---
+
+# 8. Navigation
+
+Create clear connections to:
+
+* SKM/train travel;
+* rave club;
+* other future locations.
+
+The player should understand where they can go without relying entirely on UI.
+
+Use:
+
+* signs;
+* environmental landmarks;
+* entrances;
+* NPC dialogue;
+* lighting;
+* spatial composition.
+
+---
+
+# 9. Rave Club Entrance
+
+Create a visually obvious but immersive entrance to `raveClubScene`.
+
+It should feel like an actual club entrance embedded in the industrial environment.
+
+Include:
+
+* entrance signage;
+* queue area;
+* security;
+* people entering/leaving;
+* lighting;
+* posters;
+* door interaction;
+* subtle sound cues if supported.
+
+The transition into the rave scene should feel meaningful.
+
+---
+
+# PART 2 — `raveClubScene`
+
+Create a dedicated indoor rave/club environment.
+
+This scene should push the existing graphical style into a more experimental direction while remaining clearly part of the same game.
+
+---
+
+# 10. Core Visual Concept
+
+The club should combine:
+
+**pixel-art + industrial architecture + LCD/CRT aesthetics + rave lighting + surreal visual effects.**
+
+Do not replace the game's pixel-art identity.
+
+Instead, layer experimental effects over it.
+
+Use:
+
+* LCD-style scanlines;
+* CRT-style distortion where appropriate;
+* pixel displacement;
+* chromatic aberration;
+* digital noise;
+* color separation;
+* subtle screen flicker;
+* light trails;
+* animated signage;
+* glitch effects.
+
+These effects should be controlled and intentional.
+
+---
+
+# 11. Hallucination / Surreal Effects
+
+The club should occasionally distort the player's perception.
+
+Potential effects:
+
+* brief visual distortion;
+* duplicated silhouettes;
+* NPC afterimages;
+* objects appearing to move;
+* lights changing unexpectedly;
+* background geometry subtly shifting;
+* temporary color inversion;
+* screen tearing;
+* exaggerated lighting;
+* NPCs briefly appearing in unusual positions;
+* silhouettes moving in peripheral areas;
+* environmental elements pulsing with music.
+
+Do not make the scene permanently distorted.
+
+Use hallucination effects as occasional events.
+
+The player should sometimes question whether what they saw actually happened.
+
+---
+
+# 12. Dynamic Lighting
+
+The rave club should have a sophisticated lighting system.
+
+Lighting can react to:
+
+* music;
+* beat timing;
+* player position;
+* club state;
+* special events.
+
+Use:
+
+* strobes;
+* colored spotlights;
+* neon;
+* moving lights;
+* screen illumination;
+* silhouettes;
+* strong contrast.
+
+However, maintain readability.
+
+Do not make the environment so dark or bright that navigation becomes frustrating.
+
+---
+
+# 13. Dance Floor
+
+Create a central dance floor.
+
+It should be the visual focal point.
+
+Populate it with NPCs performing varied animations:
+
+* dancing;
+* jumping;
+* moving rhythmically;
+* standing in groups;
+* taking breaks;
+* interacting with friends.
+
+Avoid synchronized identical animations.
+
+Use animation offsets and different animation patterns.
+
+---
+
+# 14. Club NPCs
+
+Create a broad range of characters.
+
+Examples:
+
+* regular clubgoers;
+* extremely enthusiastic dancers;
+* people standing at the edge of the dance floor;
+* couples;
+* groups;
+* bartender;
+* DJ;
+* security;
+* exhausted people;
+* strange characters;
+* people sitting;
+* people talking;
+* people staring at the lights.
+
+Some NPCs should have unusual personalities.
+
+The club should feel unpredictable and alive.
+
+---
+
+# 15. DJ / Music Area
+
+Create a recognizable DJ booth.
+
+Include:
+
+* DJ;
+* decks/equipment;
+* screens;
+* speakers;
+* cables;
+* lighting;
+* crowd-facing equipment.
+
+The DJ should have subtle animations.
+
+Screens and lighting should react to the music/event state.
+
+---
+
+# 16. Interactive Club Elements
+
+Potential interactions:
+
+* dance floor;
+* bar;
+* bartender;
+* DJ booth;
+* seats;
+* tables;
+* doors;
+* smoking area;
+* club posters;
+* strange objects;
+* NPC conversations;
+* bathroom/side corridors;
+* exits.
+
+Again, interaction should be selective and meaningful.
+
+---
+
+# 17. LCD / CRT Presentation
+
+Create a dedicated visual layer for the club.
+
+Possible effects:
+
+* scanlines;
+* pixel noise;
+* horizontal distortion;
+* slight RGB separation;
+* CRT curvature illusion;
+* flickering signage;
+* digital artifacts;
+* low-frequency visual pulses.
+
+These should be configurable and performance-conscious.
+
+Do not apply maximum distortion continuously.
+
+Use intensity levels depending on:
+
+* location;
+* music;
+* player state;
+* hallucination events.
+
+---
+
+# 18. Hallucination Event System
+
+Create a reusable event system for surreal moments.
+
+Events could include:
+
+* an NPC suddenly appearing somewhere unexpected;
+* a character briefly duplicating;
+* the entire scene shifting color;
+* a light turning off and revealing a different silhouette;
+* an NPC freezing while everything else moves;
+* a wall/sign briefly displaying strange content;
+* a corridor appearing longer than before;
+* environmental objects subtly changing;
+* a brief visual glitch.
+
+Events should be:
+
+* short;
+* unpredictable;
+* contextual;
+* visually coherent;
+* performant.
+
+Do not spam the player with them.
+
+---
+
+# 19. Day/Night & Club State
+
+The club should naturally be connected to the broader world time system.
+
+Outside:
+
+* late evening/night atmosphere.
+
+Inside:
+
+* club lighting dominates;
+* exterior light occasionally enters through doors/windows;
+* the atmosphere changes depending on the club's current state.
+
+Potential future states:
+
+* closed;
+* preparing;
+* opening;
+* active;
+* late night;
+* closing.
+
+Build the architecture so these states can be extended later.
+
+---
+
+# 20. Transitions
+
+Transition:
+
+`train → Ulica Elektryków → Rave Club`
+
+should feel like one connected experience.
+
+If the player arrives via SKM:
+
+1. exit the train;
+2. enter the Stocznia environment;
+3. navigate through Ulica Elektryków;
+4. observe nightlife;
+5. find the club;
+6. enter;
+7. experience the transition from industrial exterior to surreal interior.
+
+The contrast between the two environments should be intentional.
+
+---
+
+# 21. Audio Integration
+
+Where supported by the existing audio architecture:
+
+### Ulica Elektryków
+
+* distant music;
+* conversations;
+* city ambience;
+* industrial sounds;
+* footsteps;
+* occasional vehicles;
+* crowd noise.
+
+### Rave Club
+
+* music;
+* bass;
+* crowd;
+* DJ;
+* speakers;
+* footsteps;
+* doors;
+* muffled exterior sound.
+
+Audio should also reinforce transitions between exterior and interior.
+
+---
+
+# 22. Performance
+
+The rave scene can potentially be expensive because of:
+
+* many NPCs;
+* animations;
+* lighting;
+* visual effects;
+* post-processing;
+* particles;
+* LCD/CRT effects.
+
+Implement these carefully.
+
+Optimize:
+
+* inactive NPCs;
+* off-screen animation;
+* lighting;
+* post-processing;
+* particle systems;
+* event scheduling;
+* scene lifecycle;
+* unnecessary rendering.
+
+The scene should remain smooth even when the club is crowded.
+
+---
+
+# 23. Reuse Existing Systems
+
+Before creating new infrastructure, inspect and reuse:
+
+* `streetScene`;
+* `trainScene`;
+* `lightKit`;
+* `pixelKit`;
+* NPC systems;
+* character animation systems;
+* dialogue systems;
+* HUD;
+* interaction framework;
+* scene transitions;
+* time-of-day system;
+* audio system.
+
+Extract reusable components when appropriate.
+
+Do not duplicate existing functionality.
+
+---
+
+# 24. Independent Review
+
+After implementing both scenes, perform an independent quality review.
+
+Evaluate:
+
+* visual consistency;
+* realism;
+* environmental density;
+* object proportions;
+* NPC behavior;
+* animation quality;
+* lighting;
+* interaction quality;
+* navigation;
+* atmosphere;
+* performance;
+* Gdańsk identity;
+* transition quality;
+* surreal effects;
+* readability.
+
+Then perform a second improvement pass.
+
+Ask:
+
+> Does this feel like a believable Gdańsk location that happens to exist inside our pixel-art game, or does it feel like a generic pixel-art level?
+
+If it feels generic, continue enriching and correcting it.
+
+---
+
+# 25. Final Experience
+
+The intended experience is:
+
+**SKM train → Gdańsk Stocznia → Ulica Elektryków → nightlife → industrial atmosphere → strange NPC encounters → Rave Club → increasingly surreal environment → music, LCD/CRT effects, hallucinations and unpredictable characters.**
+
+The contrast should be deliberate:
+
+**Ulica Elektryków = grounded, industrial, realistic, social.**
+
+**Rave Club = increasingly energetic, strange, surreal and visually experimental.**
+
+Both must still clearly belong to the same game.
+
+The final scenes should feel **rich, lived-in, interactive, atmospheric, technically polished and substantially more ambitious than a basic scene implementation.**

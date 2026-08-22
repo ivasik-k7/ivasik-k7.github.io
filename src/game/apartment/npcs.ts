@@ -471,6 +471,306 @@ const NPCS_FACTORIES: Record<string, () => NpcConfig> = {
       lines: ["Flat white? Zaraz będzie.", "Ziarno dziś etiopskie.", "Na miejscu czy na wynos?"],
     }),
 
+  /* --- Ulica Elektryków: the night shift ---------------------------------- */
+
+  /** The door. Calm the way only very large men are calm. */
+  bramkarz: () =>
+    createNpc({
+      id: "bramkarz",
+      name: "Bramkarz",
+      build: "stout",
+      height: "tall",
+      doing: "standing",
+      look: {
+        skin: "tan",
+        hair: "black",
+        hairStyle: "shaved",
+        face: "beard",
+        top: "jacket",
+        topColour: "black",
+        bottom: "trousers",
+        bottomColour: "black",
+        shoes: "boots",
+        shoeColour: "black",
+        accent: "lanyard",
+        accentColour: "red",
+      },
+      lines: ["Spokojnie, wszyscy wejdą.", "Butelki zostają na zewnątrz.", "Dokumencik?"],
+    }),
+
+  /** The container bar's hatch, one winter per tattoo. */
+  barmanka: () =>
+    createNpc({
+      id: "barmanka",
+      name: "Barmanka",
+      build: "slim",
+      height: "average",
+      doing: "serving",
+      look: {
+        skin: "fair",
+        hair: "bleach",
+        hairStyle: "undercut",
+        top: "tshirt",
+        topColour: "black",
+        bottom: "jeans",
+        bottomColour: "charcoal",
+        shoes: "boots",
+        shoeColour: "black",
+        accent: "apron",
+        accentColour: "charcoal",
+      },
+      lines: ["Grzaniec, piwo, woda. Reszta to marzenia.", "Kubek zwrotny! Kaucja!"],
+    }),
+
+  /** The frytki trailer. He has opinions about oil and they are correct. */
+  frytkarz: () =>
+    createNpc({
+      id: "frytkarz",
+      name: "Frytkarz",
+      build: "stout",
+      height: "short",
+      doing: "serving",
+      look: {
+        skin: "ruddy",
+        hair: "grey",
+        hairStyle: "receding",
+        face: "moustache",
+        hat: "cap",
+        hatColour: "white",
+        top: "tshirt",
+        topColour: "white",
+        bottom: "workpants",
+        bottomColour: "charcoal",
+        shoes: "trainers",
+        shoeColour: "black",
+        accent: "apron",
+        accentColour: "red",
+      },
+      lines: ["Świeży olej!", "Sól? Zawsze sól. Pytanie retoryczne."],
+    }),
+
+  /** Front of the queue, dressed for the room she has not entered yet. */
+  raverka: () =>
+    createNpc({
+      id: "queue-girl",
+      name: "Dziewczyna z kolejki",
+      build: "slim",
+      height: "average",
+      doing: "waiting",
+      look: {
+        skin: "pale",
+        hair: "black",
+        hairStyle: "bob",
+        top: "tank",
+        topColour: "black",
+        bottom: "shorts",
+        bottomColour: "black",
+        shoes: "boots",
+        shoeColour: "black",
+        accent: "scarf",
+        accentColour: "pink",
+        prop: "phone",
+      },
+      lines: ["Mówią, że selekcja ostra.", "Czuję bas w barierce. Dobry znak."],
+    }),
+
+  /** Holding up hall A with one shoulder and the discourse with the other. */
+  filozof: () =>
+    createNpc({
+      id: "filozof",
+      name: "Filozof",
+      build: "regular",
+      height: "average",
+      doing: "leaning",
+      look: {
+        skin: "sallow",
+        hair: "brown",
+        hairStyle: "long",
+        face: "stubble",
+        top: "coat",
+        topColour: "olive",
+        bottom: "jeans",
+        bottomColour: "black",
+        shoes: "boots",
+        shoeColour: "brown",
+        prop: "bottle",
+      },
+      lines: [
+        "Kiedyś tu spawali statki.",
+        "To nie upadek przemysłu. To zmiana zmiany.",
+        "Ściana sama się nie podeprze.",
+      ],
+    }),
+
+  /** Six centimetres from the brickwork, studying it. He is fine. Probably. */
+  starer: () =>
+    createNpc({
+      id: "starer",
+      name: "Ten Gość",
+      build: "slim",
+      height: "tall",
+      doing: "standing",
+      look: {
+        skin: "pale",
+        hair: "ginger",
+        hairStyle: "crop",
+        top: "tshirt",
+        topColour: "lilac",
+        bottom: "trousers",
+        bottomColour: "charcoal",
+        shoes: "trainers",
+        shoeColour: "white",
+      },
+      lines: ["...", "Ta cegła. Ta konkretna cegła.", "Wszystko się zgadza."],
+    }),
+
+  /** Doing the bar–club circuit. Again. There might be someone by the door. */
+  spacer: () =>
+    createNpc({
+      id: "spacer",
+      name: "Krążący",
+      build: "regular",
+      height: "average",
+      doing: "walking",
+      look: {
+        skin: "olive",
+        hair: "black",
+        hairStyle: "topknot",
+        top: "shirt",
+        topColour: "wine",
+        texture: "check",
+        bottom: "jeans",
+        bottomColour: "black",
+        shoes: "trainers",
+        shoeColour: "white",
+      },
+      lines: ["Zaraz wracam.", "Widziałeś może Kaśkę?"],
+    }),
+
+  /** Between the frytki and the gap, deciding between the frytki and the gap. */
+  spacerka: () =>
+    createNpc({
+      id: "spacerka",
+      name: "Krążąca",
+      build: "slim",
+      height: "short",
+      doing: "walking",
+      look: {
+        skin: "fair",
+        hair: "chestnut",
+        hairStyle: "ponytail",
+        top: "hoodie",
+        topColour: "plum",
+        bottom: "tracksuit",
+        bottomColour: "black",
+        shoes: "trainers",
+        shoeColour: "pink",
+        prop: "coffee",
+      },
+      lines: ["Frytki czy jeszcze nie frytki...", "Zimno. Ale dobrze."],
+    }),
+
+  /* --- inside Turbina ------------------------------------------------------ */
+
+  /** Behind the decks. Do not ask. He will not play it. */
+  didzej: () =>
+    createNpc({
+      id: "dj-booth",
+      name: "DJ",
+      build: "regular",
+      height: "average",
+      doing: "working",
+      look: {
+        skin: "tan",
+        hair: "black",
+        hairStyle: "shaved",
+        face: "beard",
+        top: "tshirt",
+        topColour: "black",
+        bottom: "jeans",
+        bottomColour: "black",
+        shoes: "trainers",
+        shoeColour: "black",
+        accent: "lanyard",
+        accentColour: "charcoal",
+      },
+      lines: ["...", "Nie zagram. Niczego nie zagram."],
+    }),
+
+  /** The club bar. Has seen everything twice and poured water on most of it. */
+  klubowy: () =>
+    createNpc({
+      id: "club-bar",
+      name: "Barman",
+      build: "slim",
+      height: "tall",
+      doing: "serving",
+      look: {
+        skin: "olive",
+        hair: "black",
+        hairStyle: "short",
+        face: "stubble",
+        top: "shirt",
+        topColour: "black",
+        bottom: "trousers",
+        bottomColour: "black",
+        shoes: "shoes",
+        shoeColour: "black",
+        accent: "vest",
+        accentColour: "charcoal",
+      },
+      lines: ["Woda darmowa. Kranówa.", "Karty zamykam o trzeciej. Doświadczenie."],
+    }),
+
+  /** On the sofa, heels in hand, negotiating with gravity. Winning, slowly. */
+  zmeczona: () =>
+    createNpc({
+      id: "tired-girl",
+      name: "Zmęczona",
+      build: "slim",
+      height: "short",
+      doing: "sitting",
+      look: {
+        skin: "fair",
+        hair: "blond",
+        hairStyle: "long",
+        top: "tshirt",
+        topColour: "wine",
+        bottom: "trousers",
+        bottomColour: "black",
+        shoes: "heels",
+        shoeColour: "black",
+      },
+      lines: ["Sekundę siedzę. Sekundę.", "Nie mów która godzina."],
+    }),
+
+  /** The morning after belongs to her and the broom. It always has. */
+  sprzataczka: () =>
+    createNpc({
+      id: "club-cleaner",
+      name: "Pani Sprzątająca",
+      build: "regular",
+      height: "short",
+      doing: "washing",
+      look: {
+        skin: "tan",
+        hair: "grey",
+        hairStyle: "bun",
+        hat: "kerchief",
+        hatColour: "navy",
+        top: "jumper",
+        topColour: "grey",
+        bottom: "trousers",
+        bottomColour: "navy",
+        shoes: "boots",
+        shoeColour: "black",
+        accent: "apron",
+        accentColour: "sky",
+        prop: "broom",
+      },
+      lines: ["Brokat. Wszędzie brokat.", "Kto tańczy, ten nie śmieci. Teoretycznie."],
+    }),
+
   /** Somebody crossing the square who has somewhere to be. */
   walker: () =>
     createNpc({

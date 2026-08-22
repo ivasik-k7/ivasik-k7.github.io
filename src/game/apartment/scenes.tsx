@@ -1,4 +1,4 @@
-import type { SceneDef } from "@/engine";
+import type { RuntimeSceneDef } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 import { BALCONY_SCENE } from "./balconyScene";
 import { BATH_SCENE } from "./bathScene";
@@ -10,7 +10,7 @@ import { STUDIO_SCENE } from "./studioScene";
  * and components/game/rooms.tsx art are fully retired — every room owns its
  * artwork, objects and light.
  */
-export const APARTMENT_SCENES: Record<string, SceneDef<WorldState>> = {
+export const APARTMENT_SCENES: Record<string, RuntimeSceneDef<WorldState>> = {
   studio: STUDIO_SCENE,
   study: BEDROOM_SCENE,
   bath: BATH_SCENE,

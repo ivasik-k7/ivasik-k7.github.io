@@ -85,6 +85,7 @@ const VERB: Record<string, string> = {
   creakdoor: "ENTER",
   trainDoor: "BOARD",
   biletomat: "BUY",
+  kasownik: "PUNCH",
   konduktor: "TALK",
   trainExit: "GET OFF",
   routemap: "READ",
@@ -109,6 +110,9 @@ const VERB: Record<string, string> = {
   coffee: "BREW",
   cooker: "COOK",
   plant: "WATER",
+  dishes: "WASH",
+  binbag: "EMPTY",
+  bowls: "FEED",
   lamp: "SWITCH",
   window: "LOOK",
   flavor: "LOOK",
@@ -116,6 +120,16 @@ const VERB: Record<string, string> = {
   mycar: "KEYS",
   guitar: "PLAY",
   bath: "SHOWER",
+  /* Ulica Elektryków and the club */
+  barman: "ORDER",
+  frytki: "ORDER",
+  clubbar: "ORDER",
+  clubdoor: "ENTER",
+  portaloo: "USE",
+  dance: "DANCE",
+  speaker: "FEEL",
+  earplugs: "TAKE",
+  clubfuse: "PEEK",
 };
 
 /** Which sound bed each location breathes. */
@@ -134,6 +148,22 @@ const AMBIENCE: Record<string, AmbienceName> = {
   parking: "parking",
   gym: "stairwell",
   district: "street",
+  elektrykow: "street",
+  /* the club: the parking bed's low concrete rumble is the closest thing this
+     game has to bass through a wall, which is exactly what it is */
+  raveclub: "parking",
+};
+
+/**
+ * Which SKM station a scene belongs to — for ringing "where you got on" on the
+ * route map. Read off the scene the player was in *before* boarding, because
+ * by the time the map is open the current scene is always "train".
+ */
+const SCENE_STATION: Record<string, string> = {
+  station: "przymorze",
+  district: "oliwa",
+  elektrykow: "stocznia",
+  raveclub: "stocznia",
 };
 
 /**
@@ -153,7 +183,10 @@ let runtimeApi: RuntimeApi<WorldState> | null = null;
 
 function exposeGameApi(api: RuntimeApi<WorldState>) {
   runtimeApi = api;
-  if (import.meta.env.DEV) {
+  // dev always; production only when asked for by the drive/bench harness
+  // (scripts/drive-game.mjs, scripts/bench-game.mjs) via ?drive=1 — perf
+  // baselines must run against the real build, not the dev server
+  if (import.meta.env.DEV || new URLSearchParams(window.location.search).has("drive")) {
     (window as unknown as { __game: RuntimeApi<WorldState> }).__game = api;
   }
 }
@@ -162,6 +195,8 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
   const { t } = useTranslation();
   const [visited, setVisited] = useState<string[]>([]);
   const [here, setHere] = useState<string>("studio");
+  // the last SKM station the player was at on foot — what the route map rings
+  const [boardedAt, setBoardedAt] = useState<string>("przymorze");
   // dev/test convenience: ?nointro drops straight in, ?scene=zabka spawns there
   const params = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null;
   const skipIntro = true;
@@ -208,7 +243,10 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     player: PLAYER,
     handlers: APARTMENT_HANDLERS,
     objectLabel: (obj) => t(`obj.${obj.id}`),
-    objectVerb: (obj) => VERB[obj.kind] ?? "USE",
+    /* "sport" covers both the gym rigs (TRAIN) and street/platform benches — the
+     * action tells them apart: sitting down is not a workout. */
+    objectVerb: (obj) =>
+      obj.kind === "sport" && obj.action === "sit" ? "SIT" : (VERB[obj.kind] ?? "USE"),
     dayPhase: () => dayPhase(new Date().getHours()),
     renderHud: (scene, world, phase, openOverlay) => (
       <HUD
@@ -245,7 +283,7 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
         return (
           <RouteMap
             key="routemap"
-            here={here === "station" ? "przymorze" : "oliwa"}
+            here={boardedAt}
             onClose={close}
             onTravel={(scene, x) => {
               close();
@@ -297,6 +335,7 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     onSceneChange: (scene) => {
       ambience.set(AMBIENCE[scene] ?? "room");
       setHere(scene);
+      if (SCENE_STATION[scene]) setBoardedAt(SCENE_STATION[scene]);
       setVisited((v) => (v.includes(scene) ? v : [...v, scene]));
     },
     onFirstGesture: () => {

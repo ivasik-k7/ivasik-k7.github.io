@@ -41,6 +41,16 @@ export interface WorldState {
   // The Golf, level -1
   golfLocked: boolean;
 
+  // The studio itself — chores and small habits. Optional so pre-existing
+  // saves (which predate the field) still load; read through studioState().
+  studio?: {
+    dishesDone: boolean;
+    binEmptied: boolean;
+    bowlsFilled: boolean;
+    guitarOut: boolean;
+    plantWatered: boolean;
+  };
+
   // The corridor, floor 4
   corridor: {
     parcelTaken: boolean;
@@ -68,7 +78,25 @@ export const ITEM_LABEL: Record<string, string> = {
   lighter: "LIGHTER",
   parcel: "PARCEL",
   ticket: "BILET",
+  grzaniec: "GRZANIEC",
+  beer: "PIWO",
+  water: "WODA",
+  izotonik: "IZOTONIK",
+  earplugs: "STOPERY",
 };
+
+export const initialStudio: NonNullable<WorldState["studio"]> = {
+  dishesDone: false,
+  binEmptied: false,
+  bowlsFilled: false,
+  guitarOut: false,
+  plantWatered: false,
+};
+
+/** The studio chore bag with defaults for saves that predate it. */
+export function studioState(world: WorldState): NonNullable<WorldState["studio"]> {
+  return { ...initialStudio, ...world.studio };
+}
 
 export const initialWorld: WorldState = {
   money: 50,
@@ -97,6 +125,7 @@ export const initialWorld: WorldState = {
     shoes: "default",
   },
   golfLocked: true,
+  studio: { ...initialStudio },
   corridor: { parcelTaken: false, plantWatered: false, extOpen: false, liftOpen: false },
   street: { binOpen: false, paczkomatUsed: false },
   zabka: { fridgeOpen: false, freezerOpen: false },

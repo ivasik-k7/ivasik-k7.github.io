@@ -40,6 +40,8 @@ export const resources = {
         table: "KITCHEN TABLE",
         "sink-kitchen": "SINK",
         espresso: "ESPRESSO MACHINE",
+        jars: "THE JARS",
+        roomba: "ROBOT VACUUM",
         dogbed: "GROSS'S BED",
         "plant-studio": "MONSTERA",
         artbrut: "ART BRUT",
@@ -100,6 +102,14 @@ export const resources = {
         "station-bench-sitter": "BABCIA KRYSIA",
         "station-phone": "MAN ON THE PHONE",
         "station-looker": "MAN AT THE END",
+        "station-smoker": "NEIGHBOR",
+        "station-golebiarka": "PANI GOŁĘBIARKA",
+        "station-kasownik": "KASOWNIK",
+        "station-clock": "STATION CLOCK",
+        "station-signal": "SIGNAL S1",
+        "station-sos": "SOS PILLAR",
+        "station-cabinet": "RELAY CABINET",
+        "station-bench-2": "BENCH",
         "train-door-1": "CARRIAGE DOOR",
         "train-door-2": "CARRIAGE DOOR",
         "train-door-3": "CARRIAGE DOOR",
@@ -347,6 +357,64 @@ export const resources = {
         zbyszek: "PAN ZBYSZEK",
         kosz: "LITTER BIN",
         "parter-window": "GROUND-FLOOR FLAT",
+        /* --- Ulica Elektryków --- */
+        "elektrykow-skm": "SKM STOCZNIA",
+        "elektrykow-fence": "PALISADE FENCE",
+        "trafo-kiosk": "SUBSTATION",
+        "trafo-sign": "WARNING SIGN",
+        "hala-posters": "POSTER WALL",
+        "hala-gate": "WORKS GATE",
+        "hala-windows": "HALL WINDOWS",
+        "hala-mural": "THE MURAL",
+        starer: "THAT GUY",
+        "pipe-bridge": "PIPE BRIDGE",
+        filozof: "THE PHILOSOPHER",
+        "pallet-bench": "PALLET BENCH",
+        "smoke-corner": "SMOKING CORNER",
+        "bar-menu": "BAR MENU",
+        "bar-prad": "BAR PRĄD",
+        "barrel-1": "BARREL TABLE",
+        "solo-dancer": "MAN, DANCING",
+        "frytki-stand": "FRYTKI",
+        "frytki-menu": "FRYTKI MENU",
+        "picnic-table": "PICNIC TABLE",
+        generator: "GENERATOR",
+        "event-board": "EVENT BOARD",
+        "bike-pile": "BIKE PILE",
+        "yard-rails": "SHIPYARD RAILS",
+        "crane-leg": "CRANE K-1",
+        "yard-puddle": "PUDDLE",
+        "queue-barriers": "BARRIERS",
+        "queue-girl": "GIRL IN THE QUEUE",
+        "club-aboard": "CHALKBOARD",
+        bramkarz: "BOUNCER",
+        "club-door": "TURBINA",
+        "club-neon": "THE NEON",
+        "club-rules": "HOUSE RULES",
+        portaloo: "TOI TOI",
+        "dock-fence": "DOCK GATE",
+        /* --- inside Turbina --- */
+        "club-exit": "THE STREET",
+        "club-cloak": "SZATNIA",
+        "club-earplugs": "EARPLUG BOX",
+        "club-bar": "THE BAR",
+        "club-board": "PRICE BOARD",
+        "club-fridge": "BAR FRIDGE",
+        "club-sofa": "SOFA",
+        "tired-girl": "GIRL ON THE SOFA",
+        "club-flyers": "FLYER WALL",
+        "club-mannequin": "THE MANNEQUIN",
+        "speaker-left": "SPEAKER STACK",
+        "dance-floor": "DANCE FLOOR",
+        "speaker-right": "SPEAKER STACK",
+        "dj-booth": "DJ",
+        "club-norequests": "BOOTH NOTICE",
+        "club-ledwall": "LED WALL",
+        "club-crates": "EMPTY CRATES",
+        "club-wc": "WC",
+        "club-fusebox": "FUSE CABINET",
+        "club-yarddoor": "SMOKING YARD",
+        "club-cleaner": "PANI SPRZĄTAJĄCA",
       },
       flavor: {
         cabinet: "A grey utility cabinet, humming with the whole street's internet.",
@@ -385,12 +453,20 @@ export const resources = {
           "Glass on three sides, a steel bench, and a roof that drips for an hour after the rain stops.",
         "station-bench": "You sit down. The bench is cold through your jeans and that is fine.",
         "station-board":
-          "SOPOT 15:42. GDYNIA GŁÓWNA 15:58. The cursor blinks after the last line, patiently.",
+          "Gdynia in a few minutes, Sopot on the half-hour. The cursor blinks after the last line, patiently.",
         "station-bin": "Two coffee cups and a free paper. Somebody made an effort.",
         "station-edge":
           "The yellow line, worn through to concrete where everyone stands. Down the track it goes straight for a kilometre and then bends left toward Sopot.",
         "station-fence":
           "Palisade fence, and buddleia coming out of the wall behind it. Beyond that, Obrońców Wybrzeża and the blocks.",
+        "station-clock":
+          "The platform clock. It keeps the right time, which on this platform makes it the optimist.",
+        "station-signal":
+          "S1. Red means nothing is coming. Green means stand back from the edge and count the seconds.",
+        "station-sos":
+          "The SOS pillar. Newest thing on the platform by a decade. Nobody has ever pressed it, which is the best review it could get.",
+        "station-cabinet":
+          "SRK 04 — the relay cabinet. It clicks to itself before every train, like it is clearing its throat.",
         /* --- inside the carriage --- */
         "train-exit-r":
           "The gangway to the next car. Somebody is standing in it with a bike, as somebody always is.",
@@ -453,7 +529,7 @@ export const resources = {
         "barrier-panel": "The barrier arm obeys the fob. Usually. Mostly.",
         baskets: "A stack of baskets. The top one is always slightly stuck.",
         bench: "Someone carved initials here in 2009. They are still together, you decide.",
-        bin: "Somebody didn't crush their boxes again. Classic klatka politics.",
+        bin: "The pedal bin. It closes with the soft click of a job postponed.",
         boots: "The neighbour's boots dry outside the door, as is the ancient custom.",
         broom: "Pani Natalia's spare broom. You leave it exactly where it is.",
         "bus-stop": "The 143 comes when it comes. The timetable is a genre of fiction.",
@@ -508,6 +584,9 @@ export const resources = {
         spices: "Pepper, smoked paprika, the good coffee. The small jars run the whole kitchen.",
         table: "The small table. Two chairs, one usually holding a jacket instead of a person.",
         "sink-kitchen": "The sink is empty. A small daily victory nobody applauds.",
+        jars: "Three-litre jars on top of the fridge. They came full of compote; returning them empty is a debt you carry quietly.",
+        roomba:
+          "The robot vacuum, docked and blinking. Gross has negotiated a fragile truce with it.",
         espresso: "The espresso machine. It hisses like it's judging you, then makes it all right.",
         dogbed: "Gross's bed. He chose it himself; the receipt says otherwise but he insists.",
         artbrut: "Art brut from a flea market — loud shapes, no rules. It shouts quietly all day.",
@@ -606,9 +685,79 @@ export const resources = {
         "lift-plate":
           "UDT inspection plate. 630 kg, 8 persons, reviewed in March. Institutional poetry.",
         "lift-sticker": "A smiley sticker at knee height. The vandal was maybe four years old.",
+        /* --- Ulica Elektryków --- */
+        "elektrykow-fence":
+          "Palisade fence, shipyard issue. Behind it the tracks, and behind those, the water you can smell but not see.",
+        "trafo-kiosk":
+          "The substation that named the street. It hums a note older than every DJ who has ever played here.",
+        "trafo-sign":
+          "NIE DOTYKAĆ! URZĄDZENIE ELEKTRYCZNE. The lightning bolt has faded; the sentiment has not.",
+        "hala-posters":
+          "Three summers of line-ups, pasted over each other. You peel a corner: under this August is last August.",
+        "hala-gate":
+          "The works gate, chained since the nineties. The chain is newer than the padlock, which says somebody checks.",
+        "hala-windows":
+          "Steel-arched windows, forty small panes each. Cyan light behind them — the studios upstairs work later than the club does.",
+        "hala-mural":
+          "A tug hauling a hull section, painted across two piers by somebody good. Ten winters have only improved it.",
+        "pipe-bridge":
+          "Two lagged steam mains and a cable tray, crossing the street on a lattice truss. The yard's circulatory system, still warm.",
+        "bar-menu":
+          "GRZANIEC 15 · PIWO 12 · WODA 6 · KUBEK ZWROTNY +5. The economics of a shipping container, chalked nightly.",
+        "barrel-1":
+          "A beer barrel stood on end. Two glasses, somebody's tobacco tin, and a flyer folded into a fan.",
+        "solo-dancer":
+          "He has been dancing alone for forty minutes, entirely at peace. Whatever he hears, it is better than what is playing.",
+        "frytki-menu": "FRYTKI DUŻE 14. There is no second line. There never has been.",
+        generator:
+          "The generator behind the trailer, humming the street's whole grid. The green LED means frytki are possible.",
+        "event-board":
+          "LATO NA STOCZNI — the season's bill on a scaffold board. Half the names are crossed out, played, survived.",
+        "bike-pile":
+          "Six bikes in a heap that somehow all unlock at four a.m. without an argument. Urban trust, leaning.",
+        "yard-rails":
+          "The crane rails, still set in the concrete. They run under the bar, under the queue, and off into the dark toward the slipways.",
+        "crane-leg":
+          "One leg of crane K-1, straddling the street on its own rails since the eighties. You are standing under a listed building.",
+        "yard-puddle":
+          "The puddle holds the neon upside down — magenta letters in black water. Better than the sign itself, honestly.",
+        "queue-barriers":
+          "Crowd barriers, warm from the bass through the concrete. Someone has tied a deflated balloon to the far one.",
+        "club-aboard": "Tonight, in chalk: three names you don't know and one you pretend to.",
+        "club-neon":
+          "TURBINA, in magenta tube. The R flickers on a schedule known only to itself. Nobody will ever fix it; it is the logo now.",
+        "club-rules":
+          "House rules: no photos on the floor, respect the neighbours (the neighbours are cranes), water is free, go home happy.",
+        "dock-fence":
+          "The gate to the slipways, locked. Through the palisade: black water, a hull, and the crane K-2 with its light on.",
+        /* --- inside Turbina --- */
+        "club-cloak":
+          "SZATNIA, 5 zł. The numbered hooks hold coats, one helmet, and something long and furry nobody has claimed since March.",
+        "club-board":
+          "WODA 0 · IZOTONIK 10 · PIWO 15. The zero is written biggest. Policy and pride.",
+        "club-fridge":
+          "The glass-door fridge glows like an aquarium. Isotonics on the top shelf — the real currency of the floor.",
+        "club-flyers":
+          "A decade of flyers on one wall: parties that happened, parties that got cancelled, one that both happened and got cancelled.",
+        "club-mannequin":
+          "A mannequin in a hi-vis and a traffic cone. It predates the club. It has always stood exactly there. Almost always.",
+        "club-norequests": "Taped to the booth: REQUESTY: NIE. Under it, smaller: NADAL NIE.",
+        "club-ledwall":
+          "Salvaged LED panels, one dead since opening night. The dead one is somehow the most watchable — everything else obeys the music.",
+        "club-crates":
+          "Crates of empties, stacked into furniture. By two a.m. someone will be sitting on them explaining techno to a stranger.",
       },
       toast: {
         boarding: "You step up into the carriage.",
+        ticketBought: "One SKM ticket, 4 zł. The machine prints it like it is doing you a favour.",
+        ticketBroke:
+          "4 zł for a ticket, and you don't have it. The conductor will understand. He will not.",
+        ticketPunched:
+          "The kasownik bites the corner off the date. Now it's a journey, not a souvenir.",
+        punchNoTicket: "The slot waits. You have nothing to feed it. The red light judges you.",
+        "station-bench": "You sit down. The bench is cold through your jeans and that is fine.",
+        "station-bench-2":
+          "You sit on the open bench, out of the shelter's shade. The whole platform from here.",
         lightsOn: "You flip the switch. The bulb takes a moment to decide.",
         guitar: "The same four chords since school. They still do the trick.",
         lightsOff: "You flip the switch off. The room settles into shadow.",
@@ -656,6 +805,9 @@ export const resources = {
         washerOn: "The machine shudders awake. It will walk a few centimeters by the end.",
         washerOff: "The machine winds down with a sigh.",
         kettle: "You light the burner and put the kettle on.",
+        dishes: "You run the hot water and work through the stack. The pan goes last, as always.",
+        binOut: "You tie the bag and set it by the door. It will make the trip down eventually.",
+        bowls: "Kibble, then fresh water. Gross supervises the pour with one open eye.",
         drink: "You pour a cup and drink it standing up. Still hot.",
         sofa: "You sit down. The TV hums quietly; the room is warm.",
         giria: "A set of swings. The giria has weighed 24 kilos since before you were born.",
@@ -692,6 +844,32 @@ export const resources = {
         coffeeBrewing:
           "You press the button. The machine clears its throat like a small orchestra.",
         coffeeDone: "A flat white, osiedle edition. The cup warms your hands through and through.",
+        /* --- Ulica Elektryków / Turbina --- */
+        clubClosed:
+          "Locked. A note on the steel: OTWIERAMY O ZMROKU. The door is honest about its hours.",
+        clubPrep:
+          "Soundcheck thuds through the door — one kick drum, patient as a heartbeat. The bouncer shakes his head: od zmroku.",
+        clubIn: "The door swallows you. The bass arrives before the light does.",
+        barShut:
+          "The hatch is shuttered and padlocked. The container sleeps off last night until dusk.",
+        frytkiShut: "The trailer is shut. The oil rests. The oil has earned it.",
+        portaloo: "Some experiences are universal. The queue outside has grown by two.",
+        dance:
+          "You dance the way you train — footwork first, hips honest. Nobody here knows it's sambo and nobody needs to.",
+        dance2: "Somewhere in the second track you stop counting steps. That's the whole trick.",
+        speaker:
+          "You stand at the stack and let it lean on your chest. You will hear tomorrow what this cost.",
+        earplugs: "You take a pair of foam earplugs. Your ears, decades from now, say thank you.",
+        earplugsAgain: "You have a pair. The box knows you have a pair.",
+        clubFuse:
+          "Behind the steel: a century-old cabinet running a very modern rig. Something in there ticks in three-four against the music.",
+        "pallet-bench":
+          "You sit on the pallets. They give exactly one centimetre, in a friendly way.",
+        "smoke-corner":
+          "You light one at the rail. The sand bucket has collected a hundred small surrenders.",
+        "picnic-table": "You sit at the picnic table. The wood remembers every summer since 2016.",
+        "club-sofa":
+          "You sink into the sofa. It was somebody's living room once; it has stories and no springs.",
       },
       dog: {
         "0": "Gross opens one eye, finds everything in order, and closes it.",
@@ -737,6 +915,8 @@ export const resources = {
         district: "OSIEDLE",
         station: "PRZYMORZE-UNIW.",
         train: "SKM",
+        elektrykow: "UL. ELEKTRYKÓW",
+        raveclub: "TURBINA",
       },
       menu: {
         title: "STATUS",

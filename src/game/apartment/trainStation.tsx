@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AOSet,
   aoPaths,
   Bev,
   bevelPaths,
+  bulbPaths,
   Contact,
   contactPaths,
   dim,
@@ -21,13 +23,14 @@ import {
   type RuntimeSceneDef,
   repeat,
   SharedDefs,
+  steppedQuad,
   textPath,
   tiers,
   toPhase,
   Vignette,
   vignettePaths,
 } from "@/engine";
-import type { WorldState } from "@/lib/worldState";
+import { dayPhase, type WorldState } from "@/lib/worldState";
 import { NPCS } from "./npcs";
 import { SkmUnit } from "./skmTrain";
 import {
@@ -37,7 +40,9 @@ import {
   DOOR_X,
   kt,
   STOP_X,
+  secondsToDeparture,
   stationCycleOffsetS,
+  stationPhase,
   TIMETABLE,
 } from "./stationTimetable";
 
@@ -147,6 +152,22 @@ import {
  *   litter     0..2                            the state of the bin
  *   pigeons    boolean                         under the shelter roof
  *   announce   boolean                         the PA is working today
+ *
+ * WALKING. The platform has depth now: a ground band from 152 to 170, which is
+ * the strip between the tactile line and the drainage channel — about half a
+ * metre of drawn platform standing in for the three real metres behind the
+ * yellow line. All furniture is planted at the *back* of the band (its drawn
+ * baseline is the walking line at 150), so each big piece gets a shallow
+ * blocker across the back lane and the player walks in front of it, which is
+ * also the order the paint happens in. The one exception is the stair opening,
+ * which is a hole in the middle of the platform: its blocker covers the front
+ * lanes and the player passes behind it, along the lip.
+ *
+ * BUDGET. ~640 nodes at the busiest state (rain, autumn, crowd 3, night),
+ * ~58 SMIL animations of which the trains are three and the timetable-driven
+ * ones (signal, pigeons, doors) all run off the same negative-begin clock.
+ * Zero gradients, zero ellipses, zero circles. The departure text is the one
+ * live React element and it repaints only when a minute ticks over.
  */
 
 /* ================================================================== *
@@ -159,9 +180,9 @@ const PPM = 38;
 const m = (metres: number) => Math.round(metres * PPM);
 
 /**
- * The platform is 210 m of railway, which is what a four-car SKM platform is,
- * and it is written as that rather than as 2000 so the next person can see what
- * it is meant to be.
+ * 52.6 m — 2000 px — standing in for the 210 m of a real four-car SKM platform
+ * at this side-scroller's compression, and written in metres rather than as
+ * 2000 so the next person can see the key it was laid out with.
  */
 const W = m(52.6);
 
@@ -313,8 +334,15 @@ export function stationState(world: WorldState): StationState {
 const lampsOn = (s: StationState, ph: Ph) =>
   s.lamps === "on" || (s.lamps === "auto" && (ph === "night" || ph === "dawn"));
 
-/** Who is on the platform at this crowd level. */
-function whoIsWaiting(s: StationState) {
+/**
+ * The phase right now, off the wall clock — for object `when` gates, which get
+ * the world but not the phase. It has to agree with what the runtime passes to
+ * the art, and it does, because both go through the same `dayPhase`.
+ */
+const phNow = () => toPhase(dayPhase(new Date().getHours()));
+
+/** Who is on the platform at this crowd level, at this hour. */
+function whoIsWaiting(s: StationState, ph: Ph) {
   return {
     /** on the bench in the shelter, not going anywhere in a hurry */
     bench: s.crowd >= 1,
@@ -326,11 +354,15 @@ function whoIsWaiting(s: StationState) {
     reader: s.crowd >= 2,
     /** walking the length of the platform because the train is late */
     pacer: s.crowd >= 3,
+    /** at the quiet end after dark, because you cannot smoke in the shelter */
+    smoker: s.crowd >= 1 && (ph === "dusk" || ph === "night"),
+    /** with a bag of kasza, by daylight, wherever the pigeons are */
+    golebiarka: s.pigeons && s.crowd >= 1 && (ph === "dawn" || ph === "day"),
   };
 }
 
 /* ================================================================== *
- * PLANE 1 — the far side of the cutting (parallax 0.30)
+ * PLANE 1 — the far side of the cutting (parallax 0.15)
  * ================================================================== */
 
 /**
@@ -486,8 +518,18 @@ const TREES: Rect[] = [
   ...canopy(610, 92, 16),
 ];
 const TREES_PATH = pxPath(TREES);
+/**
+ * The two bottom rows of every canopy, for autumn: one flat brown over the
+ * whole silhouette read as floating slabs, and the underside shadow is what
+ * the green season was getting for free from LEAF's own ramp.
+ */
+const TREES_UNDER = pxPath(
+  TREES.filter((_, i) => i % CANOPY_ROWS.length >= CANOPY_ROWS.length - 2),
+);
 /** The trunks, one pixel wide, only where a canopy is low enough to show one. */
-const TRUNKS = pxPath([90, 430, 760, 1190, 1500, 1880].map((x) => [x - 1, 104, 2, 8] as Rect));
+/** Under actual canopies — the far plane only ever shows x 0…~620, and the
+ * first cut put four of six trunks beyond it, under nothing. */
+const TRUNKS = pxPath([90, 232, 470, 610].map((x) => [x - 1, 104, 2, 8] as Rect));
 
 /** The university's roof line, low and long, at the Sopot end. */
 const UNIWERSYTET: Rect[] = [
@@ -536,6 +578,19 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
       <Bev set={FALOWIEC_SET} mat={SLAB[ph]} />
       <path d={FALOWIEC_BANDS} fill={SLAB[ph].lo} opacity={0.55} />
       {night ? <path d={FALOWIEC_LIT} fill="#ffd98a" opacity={0.6} /> : null}
+      {/* dusk: the west face catches the last of the sun — the lighting
+       * premise promises this and it is the one moment the block is the
+       * brightest thing in the frame instead of the dullest */}
+      {ph === "dusk" && !flat ? (
+        <>
+          <path
+            d={pxPath(FALOWIEC.map(([x, y, w]) => [x, y, w, 3] as Rect))}
+            fill="#f2a65a"
+            opacity={0.5}
+          />
+          <path d={pxPath(FALOWIEC)} fill="#f2a65a" opacity={0.14} />
+        </>
+      ) : null}
 
       {/* the university, and then the trees in front of all of it */}
       <Bev set={UNI_SET} mat={dim(CONC[ph], K.sky[ph][3], 0.2)} />
@@ -545,6 +600,7 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
         fill={s.season === "autumn" ? "#8a6a34" : s.season === "bare" ? "#6b5f52" : LEAF[ph].base}
         opacity={s.season === "bare" ? 0.5 : 1}
       />
+      {s.season === "autumn" ? <path d={TREES_UNDER} fill="#66491f" opacity={0.75} /> : null}
       <path d={TREES_PATH} fill={dth("n", "12")} opacity={0.3} />
 
       {/* gulls: this is the coast and they follow the line */}
@@ -576,13 +632,23 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
 }
 
 /* ================================================================== *
- * PLANE 2 — the cutting, the fence, the masts (parallax 0.72)
+ * PLANE 2 — the cutting, the fence, the road lamps (parallax 0.85; the
+ * masts themselves are drawn at 1.0, in the ground plane, beside the track)
  * ================================================================== */
 
 /** The far wall of the cutting: a concrete retaining wall in 4 m panels. */
 const CUT_WALL = pxPath([[0, 112, W, 24]]);
 const CUT_PANELS = pxPath(repeat(14, 152, [0, 112, 2, 24] as Rect));
 const CUT_COPING = pxPath([[0, 110, W, 3]]);
+/**
+ * The wall's history. A railway retaining wall is a canvas and the railway
+ * knows it: one tag has been painted over — the pale square where the jet
+ * washer gave up — and a newer one is on the panel beside it, because the wall
+ * always wins. LECHIA, because this is Gdańsk and it is always LECHIA.
+ */
+const WALL_GHOST = pxPath([[812, 116, 44, 14]]);
+const WALL_TAG_AT = { x: 1148, y: 118 } as const;
+
 /** Weeds and buddleia out of the wall, which is what these walls grow. */
 const CUT_WEEDS = pxPath([
   [140, 126, 3, 10],
@@ -592,7 +658,7 @@ const CUT_WEEDS = pxPath([
   [703, 126, 2, 10],
   [1180, 128, 2, 8],
   [1466, 124, 3, 12],
-  [1820, 127, 2, 9],
+  [1700, 127, 2, 9],
 ]);
 
 /**
@@ -680,6 +746,11 @@ function FarSide({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
       <path d={CUT_PANELS} fill={wall.deep} opacity={0.6} />
       <path d={CUT_COPING} fill={wall.hi} />
       <path d={CUT_WALL} fill={dth("n", "06")} opacity={0.5} />
+      {/* the scrubbed tag, and the one that answered it */}
+      <path d={WALL_GHOST} fill={wall.hi} opacity={0.4} />
+      <g transform={`translate(${WALL_TAG_AT.x} ${WALL_TAG_AT.y}) scale(2)`}>
+        <path d={textPath("LECHIA", 0, 0)} fill={night ? "#5a6a80" : "#7ea0c0"} opacity={0.75} />
+      </g>
       <path
         d={CUT_WEEDS}
         fill={s.season === "bare" ? "#6b5f4a" : LEAF[ph].mid}
@@ -792,6 +863,63 @@ const PLAT_GUM = pxPath(
 );
 const PLAT_DRY = pxPath([[Z.shelterL - 10, RAIL_Y + 6, Z.shelterR - Z.shelterL + 20, 24]]);
 
+/**
+ * Two cracks, where a precast slab has been loaded wrong for thirty years:
+ * one radiating from a joint mid-platform, one at the far end where the water
+ * gets in. Each is a one-pixel meander, hand-laid, because a generated crack
+ * walks a random walk and a real one follows the weakness in the slab.
+ */
+const PLAT_CRACKS = pxPath([
+  [846, RAIL_Y + 9, 1, 4],
+  [847, RAIL_Y + 13, 1, 3],
+  [846, RAIL_Y + 16, 1, 2],
+  [845, RAIL_Y + 18, 2, 1],
+  [847, RAIL_Y + 19, 1, 4],
+  [1592, RAIL_Y + 12, 1, 3],
+  [1591, RAIL_Y + 15, 1, 3],
+  [1592, RAIL_Y + 18, 1, 2],
+  [1593, RAIL_Y + 20, 1, 3],
+  [1592, RAIL_Y + 23, 2, 1],
+]);
+
+/**
+ * Cigarette ends, in the two places they actually collect: the downwind end of
+ * the shelter, and around the bin — never in it. A few are burns rather than
+ * butts, which is the difference between last week and last year.
+ */
+const PLAT_STUBS = pxPath([
+  [700, RAIL_Y + 16, 2, 1],
+  [706, RAIL_Y + 20, 2, 1],
+  [698, RAIL_Y + 23, 2, 1],
+  [712, RAIL_Y + 14, 2, 1],
+  [703, RAIL_Y + 26, 2, 1],
+  [1284, RAIL_Y + 18, 2, 1],
+  [1296, RAIL_Y + 22, 2, 1],
+  [1322, RAIL_Y + 16, 2, 1],
+  [1290, RAIL_Y + 26, 2, 1],
+  [1616, RAIL_Y + 15, 2, 1],
+  [1622, RAIL_Y + 19, 2, 1],
+]);
+const PLAT_BURNS = pxPath([
+  [708, RAIL_Y + 18, 1, 1],
+  [1300, RAIL_Y + 20, 1, 1],
+  [1618, RAIL_Y + 22, 1, 1],
+]);
+
+/**
+ * Grass through the joints past the ramp, where the sweeper turns round. The
+ * far end of every platform belongs to the plants; the tufts sit exactly on
+ * the slab joints because that is the only place there is soil.
+ */
+const PLAT_TUFTS = pxPath([
+  [1767, RAIL_Y + 6, 2, 3],
+  [1769, RAIL_Y + 7, 1, 2],
+  [1824, RAIL_Y + 6, 3, 3],
+  [1881, RAIL_Y + 7, 2, 2],
+  [1938, RAIL_Y + 6, 2, 3],
+  [1940, RAIL_Y + 5, 1, 2],
+]);
+
 /** Autumn: what has blown off the trees onto the platform and into the cess. */
 const LEAVES = pxPath(
   Array.from({ length: 60 }, (_, i) => {
@@ -881,6 +1009,14 @@ function TrackAndPlatform({ ph, s }: { ph: Ph; s: StationState }) {
       <path d={PLAT_SEAM} fill={conc.deep} opacity={0.45} />
       <path d={PLAT_WEAR} fill={dth("n", "12")} opacity={0.5} />
       <path d={PLAT_GUM} fill={night ? "#3a3d42" : "#6f6c66"} opacity={0.7} />
+      <path d={PLAT_CRACKS} fill={conc.deep} opacity={0.7} />
+      <path d={PLAT_STUBS} fill={night ? "#8a877e" : "#d8d4c8"} opacity={0.6} />
+      <path d={PLAT_BURNS} fill="#2b2622" opacity={0.6} />
+      <path
+        d={PLAT_TUFTS}
+        fill={s.season === "bare" ? "#6b5f4a" : LEAF[ph].mid}
+        opacity={night ? 0.55 : 0.9}
+      />
       <path d={STOP_MARKS} fill={conc.hi} opacity={0.55} />
       <path d={BOARD_ZONES} fill={night ? K.safetyWorn : K.safety} opacity={0.62} />
       <path d={PLAT_CHANNEL} fill={conc.deep} />
@@ -934,17 +1070,23 @@ const SHELTER_GLASS = pxPath([
   [SH.l + 110, SH.head + 6, SH.r - SH.l - 224, 62],
   [SH.r - 106, SH.head + 6, 96, 62],
 ]);
-/** The perforated bench inside it, at seat height. */
+/**
+ * The perforated bench inside it, at seat height — which is 0.45 m, 17 px,
+ * exactly as the key at the top of the file says. It was drawn at 5 px for one
+ * release, a thirteen-centimetre bench, and the woman sitting on it had to be
+ * floated five pixels off the floor to compensate; both halves of that error
+ * are gone now and her feet reach the platform.
+ */
+const SEAT_Y = RAIL_Y - 17;
 const SHELTER_BENCH = pxPath([
-  [SH.l + 20, RAIL_Y - 5, SH.r - SH.l - 40, 4],
-  [SH.l + 20, RAIL_Y - 1, SH.r - SH.l - 40, 2],
+  [SH.l + 20, SEAT_Y, SH.r - SH.l - 40, 4],
   /* the legs */
-  [SH.l + 34, RAIL_Y + 1, 4, 11],
-  [SH.r - 38, RAIL_Y + 1, 4, 11],
-  [(SH.l + SH.r) / 2 - 2, RAIL_Y + 1, 4, 11],
+  [SH.l + 34, SEAT_Y + 4, 4, 13],
+  [SH.r - 38, SEAT_Y + 4, 4, 13],
+  [(SH.l + SH.r) / 2 - 2, SEAT_Y + 4, 4, 13],
 ]);
 const BENCH_PERF = pxPath(
-  repeat(Math.floor((SH.r - SH.l - 40) / 9), 9, [SH.l + 24, RAIL_Y - 4, 4, 2] as Rect),
+  repeat(Math.floor((SH.r - SH.l - 40) / 9), 9, [SH.l + 24, SEAT_Y + 1, 4, 2] as Rect),
 );
 /** A litter bin under each end of the shelter, which is where they go. */
 function binShape(x: number): Rect[] {
@@ -981,10 +1123,10 @@ const NAME_W = NAME.length * 4;
 function nameBoard(x: number): { board: Rect[]; posts: Rect[] } {
   const w = NAME_W + 14;
   return {
-    board: [[x, 100, w, 15]],
+    board: [[x, 90, w, 15]],
     posts: [
-      [x + 10, 115, 3, 35],
-      [x + w - 13, 115, 3, 35],
+      [x + 10, 105, 3, 45],
+      [x + w - 13, 105, 3, 45],
     ],
   };
 }
@@ -998,11 +1140,17 @@ const NAME_POSTS = pxPath([...NB1.posts, ...NB2.posts]);
  * the shelter frame on a bracket, angled down the platform. Two lines, which is
  * what these have — the next service and the one after it.
  */
-const CIP = { x: Z.board, y: 62, w: 150, h: 40 } as const;
+/**
+ * A real CIP case is about 0.8 m deep, not the metre-and-a-bit this one spent
+ * a release at: h=32 is 84 cm, three text rows still fit, and raising the case
+ * to y=50 lifts its underside clear of everyone's heads — the man on the phone
+ * used to stand with his ear inside the display.
+ */
+const CIP = { x: Z.board, y: 50, w: 150, h: 32 } as const;
 const CIP_CASE = pxPath([
   [CIP.x, CIP.y, CIP.w, CIP.h],
   /* the bracket back to the shelter post */
-  [CIP.x - 32, CIP.y + 14, 32, 4],
+  [CIP.x - 32, CIP.y + 12, 32, 4],
 ]);
 const CIP_SCREEN = pxPath([[CIP.x + 3, CIP.y + 3, CIP.w - 6, CIP.h - 6]]);
 
@@ -1011,7 +1159,7 @@ const CIP_SCREEN = pxPath([[CIP.x + 3, CIP.y + 3, CIP.w - 6, CIP.h - 6]]);
  * is the thing that tells the player where they are in the world and which way
  * the railway goes. Hung under the departure display.
  */
-const DIR_SIGN = pxPath([[CIP.x + 8, CIP.y + CIP.h + 4, CIP.w - 16, 15]]);
+const DIR_SIGN = pxPath([[CIP.x + 8, CIP.y + CIP.h + 4, CIP.w - 16, 13]]);
 
 /** The ticket machine — a biletomat, tall, dark, with a lit screen. */
 const BILETOMAT = pxPath([
@@ -1041,10 +1189,165 @@ const DRUM_CAP = pxPath([
   [Z.drum + 2, RAIL_Y - 2, 26, 2],
 ]);
 
-/** The timetable case, glazed, screwed to a post beside the name board. */
-const TT_CASE = pxPath([[Z.nameBoard + NAME_W + 40, RAIL_Y - 58, 40, 50]]);
-const TT_POST = pxPath([[Z.nameBoard + NAME_W + 58, RAIL_Y - 8, 4, 8]]);
-const TT_ROWS = pxPath(repeat(11, 4, [Z.nameBoard + NAME_W + 44, RAIL_Y - 52, 32, 2] as Rect, "y"));
+/**
+ * The timetable case, glazed, screwed to a post beside the name board — on the
+ * Gdańsk side of it, between the stair and the board, where somebody coming up
+ * the steps walks straight into it. It used to stand at nameBoard + NAME_W + 40,
+ * which put it *inside* the ticket machine: two objects sharing twenty-four
+ * pixels of platform, and the man written as "reading the timetable" standing
+ * a hundred pixels from either of them, at the poster drum.
+ */
+const TT_X = Z.nameBoard - 70;
+const TT_CASE = pxPath([[TT_X, RAIL_Y - 58, 40, 50]]);
+const TT_POST = pxPath([[TT_X + 18, RAIL_Y - 8, 4, 8]]);
+const TT_ROWS = pxPath(repeat(11, 4, [TT_X + 4, RAIL_Y - 52, 32, 2] as Rect, "y"));
+
+/**
+ * The kasownik — the yellow ticket validator on its own post, an arm's reach
+ * from the machine that sold you the ticket, because the fine for an unpunched
+ * ticket is the same as for no ticket at all and everybody has learned that
+ * exactly once. Head at 1.4 m, which is elbow height, which is the point.
+ */
+const KAS = { x: 530 } as const;
+const KAS_POST = pxPath([[KAS.x + 8, RAIL_Y - 34, 4, 34]]);
+const KAS_BOX = pxPath([[KAS.x, RAIL_Y - 54, 20, 22]]);
+const KAS_STRIPE = pxPath([[KAS.x, RAIL_Y - 54, 20, 3]]);
+const KAS_SLOT = pxPath([[KAS.x + 4, RAIL_Y - 46, 12, 3]]);
+const KAS_LED = pxPath([[KAS.x + 15, RAIL_Y - 51, 2, 2]]);
+
+/**
+ * The platform clock, on its own post by the shelter's Gdańsk end. The hands
+ * are two one-pixel rects on SMIL rotations with a negative `begin`, exactly
+ * the trick the trains use: the minute hand's hour and the hour hand's twelve
+ * hours run off the document clock, so the clock reads the real time when the
+ * scene mounts and keeps it without a single React render. A station clock
+ * that told the wrong time would be worse than no clock — this one is right.
+ */
+const CLK = { cx: 643.5, cy: 54.5 } as const;
+const CLK_POST = pxPath([[642, 64, 3, RAIL_Y - 64]]);
+const CLK_FACE_SET = bevelPaths([[634, 45, 19, 19]]);
+const CLK_DIAL = pxPath([[636, 47, 15, 15]]);
+const CLK_TICKS = pxPath([
+  [643, 48, 1, 1],
+  [643, 60, 1, 1],
+  [637, 54, 1, 1],
+  [649, 54, 1, 1],
+]);
+const CLK_MIN_HAND = pxPath([[643, 48, 1, 7]]);
+const CLK_HOUR_HAND = pxPath([[643, 51, 1, 4]]);
+
+/**
+ * The freestanding bench in the open middle of the platform — the one the
+ * landmark table always promised at `midBench` and the platform never had.
+ * Same key as the shelter bench: seat 0.45 m, back top 0.85 m. Somebody has
+ * left one glove on the armrest end, and it will be there tomorrow too.
+ */
+const MB = { l: Z.midBench - 34, r: Z.midBench + 34 } as const;
+const MID_BENCH = pxPath([
+  /* back posts and two back rails */
+  [MB.l + 4, RAIL_Y - 32, 3, 32],
+  [MB.r - 7, RAIL_Y - 32, 3, 32],
+  [MB.l, RAIL_Y - 32, MB.r - MB.l, 3],
+  [MB.l, RAIL_Y - 26, MB.r - MB.l, 2],
+  /* the seat and its legs */
+  [MB.l, SEAT_Y, MB.r - MB.l, 4],
+  [MB.l + 6, SEAT_Y + 4, 3, 13],
+  [MB.r - 9, SEAT_Y + 4, 3, 13],
+]);
+const MID_BENCH_PERF = pxPath(
+  repeat(Math.floor((MB.r - MB.l - 8) / 9), 9, [MB.l + 4, SEAT_Y + 1, 4, 2] as Rect),
+);
+const MID_BENCH_GLOVE = pxPath([[MB.r - 12, SEAT_Y - 2, 5, 2]]);
+const MID_BENCH_BURN = pxPath([[MB.l + 14, SEAT_Y, 2, 1]]);
+
+/**
+ * The SOS pillar, mid-platform, blue with a green beacon — the newest thing
+ * here by a decade and the only object nobody has ever touched, which is what
+ * it is for.
+ */
+const SOS = { x: 1340 } as const;
+const SOS_COL = pxPath([[SOS.x, 66, 12, RAIL_Y - 66]]);
+const SOS_CAP = pxPath([[SOS.x - 2, 63, 16, 3]]);
+const SOS_GRILLE = pxPath(repeat(3, 3, [SOS.x + 2, 74, 8, 1] as Rect, "y"));
+const SOS_BTN = pxPath([[SOS.x + 4, 96, 4, 4]]);
+const SOS_LAMP: readonly [number, number] = [SOS.x + 6, 68];
+const SOS_BULB = bulbPaths([SOS_LAMP]);
+
+/**
+ * The relay cabinet at the far end — signalling equipment in a grey steel box,
+ * stencilled, vented, padlocked, standing on its own little plinth clear of
+ * the water. Every platform has one and nobody looks at it, which is why it
+ * has been tagged and the tag has been half-heartedly wiped.
+ */
+const CAB = { l: 1714, r: 1756 } as const;
+const CAB_BODY_SET = bevelPaths([[CAB.l, RAIL_Y - 44, CAB.r - CAB.l, 44]]);
+const CAB_PLINTH = pxPath([[CAB.l - 2, RAIL_Y - 3, CAB.r - CAB.l + 4, 3]]);
+const CAB_SEAM = pxPath([[CAB.l + 20, RAIL_Y - 42, 1, 40]]);
+const CAB_VENTS = pxPath([
+  ...repeat(4, 3, [CAB.l + 4, RAIL_Y - 38, 12, 1] as Rect, "y"),
+  ...repeat(4, 3, [CAB.l + 26, RAIL_Y - 38, 12, 1] as Rect, "y"),
+]);
+const CAB_LOCK = pxPath([[CAB.l + 18, RAIL_Y - 22, 5, 4]]);
+const CAB_TAG_GHOST = pxPath([[CAB.l + 24, RAIL_Y - 16, 14, 8]]);
+
+/**
+ * The colour light signal at the Gdańsk end of the platform, for the track the
+ * trains actually run on. Its aspect runs off the same SMIL clock as the
+ * trains themselves: green while a service is coming, red the moment it has
+ * passed — which means a player who has learned to read it knows the train is
+ * coming before the announcement says so. That is not a gimmick; that is what
+ * a signal is.
+ */
+const SIG = { x: 52 } as const;
+const SIG_MAST = pxPath([[SIG.x + 5, 22, 4, 128]]);
+const SIG_HEAD = pxPath([[SIG.x - 2, 20, 14, 28]]);
+const SIG_LAMP_R: Rect = [SIG.x + 2, 24, 6, 6];
+const SIG_LAMP_G: Rect = [SIG.x + 2, 36, 6, 6];
+const SIG_PLATE = pxPath([[SIG.x + 2, 118, 10, 12]]);
+/** Aspect timeline: green ahead of each movement, red behind it. */
+const SIG_TIMES = [
+  0,
+  TIMETABLE.expressEnter - 6,
+  TIMETABLE.expressEnter + 1,
+  TIMETABLE.arriveEnter - 6,
+  TIMETABLE.arriveEnter + 1,
+  TIMETABLE.departStart,
+  TIMETABLE.departStart + 4,
+  CYCLE_S,
+]
+  .map(kt)
+  .join(";");
+const SIG_GREEN_VALUES = "0;1;0;1;0;1;0;0";
+const SIG_RED_VALUES = "1;0;1;0;1;0;1;1";
+
+/**
+ * The end-of-platform board past the ramp: red and white, the last thing on
+ * the platform and the first thing a driver sees of it.
+ */
+const END_BOARD = pxPath([[1942, 100, 18, 18]]);
+const END_BOARD_STRIPES = pxPath([
+  [1942, 100, 6, 6],
+  [1948, 106, 6, 6],
+  [1954, 112, 6, 6],
+]);
+const END_POST = pxPath([[1949, 118, 3, 32]]);
+
+/**
+ * The drum's peeled corner — the flavor text has claimed for two releases that
+ * "somebody has peeled a corner of it back to the poster underneath", and now
+ * it is true: a stepped triangle of the old blue showing through the red, with
+ * the curl of the peeled paper catching the light along its edge.
+ */
+const DRUM_PEEL_UNDER = pxPath([
+  [Z.drum + 22, RAIL_Y - 74, 8, 4],
+  [Z.drum + 25, RAIL_Y - 70, 5, 4],
+  [Z.drum + 27, RAIL_Y - 66, 3, 3],
+]);
+const DRUM_PEEL_CURL = pxPath([
+  [Z.drum + 21, RAIL_Y - 74, 2, 4],
+  [Z.drum + 24, RAIL_Y - 70, 2, 4],
+  [Z.drum + 26, RAIL_Y - 66, 2, 3],
+]);
 
 /**
  * The stair down to the underpass at the Gdańsk end, which is how the player
@@ -1085,7 +1388,8 @@ const STAIR_RAIL = pxPath([
 /** The sign over the stair: the underpass symbol and the exit arrow. */
 const STAIR_SIGN = pxPath([[Z.stairs - 24, RAIL_Y - 50, 48, 12]]);
 
-/** Mast luminaires: cold white LED, every 18 m, on their own columns. */
+/** Mast luminaires: cold white LED, sharing the catenary masts' positions so
+ * each bay reads as one upright rather than a forest of near-identical poles. */
 function luminaire(x: number): Rect[] {
   return [
     [x, 0, 5, RAIL_Y - 4],
@@ -1109,6 +1413,82 @@ const LAMP_POOLS = MASTS.map((x) =>
     1.5,
   ),
 );
+/** The point sources themselves: a hard core and a dithered star each. */
+const LUM_BULBS = bulbPaths(MASTS.map((x) => [x + 3, 13] as const));
+
+/**
+ * Moths at the two mid-platform luminaires on a warm night — two pixels each,
+ * wandering a lazy loop under the lens. Cold white LED collects fewer moths
+ * than sodium ever did, so there are two and not a cloud, and they stay home
+ * when it rains.
+ */
+const MOTH_HOMES = [563, 973] as const;
+
+/**
+ * What the small screens spill after dark. The biletomat throws a cold blue
+ * apron the size of one person; the departure display leaks amber onto the
+ * platform under the shelter's end. Neither is lighting — both are just
+ * screens being screens, and together with the mast LEDs and the sodium
+ * behind the fence they make the four temperatures of a Polish platform.
+ */
+const BILETOMAT_POOL = tiers(
+  (k) => [
+    [Z.biletomat + 17 - Math.round(32 * k), RAIL_Y + 2, Math.round(64 * k), 7],
+    [Z.biletomat + 17 - Math.round(22 * k), RAIL_Y + 9, Math.round(44 * k), 7],
+  ],
+  "c",
+  0.7,
+);
+const CIP_CX = CIP.x + Math.round(CIP.w / 2);
+const CIP_POOL = tiers(
+  (k) => [
+    [CIP_CX - Math.round(46 * k), RAIL_Y + 2, Math.round(92 * k), 7],
+    [CIP_CX - Math.round(30 * k), RAIL_Y + 9, Math.round(60 * k), 7],
+  ],
+  "w",
+  0.5,
+);
+
+/** The strip light under the shelter roof, and its pool on the dry patch. */
+const SHELTER_STRIP = pxPath([[SH.l + 10, SH.head + 4, SH.r - SH.l - 20, 2]]);
+const SHELTER_POOL = tiers(
+  (k) => [
+    [820 - Math.round(150 * k), RAIL_Y + 2, Math.round(300 * k), 9],
+    [820 - Math.round(110 * k), RAIL_Y + 11, Math.round(220 * k), 10],
+  ],
+  "c",
+  0.8,
+);
+
+/**
+ * The dawn shaft. The cutting runs north–south, so first light comes across it
+ * rather than along it: one raking quad falling onto the open middle of the
+ * platform, gone by mid-morning, and only on a clear day. It is the one warm
+ * thing at that hour.
+ */
+const DAWN_SHAFT = tiers(
+  (k) =>
+    steppedQuad(
+      0,
+      1280 - Math.round(90 * k),
+      1280 + Math.round(90 * k),
+      RAIL_Y + 26,
+      1080 - Math.round(150 * k),
+      1080 + Math.round(150 * k),
+      10,
+    ),
+  "e",
+  0.8,
+);
+
+/**
+ * Wet night: every luminaire gets a second, upside-down existence in the
+ * platform surface — a vertical smear under each mast, brighter where the
+ * water stands in the wear line. The cheapest reflection there is, and the
+ * most recognisable.
+ */
+const WET_GLARE_WIDE = pxPath(MASTS.map((x) => [x - 4, RAIL_Y + 3, 13, 24] as Rect));
+const WET_GLARE_CORE = pxPath(MASTS.map((x) => [x - 1, RAIL_Y + 3, 7, 18] as Rect));
 
 /** Contact shadows: everything that stands on the platform gets one. */
 const FURNITURE_CONTACT = contactPaths([
@@ -1118,21 +1498,103 @@ const FURNITURE_CONTACT = contactPaths([
   [SH.l + 20, 26, RAIL_Y],
   [SH.l, 8, RAIL_Y],
   [SH.r - 6, 8, RAIL_Y],
+  [KAS.x + 6, 10, RAIL_Y],
+  [640, 8, RAIL_Y],
+  [MB.l + 2, MB.r - MB.l - 4, RAIL_Y],
+  [SOS.x - 2, 16, RAIL_Y],
+  [CAB.l - 3, CAB.r - CAB.l + 6, RAIL_Y],
+  [SIG.x + 3, 10, RAIL_Y],
+  [1946, 10, RAIL_Y],
+  [TT_X + 14, 12, RAIL_Y],
 ]);
 /** Ambient occlusion where the shelter roof shades the platform behind it. */
 const SHELTER_AO = aoPaths([[SH.l - 10, SH.head + 4, SH.r - SH.l + 20]]);
 
-function Furniture({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
+function Furniture({
+  ph,
+  s,
+  lit,
+  offsetS,
+}: {
+  ph: Ph;
+  s: StationState;
+  lit: boolean;
+  offsetS: number;
+}) {
   const night = ph === "night";
   const galv = GALV[ph];
   const conc = CONC[ph];
   const boardLit = s.board;
+  const wet = s.weather === "rain" || s.weather === "wet";
+  const begin = `${(-offsetS).toFixed(2)}s`;
+  /**
+   * Where the clock's hands are right now, read once at mount — the same
+   * negative-begin trick as the trains, on a 3600 s and a 43200 s cycle.
+   */
+  const clockBegin = useMemo(() => {
+    const d = new Date();
+    const intoHour = d.getMinutes() * 60 + d.getSeconds();
+    const intoHalfDay = (d.getHours() % 12) * 3600 + intoHour;
+    return { minute: `${-intoHour}s`, hour: `${-intoHalfDay}s` };
+  }, []);
   return (
     <g>
       {/* the light poles go behind everything on the platform */}
       <path d={LUMINAIRES} fill={galv.base} />
       <path d={LUM_LENS} fill={lit ? "#f6f8ff" : galv.hi} />
       {lit ? MASTS.map((x, i) => <Light key={`pool-${x}`} set={LAMP_POOLS[i]} op={0.9} />) : null}
+      {lit ? (
+        <g>
+          <path d={LUM_BULBS.halo} fill="#e4eaec" opacity={0.2} />
+          <path d={LUM_BULBS.core} fill="#f6f8ff" opacity={0.85} />
+        </g>
+      ) : null}
+      {/* moths under the two mid-platform lenses, dry nights only */}
+      {lit && night && !wet
+        ? MOTH_HOMES.map((x, i) => (
+            <path key={`moth-${x}`} d={pxPath([[x, 18, 2, 2]])} fill="#d8d4c8" opacity={0.7}>
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                values="0 0;5 -3;-3 4;7 2;-5 -2;2 5;0 0"
+                dur={`${4.6 + i * 1.7}s`}
+                repeatCount="indefinite"
+              />
+            </path>
+          ))
+        : null}
+
+      {/* the colour light signal at the Gdańsk end, on the timetable's clock */}
+      <path d={SIG_MAST} fill={GALV[ph].lo} />
+      <path d={SIG_HEAD} fill="#23262b" />
+      <path d={SIG_PLATE} fill={K.white} opacity={0.85} />
+      <g transform={`translate(${SIG.x + 3} 120)`}>
+        <path d={textPath("S1", 0, 0)} fill={K.signBlue} />
+      </g>
+      <path d={pxPath([SIG_LAMP_R])} fill="#3a2225" />
+      <path d={pxPath([SIG_LAMP_G])} fill="#1e2b22" />
+      <path d={pxPath([SIG_LAMP_R])} fill={K.red}>
+        <animate
+          attributeName="opacity"
+          keyTimes={SIG_TIMES}
+          values={SIG_RED_VALUES}
+          dur={`${CYCLE_S}s`}
+          begin={begin}
+          calcMode="discrete"
+          repeatCount="indefinite"
+        />
+      </path>
+      <path d={pxPath([SIG_LAMP_G])} fill={K.ledGreen}>
+        <animate
+          attributeName="opacity"
+          keyTimes={SIG_TIMES}
+          values={SIG_GREEN_VALUES}
+          dur={`${CYCLE_S}s`}
+          begin={begin}
+          calcMode="discrete"
+          repeatCount="indefinite"
+        />
+      </path>
 
       {/* the stair down to the underpass */}
       <path d={STAIR_OPENING} fill="#12141a" />
@@ -1148,9 +1610,22 @@ function Furniture({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
       <AOSet set={SHELTER_AO} op={0.5} />
       <path d={SHELTER_GLASS} fill={K.glass[ph]} opacity={night ? 0.5 : 0.42} />
       <path d={SHELTER_GLASS} fill={dth("c", "12")} opacity={0.3} />
+      {/* one pane has been scratched and one patch scrubbed — glass remembers */}
+      <path d={pxPath([[SH.l + 128, SH.head + 14, 22, 12]])} fill={K.glass[ph]} opacity={0.35} />
+      <path
+        d={pxPath([
+          [SH.r - 80, SH.head + 10, 1, 22],
+          [SH.r - 78, SH.head + 16, 1, 14],
+        ])}
+        fill={galv.hi}
+        opacity={0.35}
+      />
       <path d={SHELTER_FRAME} fill={galv.base} />
       <path d={SHELTER_ROOF} fill={galv.mid} />
       <path d={pxPath([[SH.l - 14, SH.roof, SH.r - SH.l + 28, 1]])} fill={galv.hi} />
+      {/* the strip light under the roof, and what it lands on */}
+      <path d={SHELTER_STRIP} fill={lit ? "#f6f8ff" : galv.hi} opacity={lit ? 0.9 : 0.5} />
+      {lit ? <Light set={SHELTER_POOL} op={0.9} /> : null}
       <path d={SHELTER_BENCH} fill={galv.lo} />
       <path d={BENCH_PERF} fill="#2b2e32" opacity={0.6} />
 
@@ -1174,32 +1649,25 @@ function Furniture({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
       <path d={NAME_BOARDS} fill={night ? "#c9c4b6" : K.white} />
       <path
         d={pxPath([
-          [Z.nameBoard, 100, NAME_W + 14, 2],
-          [Z.nameBoard2, 100, NAME_W + 14, 2],
+          [Z.nameBoard, 90, NAME_W + 14, 2],
+          [Z.nameBoard2, 90, NAME_W + 14, 2],
         ])}
         fill={K.signBlue}
       />
-      <g transform={`translate(${Z.nameBoard + 7} 105)`}>
+      <g transform={`translate(${Z.nameBoard + 7} 95)`}>
         <path d={textPath(NAME, 0, 0)} fill={K.signBlue} />
       </g>
-      <g transform={`translate(${Z.nameBoard2 + 7} 105)`}>
+      <g transform={`translate(${Z.nameBoard2 + 7} 95)`}>
         <path d={textPath(NAME, 0, 0)} fill={K.signBlue} />
       </g>
 
-      {/* the departure display and the direction sign under it */}
+      {/* the departure display and the direction sign under it. The text is
+       * live and lives in Effects, where it can tick; the art owns the case,
+       * the dark of the screen, the cursor, and the amber it spills at night. */}
       <path d={CIP_CASE} fill="#23262b" />
       <path d={CIP_SCREEN} fill={boardLit ? "#0d0f12" : "#1a1d22"} />
       {boardLit ? (
         <g>
-          <g transform={`translate(${CIP.x + 7} ${CIP.y + 7})`}>
-            <path d={textPath("15:42  SOPOT", 0, 0)} fill={K.led} />
-          </g>
-          <g transform={`translate(${CIP.x + 7} ${CIP.y + 16})`}>
-            <path d={textPath("15:58  GDYNIA GL.", 0, 0)} fill={K.led} opacity={0.75} />
-          </g>
-          <g transform={`translate(${CIP.x + 7} ${CIP.y + 27})`}>
-            <path d={textPath("SKM  PERON 1", 0, 0)} fill={K.ledDim} />
-          </g>
           {/* the cursor block that every one of these displays has */}
           <path d={pxPath([[CIP.x + CIP.w - 12, CIP.y + 7, 3, 5]])} fill={K.led}>
             <animate
@@ -1210,10 +1678,11 @@ function Furniture({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
               repeatCount="indefinite"
             />
           </path>
+          {night ? <Light set={CIP_POOL} op={0.9} /> : null}
         </g>
       ) : null}
       <path d={DIR_SIGN} fill={K.signBlue} />
-      <g transform={`translate(${CIP.x + 12} ${CIP.y + CIP.h + 9})`}>
+      <g transform={`translate(${CIP.x + 12} ${CIP.y + CIP.h + 8})`}>
         <path d={textPath("SOPOT - GDYNIA", 0, 0)} fill={K.white} opacity={0.9} />
       </g>
 
@@ -1226,6 +1695,14 @@ function Furniture({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
       </g>
       <path d={BILETOMAT_KIT} fill={galv.lo} />
       <path d={pxPath([[Z.biletomat + 24, RAIL_Y - 34, 6, 3]])} fill={K.ledGreen} />
+      {night ? <Light set={BILETOMAT_POOL} op={0.9} /> : null}
+
+      {/* the kasownik, an arm's reach from the machine */}
+      <path d={KAS_POST} fill={galv.base} />
+      <path d={KAS_BOX} fill={night ? K.safetyWorn : K.safety} />
+      <path d={KAS_STRIPE} fill={K.signBlue} />
+      <path d={KAS_SLOT} fill="#23262b" />
+      <path d={KAS_LED} fill={K.ledGreen} opacity={0.9} />
 
       {/* the poster drum */}
       <path d={DRUM} fill={s.season === "autumn" ? "#8a3a44" : "#3a5f8a"} />
@@ -1238,17 +1715,98 @@ function Furniture({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
       <g transform={`translate(${Z.drum + 6} ${RAIL_Y - 58})`}>
         <path d={textPath("MUZYKI", 0, 0)} fill={K.cream} opacity={0.7} />
       </g>
+      {/* the peeled corner, and the older blue poster underneath it */}
+      <path d={DRUM_PEEL_UNDER} fill={s.season === "autumn" ? "#3a5f8a" : "#8a3a44"} />
+      <path d={DRUM_PEEL_CURL} fill={K.cream} opacity={0.8} />
 
       {/* the timetable case */}
       <path d={TT_POST} fill={galv.base} />
       <path d={TT_CASE} fill={galv.deep} />
-      <path
-        d={pxPath([[Z.nameBoard + NAME_W + 42, RAIL_Y - 56, 36, 46]])}
-        fill={night ? "#d8d4c8" : K.white}
-      />
+      <path d={pxPath([[TT_X + 2, RAIL_Y - 56, 36, 46]])} fill={night ? "#d8d4c8" : K.white} />
       <path d={TT_ROWS} fill={K.signBlue} opacity={0.5} />
+      {/* sun-bleach: the top rows have been in the light longest */}
+      <path d={pxPath([[TT_X + 2, RAIL_Y - 56, 36, 12]])} fill={K.white} opacity={0.35} />
+
+      {/* the clock, keeping the real time on the document clock */}
+      <path d={CLK_POST} fill={galv.base} />
+      <Bev set={CLK_FACE_SET} mat={GALV[ph]} />
+      <path d={CLK_DIAL} fill={night ? "#d8d4c8" : K.white} />
+      <path d={CLK_TICKS} fill={K.signBlue} opacity={0.7} />
+      <path d={CLK_MIN_HAND} fill="#23262b">
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from={`0 ${CLK.cx} ${CLK.cy}`}
+          to={`360 ${CLK.cx} ${CLK.cy}`}
+          dur="3600s"
+          begin={clockBegin.minute}
+          repeatCount="indefinite"
+        />
+      </path>
+      <path d={CLK_HOUR_HAND} fill="#23262b">
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from={`0 ${CLK.cx} ${CLK.cy}`}
+          to={`360 ${CLK.cx} ${CLK.cy}`}
+          dur="43200s"
+          begin={clockBegin.hour}
+          repeatCount="indefinite"
+        />
+      </path>
+      <path d={pxPath([[643, 54, 1, 1]])} fill="#23262b" />
+
+      {/* the mid-platform bench, its glove, and its one cigarette burn */}
+      <path d={MID_BENCH} fill={galv.lo} />
+      <path d={MID_BENCH_PERF} fill="#2b2e32" opacity={0.6} />
+      <path d={MID_BENCH_BURN} fill="#2b2622" opacity={0.7} />
+      <path d={MID_BENCH_GLOVE} fill="#8a3a44" opacity={0.9} />
+
+      {/* the SOS pillar: blue, grille, button, and a beacon that never sleeps */}
+      <path d={SOS_COL} fill={K.signBlue} />
+      <path d={SOS_CAP} fill={galv.mid} />
+      <path d={SOS_GRILLE} fill="#0a2548" />
+      <g transform={`translate(${SOS.x + 2} 84)`}>
+        <path d={textPath("SOS", 0, 0)} fill={K.white} opacity={0.9} />
+      </g>
+      <path d={SOS_BTN} fill={K.white} opacity={0.85} />
+      <path
+        d={pxPath([
+          [SOS_LAMP[0] - 1, SOS_LAMP[1], 3, 1],
+          [SOS_LAMP[0], SOS_LAMP[1] - 1, 1, 3],
+        ])}
+        fill={K.ledGreen}
+      />
+      {night ? <path d={SOS_BULB.halo} fill={K.ledGreen} opacity={0.2} /> : null}
+
+      {/* the relay cabinet at the far end, tagged and half-wiped */}
+      <path d={CAB_PLINTH} fill={conc.deep} />
+      <Bev set={CAB_BODY_SET} mat={GALV[ph]} />
+      <path d={CAB_SEAM} fill={galv.deep} opacity={0.7} />
+      <path d={CAB_VENTS} fill={galv.deep} opacity={0.8} />
+      <path d={CAB_LOCK} fill="#3a3d42" />
+      <path d={CAB_TAG_GHOST} fill={galv.hi} opacity={0.3} />
+      <g transform={`translate(${CAB.l + 4} ${RAIL_Y - 12})`}>
+        <path d={textPath("SRK 04", 0, 0)} fill={K.white} opacity={0.55} />
+      </g>
+
+      {/* the end-of-platform board past the ramp */}
+      <path d={END_POST} fill={galv.base} />
+      <path d={END_BOARD} fill={K.white} />
+      <path d={END_BOARD_STRIPES} fill={K.red} />
 
       <Contact set={FURNITURE_CONTACT} op={night ? 0.35 : 0.7} />
+
+      {/* first light, raking across the open middle on a clear dawn */}
+      {ph === "dawn" && s.weather === "clear" ? <Light set={DAWN_SHAFT} op={0.9} /> : null}
+
+      {/* wet dark: the luminaires get their reflections */}
+      {wet && lit ? (
+        <g>
+          <path d={WET_GLARE_WIDE} fill="#f6f8ff" opacity={0.07} />
+          <path d={WET_GLARE_CORE} fill="#f6f8ff" opacity={0.12} />
+        </g>
+      ) : null}
     </g>
   );
 }
@@ -1367,7 +1925,7 @@ function Trains({ ph, offsetS }: { ph: Ph; offsetS: number }) {
             mode: "cycle",
             keyTimes: DOORS.keyTimes,
             values: DOORS.values,
-            dur: "96s",
+            dur: `${CYCLE_S}s`,
             begin,
           }}
         />
@@ -1413,10 +1971,15 @@ function StationScene({ world, phase }: { world: WorldState; phase: string }) {
         <>
           <Catenary ph={ph} />
           <TrackAndPlatform ph={ph} s={s} />
+          {/* The trains draw here, between the track they run on and the
+           * furniture that stands on the platform in front of them — masts,
+           * track, train, shelter, player is the real back-to-front order,
+           * and it means a berthed train shows *through* the shelter's glass
+           * instead of swallowing the shelter whole. */}
+          <Trains ph={ph} offsetS={offsetS} />
         </>
       }
-      staticObjects={<Furniture ph={ph} s={s} lit={lit} />}
-      gameplayObjects={<Trains ph={ph} offsetS={offsetS} />}
+      staticObjects={<Furniture ph={ph} s={s} lit={lit} offsetS={offsetS} />}
     />
   );
 }
@@ -1526,22 +2089,41 @@ function StationFront({ phase }: { phase: string }) {
  * boarding turn toward the doors and walk — which is `actors` with a patrol,
  * not something animated here.
  */
+/**
+ * Every act in this table exists on the rig it is given to — which was not
+ * always so: "lookDown" and "read" were never built, so the man at the edge
+ * and the man at the case both silently fell back to plain idle and the two of
+ * them stood there doing nothing in exactly the same way. Now the waiting man
+ * folds his arms and checks his watch (`lean`, from his waiting rig), the
+ * caller actually holds a call (`call`, from his phoning rig), the student
+ * scans the timetable he has read already (`lookAround`), the smoker smokes,
+ * and the pigeon lady doles out kasza (`count`, which at her station in front
+ * of the flock reads as feeding, because context is most of acting).
+ *
+ * Each figure also has its own depth in the walking band — the looker right on
+ * the edge line, the caller a step back, the pigeon lady out in front — so the
+ * platform reads as a surface people are standing *on*, not a line they are
+ * strung along.
+ */
 const WAITING = [
-  { id: "looker", npc: "waiting-man", x: 1690, facing: -1 as const, act: "lookDown" },
-  { id: "phone", npc: "caller", x: 1080, facing: 1 as const, act: "phone" },
-  { id: "reader", npc: "student", x: 570, facing: 1 as const, act: "read" },
-  { id: "bench", npc: "babcia", x: 830, facing: 1 as const, act: "sit" },
+  /* the registry key is `waiting`; "waiting-man" is the rig's *id*, and using
+   * it here meant NPCS["waiting-man"] was undefined and the man at the end was
+   * a hitbox with nobody in it — the exact silent fallback this table exists
+   * to prevent */
+  { id: "looker", npc: "waiting", x: 1690, y: 153, facing: -1, act: "lean" },
+  /* a step clear of the display, which he used to stand inside */
+  { id: "phone", npc: "caller", x: 1054, y: 158, facing: 1, act: "call" },
+  { id: "reader", npc: "student", x: 305, y: 155, facing: -1, act: "lookAround" },
+  /* feet on the platform now that the bench is a real 0.45 m */
+  { id: "bench", npc: "babcia", x: 830, y: RAIL_Y, facing: 1, act: "sit" },
+  { id: "smoker", npc: "smoker", x: 1610, y: 154, facing: -1, act: "smoke" },
+  { id: "golebiarka", npc: "golebiarka", x: 404, y: 161, facing: -1, act: "count" },
 ] as const;
 
-function StationPeople({ world }: { world: WorldState }) {
+function StationPeople({ world, ph }: { world: WorldState; ph: Ph }) {
   const s = stationState(world);
-  const who = whoIsWaiting(s);
-  const shown = WAITING.filter((p) => {
-    if (p.id === "bench") return who.bench;
-    if (p.id === "looker") return who.looker;
-    if (p.id === "phone") return who.phone;
-    return who.reader;
-  });
+  const who = whoIsWaiting(s, ph);
+  const shown = WAITING.filter((p) => who[p.id]);
   return (
     <svg
       aria-hidden="true"
@@ -1558,14 +2140,118 @@ function StationPeople({ world }: { world: WorldState }) {
             npc={npc}
             objId={p.id === "bench" ? "station-bench-sitter" : `station-${p.id}`}
             x={p.x}
-            /* the one on the bench sits on the shelter's own seat, not the floor */
-            y={p.id === "bench" ? RAIL_Y - 5 : RAIL_Y}
+            y={p.y}
             facing={p.facing}
             shadow={p.id !== "bench"}
             action={npc.actions?.[p.act] ? p.act : undefined}
           />
         );
       })}
+    </svg>
+  );
+}
+
+/**
+ * The platform flock: three pigeons working the paving in front of the pigeon
+ * lady's spot. Their opacity runs off the timetable — gone for the near train,
+ * gone for the stopping service, back a few seconds after each — with the same
+ * negative `begin` as everything else on the clock.
+ */
+const GROUND_PIGEONS = [
+  { x: 358, face: 1 as const, jitter: 0 },
+  { x: 374, face: -1 as const, jitter: 0.7 },
+  { x: 389, face: 1 as const, jitter: 1.3 },
+] as const;
+/**
+ * The first cut of this timeline kept them away for six seconds either side of
+ * every movement, which added up to three-quarters of the cycle — a pigeon
+ * feature with no pigeons in it. Real ones are braver: they lift when
+ * something actually passes and they are back on the crumbs while the berthed
+ * train is still standing, so now the flock is down for about half the cycle
+ * and the scatter reads as a reaction rather than an absence.
+ */
+const PIGEON_TIMES = [
+  0,
+  TIMETABLE.nearEnter - 1,
+  TIMETABLE.nearLeave + 3,
+  TIMETABLE.expressEnter - 1,
+  TIMETABLE.expressLeave + 3,
+  TIMETABLE.arriveEnter - 2,
+  TIMETABLE.doorsOpen + 5,
+  TIMETABLE.departStart - 1,
+  TIMETABLE.departEnd + 3,
+  CYCLE_S,
+]
+  .map(kt)
+  .join(";");
+const PIGEON_VALUES = "1;0;1;0;1;0;1;0;1;1";
+
+/**
+ * The departure display's text. It ticks, which is the whole point of the
+ * object, and which is why it lives here rather than in the memoised art: the
+ * case, the dark screen, the cursor and the amber spill are paint, but the
+ * minutes are true. `secondsToDeparture` and `stationPhase` come off the same
+ * clock as the SMIL trains, so the display never promises a train that is not
+ * coming. State only changes when the text does, which is at most once a
+ * second and usually once a minute.
+ */
+function DeparturesLive() {
+  const [rows, setRows] = useState<readonly [string, string, string] | null>(null);
+  useEffect(() => {
+    let timer = 0;
+    const tick = () => {
+      const phase = stationPhase();
+      /**
+       * While a service is at (or crossing) the platform, the display is
+       * physically behind the train — so the text goes dark rather than
+       * floating over the carriages. The PA carries those moments instead,
+       * which is the correct division of labour on a real platform.
+       */
+      if (phase === "arriving" || phase === "boarding" || phase === "leaving") {
+        setRows(null);
+      } else {
+        const d = new Date();
+        const mins = Math.max(1, Math.ceil(secondsToDeparture() / 60));
+        const line1 = `GDYNIA GL.   ${mins} MIN`;
+        /* Sopot-bound trains leave at :12 and :42, says the fiction — a time
+         * that is always in the future, unlike the 15:58 that used to be
+         * painted here and was wrong 1439 minutes a day. */
+        const m = d.getMinutes();
+        const sopotM = m < 12 ? 12 : m < 42 ? 42 : 12;
+        const sopotH = (d.getHours() + (m >= 42 ? 1 : 0)) % 24;
+        const line2 = `SOPOT        ${`${sopotH}`.padStart(2, "0")}:${`${sopotM}`.padStart(2, "0")}`;
+        const hh = `${d.getHours()}`.padStart(2, "0");
+        const mm = `${m}`.padStart(2, "0");
+        const line3 = `SKM PERON 1    ${hh}:${mm}`;
+        setRows((prev) =>
+          prev && prev[0] === line1 && prev[1] === line2 && prev[2] === line3
+            ? prev
+            : [line1, line2, line3],
+        );
+      }
+      timer = window.setTimeout(tick, 1000);
+    };
+    tick();
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (!rows) return null;
+  return (
+    <svg
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox={`0 0 ${W} 180`}
+      preserveAspectRatio="none"
+      shapeRendering="crispEdges"
+    >
+      <g transform={`translate(${CIP.x + 7} ${CIP.y + 7})`}>
+        <path d={textPath(rows[0], 0, 0)} fill={K.led} />
+      </g>
+      <g transform={`translate(${CIP.x + 7} ${CIP.y + 15})`}>
+        <path d={textPath(rows[1], 0, 0)} fill={K.led} opacity={0.75} />
+      </g>
+      <g transform={`translate(${CIP.x + 7} ${CIP.y + 23})`}>
+        <path d={textPath(rows[2], 0, 0)} fill={K.ledDim} />
+      </g>
     </svg>
   );
 }
@@ -1597,14 +2283,26 @@ function StationEffects({
   const s = stationState(world);
   const night = ph === "night";
   const wet = s.weather === "rain";
+  /* where we are in the timetable — read once, same rule as the trains */
+  const offsetS = useMemo(() => {
+    armStation();
+    return stationCycleOffsetS();
+  }, []);
+  const begin = `${(-offsetS).toFixed(2)}s`;
   return (
     <>
-      <StationPeople world={world} />
+      <StationPeople world={world} ph={ph} />
+
+      {/* the departure display's text, which is alive */}
+      {s.board ? <DeparturesLive /> : null}
 
       {/* the announcement, when the service is called */}
       {s.announce && !dialogueOpen ? <Announcement scale={scale} /> : null}
 
-      {/* pigeons in the shelter roof, which every shelter has */}
+      {/* pigeons: the ones in the shelter roof, and the ones working the
+       * platform by the pigeon lady — who scatter when anything comes through
+       * and drift back when it has gone, off the same clock as the trains.
+       * The payoff is that the flock lifting is the first sign of a train. */}
       {s.pigeons ? (
         <svg
           aria-hidden="true"
@@ -1623,6 +2321,38 @@ function StationEffects({
           >
             <animate attributeName="opacity" values="1;1;0.9;1" dur="7s" repeatCount="indefinite" />
           </path>
+          {!night ? (
+            /* a shade darker than the wear line, or they vanish into it */
+            <g fill={ph === "dusk" ? "#443f39" : "#57544d"}>
+              <animate
+                attributeName="opacity"
+                keyTimes={PIGEON_TIMES}
+                values={PIGEON_VALUES}
+                dur={`${CYCLE_S}s`}
+                begin={begin}
+                calcMode="discrete"
+                repeatCount="indefinite"
+              />
+              {GROUND_PIGEONS.map((p) => (
+                <g key={`gp${p.x}`}>
+                  <path d={pxPath([[p.x, 160, 5, 3]])} />
+                  {/* the neck fleck — one shade off the body would vanish
+                   * into the wear line the way the first cut did */}
+                  <path d={pxPath([[p.x + (p.face === 1 ? 3 : 1), 160, 1, 1]])} fill="#c9c4b6" />
+                  <path d={pxPath([[p.x + (p.face === 1 ? 4 : -1), 158, 2, 2]])}>
+                    <animateTransform
+                      attributeName="transform"
+                      type="translate"
+                      values="0 0;0 0;0 2;0 2;0 0;0 0"
+                      dur={`${2.1 + p.jitter}s`}
+                      calcMode="discrete"
+                      repeatCount="indefinite"
+                    />
+                  </path>
+                </g>
+              ))}
+            </g>
+          ) : null}
         </svg>
       ) : null}
 
@@ -1635,7 +2365,7 @@ function StationEffects({
           preserveAspectRatio="none"
           shapeRendering="crispEdges"
         >
-          <g opacity={0.35}>
+          <g opacity={0.5}>
             <path
               d={pxPath(
                 Array.from({ length: 90 }, (_, i) => {
@@ -1701,9 +2431,15 @@ function Announcement({ scale }: { scale: number }) {
   }, []);
   if (!text) return null;
   const font = Math.max(10, Math.round(2.6 * scale));
-  return (
+  /**
+   * Portalled to the body: Effects mount inside the camera's transform, where
+   * both `absolute` and `fixed` anchor to the *scene* — the announcement used
+   * to slide off screen with the world and clip mid-word at the frame edge.
+   * A PA speaks over the whole platform; the text belongs to the viewport.
+   */
+  return createPortal(
     <div
-      className="pointer-events-none absolute right-0 left-0 flex justify-center"
+      className="pointer-events-none fixed right-0 left-0 z-40 flex justify-center"
       style={{ top: Math.round(10 * scale) }}
     >
       <div
@@ -1720,7 +2456,8 @@ function Announcement({ scale }: { scale: number }) {
           {text}
         </span>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1746,6 +2483,8 @@ const DOORS_AS_OBJECTS = DOOR_X.map((x, i) => ({
   id: `train-door-${i + 1}`,
   kind: "trainDoor",
   x,
+  /** boarding happens at the edge — walk the player up to the yellow line */
+  approachY: 152,
   /**
    * Wide on purpose.
    *
@@ -1768,9 +2507,144 @@ const DOORS_AS_OBJECTS = DOOR_X.map((x, i) => ({
   when: () => boardingOpen(),
 }));
 
+/**
+ * Hoisted and typed as RuntimeObject[] so the literals can carry the runtime
+ * extras (approachY) without tripping the excess-property check that the
+ * SceneDef half of the intersection would otherwise apply.
+ */
+const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
+  /* --- the way out, at the Gdańsk end --- */
+  {
+    id: "station-stairs",
+    kind: "stairs",
+    priority: 2,
+    x: Z.stairs,
+    range: 34,
+    approachY: 155,
+    to: { scene: "district", spawnX: 250 },
+  },
+  /* --- the railway itself --- */
+  { id: "station-signal", kind: "flavor", x: SIG.x + 5, range: 20 },
+  /* --- the platform, end to end --- */
+  { id: "station-timetable", kind: "flavor", x: TT_X + 20, range: 22 },
+  { id: "station-name", kind: "flavor", x: Z.nameBoard + NAME_W / 2, range: 40 },
+  { id: "station-biletomat", kind: "biletomat", x: Z.biletomat + 17, range: 26 },
+  /* the machine sells it, the post punches it, the conductor asks for it */
+  { id: "station-kasownik", kind: "kasownik", x: KAS.x + 10, range: 20 },
+  { id: "station-drum", kind: "flavor", x: Z.drum + 15, range: 20 },
+  { id: "station-clock", kind: "flavor", x: 643, range: 14 },
+  { id: "station-shelter", kind: "flavor", x: SH.l + 60, range: 44 },
+  /* sitting down on the platform is the whole point of a platform */
+  {
+    id: "station-bench",
+    kind: "sport",
+    action: "sit",
+    face: 1,
+    x: 900,
+    range: 46,
+    approachY: 152,
+  },
+  { id: "station-board", kind: "flavor", priority: 1, x: CIP.x + CIP.w / 2, range: 40 },
+  {
+    id: "station-bench-2",
+    kind: "sport",
+    action: "sit",
+    face: 1,
+    x: Z.midBench,
+    range: 30,
+    approachY: 152,
+  },
+  /* flavor, not `bins`: the shared bins handler toggles world.street.binOpen,
+   * so opening this bin used to open the one on Ulica Słoneczna — and the
+   * written line about the coffee cups was unreachable */
+  { id: "station-bin", kind: "flavor", x: Z.bin + 11, range: 18 },
+  { id: "station-sos", kind: "flavor", x: SOS.x + 6, range: 18 },
+  { id: "station-name-2", kind: "flavor", x: Z.nameBoard2 + NAME_W / 2, range: 40 },
+  /* the edge. Looking down the line is a thing you do, and it is a warning */
+  { id: "station-edge", kind: "flavor", x: 1660, range: 60, markerY: 120 },
+  { id: "station-cabinet", kind: "flavor", x: CAB.l + 21, range: 18 },
+  { id: "station-fence", kind: "flavor", x: 1900, range: 44 },
+  /* --- the people --- */
+  {
+    id: "station-reader",
+    kind: "npc",
+    priority: 2,
+    x: 305,
+    range: 14,
+    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).reader,
+  },
+  {
+    id: "station-golebiarka",
+    kind: "npc",
+    priority: 2,
+    x: 404,
+    range: 14,
+    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).golebiarka,
+  },
+  {
+    id: "station-bench-sitter",
+    kind: "npc",
+    priority: 2,
+    x: 830,
+    range: 16,
+    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).bench,
+  },
+  {
+    id: "station-phone",
+    kind: "npc",
+    priority: 2,
+    x: 1054,
+    range: 14,
+    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).phone,
+  },
+  {
+    id: "station-smoker",
+    kind: "npc",
+    priority: 2,
+    x: 1610,
+    range: 14,
+    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).smoker,
+  },
+  {
+    id: "station-looker",
+    kind: "npc",
+    priority: 2,
+    x: 1690,
+    range: 14,
+    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).looker,
+  },
+  /* --- and the train, when it is here --- */
+  ...DOORS_AS_OBJECTS,
+];
+
 export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
   id: "station",
   width: W,
+  /**
+   * The walking band: from just behind the yellow line to the drainage
+   * channel. Furniture stands at the back of the band and blocks only the back
+   * lane, so the player passes in front of it in the same order the paint
+   * does; the stair opening is the one hole in the surface and blocks the
+   * front lanes instead, so the player walks behind it along the lip.
+   */
+  ground: {
+    top: 152,
+    bottom: 170,
+    blockers: [
+      /* the underpass opening */
+      { x0: 110, y0: 157, x1: 192, y1: 170 },
+      /* the biletomat, the drum, the two bins, the relay cabinet. The
+       * biletomat's footprint ends at 504, and so must its blocker: train
+       * door 1 stops at x=510 and boards from (510,152), and a blocker
+       * reaching 512 put that approach point inside it — the auto-walk
+       * stalled at the edge and the door could not be boarded by tap. */
+      { x0: 466, y0: 152, x1: 504, y1: 158 },
+      { x0: 583, y0: 152, x1: 617, y1: 158 },
+      { x0: 678, y0: 152, x1: 712, y1: 158 },
+      { x0: 1286, y0: 152, x1: 1320, y1: 158 },
+      { x0: 1712, y0: 152, x1: 1758, y1: 158 },
+    ],
+  },
   /**
    * Every world read the artwork performs, and nothing else. The timetable is
    * deliberately absent: the trains are animated in SMIL off the document clock,
@@ -1779,16 +2653,11 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
    */
   artKey: (w, ph) => {
     const s = stationState(w);
-    return [
-      ph,
-      s.weather,
-      s.season,
-      s.crowd,
-      s.lamps,
-      s.board ? 1 : 0,
-      s.litter,
-      s.pigeons ? 1 : 0,
-    ].join("|");
+    /* crowd and pigeons are deliberately absent: everyone they gate lives in
+     * Effects and the actor list, outside the memoised art, and keying on them
+     * remounted the art (and restarted every SMIL clock) for no repainted
+     * pixel. */
+    return [ph, s.weather, s.season, s.lamps, s.board ? 1 : 0, s.litter].join("|");
   },
   /**
    * The one person who moves. A platform where nobody walks is a photograph, and
@@ -1799,42 +2668,11 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
     npcToActor(NPCS.walker, {
       x: 1240,
       patrol: { from: 1090, to: 1560, speed: 16, pauseMs: 3400 },
-      visible: (world) => whoIsWaiting(stationState(world)).pacer,
+      visible: (world) => whoIsWaiting(stationState(world), phNow()).pacer,
       z: 6,
     }),
   ],
-  objects: [
-    /* --- the way out, at the Gdańsk end --- */
-    {
-      id: "station-stairs",
-      kind: "stairs",
-      priority: 2,
-      x: Z.stairs,
-      range: 34,
-      to: { scene: "district", spawnX: 250 },
-    },
-    /* --- the platform, end to end --- */
-    { id: "station-name", kind: "flavor", x: Z.nameBoard + NAME_W / 2, range: 40 },
-    { id: "station-timetable", kind: "flavor", x: Z.nameBoard + NAME_W + 60, range: 22 },
-    { id: "station-biletomat", kind: "biletomat", x: Z.biletomat + 17, range: 26 },
-    { id: "station-drum", kind: "flavor", x: Z.drum + 15, range: 20 },
-    { id: "station-shelter", kind: "flavor", x: SH.l + 60, range: 44 },
-    /* sitting down on the platform is the whole point of a platform */
-    { id: "station-bench", kind: "sport", action: "sit", face: 1, x: 900, range: 46 },
-    { id: "station-board", kind: "flavor", priority: 1, x: CIP.x + CIP.w / 2, range: 40 },
-    { id: "station-bin", kind: "bins", x: Z.bin + 11, range: 18 },
-    { id: "station-name-2", kind: "flavor", x: Z.nameBoard2 + NAME_W / 2, range: 40 },
-    /* the edge. Looking down the line is a thing you do, and it is a warning */
-    { id: "station-edge", kind: "flavor", x: 1660, range: 60, markerY: 120 },
-    { id: "station-fence", kind: "flavor", x: 1900, range: 44 },
-    /* --- the people --- */
-    { id: "station-reader", kind: "npc", priority: 2, x: 570, range: 14 },
-    { id: "station-bench-sitter", kind: "npc", priority: 2, x: 830, range: 16 },
-    { id: "station-phone", kind: "npc", priority: 2, x: 1080, range: 14 },
-    { id: "station-looker", kind: "npc", priority: 2, x: 1690, range: 14 },
-    /* --- and the train, when it is here --- */
-    ...DOORS_AS_OBJECTS,
-  ],
+  objects: STATION_OBJECTS,
   Component: ({ world, phase }) => <StationScene world={world} phase={phase} />,
   /** Outdoors: the sun and the platform lights do all of it. */
   darkness: () => 0,
