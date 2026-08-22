@@ -477,7 +477,14 @@ export function validateTree(tree: DialogueTree<never>): TreeProblem[] {
   const problems: TreeProblem[] = [];
   const ids = new Set(Object.keys(tree.nodes));
   const reached = new Set<string>();
+  // a computed edge could land anywhere — once one exists, "unreachable"
+  // cannot be proven for any node. Same honesty policy as a computed start.
+  let computedEdges = false;
   const edge = (from: string, to: string | ((c: never) => string) | undefined) => {
+    if (typeof to === "function") {
+      computedEdges = true;
+      return;
+    }
     if (typeof to !== "string") return;
     if (!ids.has(to)) problems.push({ kind: "missing", node: to, from });
     else reached.add(to);
@@ -512,8 +519,10 @@ export function validateTree(tree: DialogueTree<never>): TreeProblem[] {
       if (c.againNext && !c.id) problems.push({ kind: "once-without-id", node: id });
     }
   }
-  for (const id of ids) {
-    if (!reached.has(id)) problems.push({ kind: "unreachable", node: id });
+  if (!computedEdges) {
+    for (const id of ids) {
+      if (!reached.has(id)) problems.push({ kind: "unreachable", node: id });
+    }
   }
   return problems;
 }
