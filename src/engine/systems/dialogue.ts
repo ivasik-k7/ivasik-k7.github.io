@@ -98,7 +98,19 @@ export type DialogueStep =
 const asFn = <T>(v: T | ((ctx: unknown) => T), ctx: () => unknown): T =>
   typeof v === "function" ? (v as (c: unknown) => T)(ctx()) : v;
 
+/** Trees already complained about, so authoring noise prints once, not per open. */
+const validated = new WeakSet<DialogueTree<never>>();
+
 export function openDialogue(tree: DialogueTree<never>, makeCtx: () => unknown): DialogueStep {
+  // the authoring safety net, wired where every conversation passes: a broken
+  // edge prints the moment the tree first opens in dev, not when a player
+  // walks into the dead branch
+  if (import.meta.env.DEV && !validated.has(tree)) {
+    validated.add(tree);
+    for (const p of validateTree(tree)) {
+      console.warn(`dialogue: ${p.kind} node "${p.node}"${p.from ? ` (from ${p.from})` : ""}`);
+    }
+  }
   const nodeId = asFn(tree.start as string | ((c: unknown) => string), makeCtx);
   const node = tree.nodes[nodeId];
   return {
@@ -152,6 +164,20 @@ export function advanceDialogue(state: DialogueState, makeCtx: () => unknown): D
   return { kind: "end", onEnd: node.onEnd as ((ctx: unknown) => void) | undefined };
 }
 
+/**
+ * The seen-set behind `once` choices. It lives in whatever the ctx offers as
+ * a flag store — the runtime's is persisted with the save, which is exactly
+ * the lifetime "once per save" promises. A ctx without one (a bare test ctx)
+ * degrades to offering the choice every time rather than crashing.
+ */
+const onceKey = (id: string) => `dlg.once:${id}`;
+type FlagCtx = { flag?: (key: string) => boolean; setFlag?: (key: string, on?: boolean) => void };
+
+function onceSeen(ctx: unknown, choice: DialogueChoice<never>): boolean {
+  if (!choice.once || !choice.id) return false;
+  return Boolean((ctx as FlagCtx)?.flag?.(onceKey(choice.id)));
+}
+
 export function chooseDialogue(
   state: DialogueState,
   index: number,
@@ -162,6 +188,10 @@ export function chooseDialogue(
   // a locked choice is visible but inert: selecting it is not an error, it
   // just does not go anywhere
   if (!choice || choice.lockedBy !== null) return { kind: "continue", state };
+  // a taken `once` choice is spent from here on (persisted via the ctx flags)
+  if (choice.once && choice.id) {
+    (makeCtx() as FlagCtx)?.setFlag?.(onceKey(choice.id));
+  }
   // resolve the branch against the pre-effect world, then run the effect
   const target =
     typeof choice.next === "function"
@@ -190,6 +220,7 @@ export function offeredChoices(
   for (const c of node.choices) {
     const when = c.when as ((ctx: unknown) => boolean) | undefined;
     if (when && !when(makeCtx())) continue;
+    if (onceSeen(makeCtx(), c)) continue;
     const locked = c.locked as ((ctx: unknown) => string | null) | undefined;
     out.push({ ...c, lockedBy: locked ? locked(makeCtx()) : null });
   }
@@ -211,7 +242,7 @@ export function dialogueAtChoices(state: DialogueState, makeCtx: () => unknown):
 // ---------------------------------------------------------------------------
 
 export type TreeProblem = {
-  kind: "missing" | "unreachable" | "empty";
+  kind: "missing" | "unreachable" | "empty" | "once-without-id";
   node: string;
   from?: string;
 };
@@ -244,7 +275,11 @@ export function validateTree(tree: DialogueTree<never>): TreeProblem[] {
   for (const [id, node] of Object.entries(tree.nodes)) {
     if (node.lines.length === 0) problems.push({ kind: "empty", node: id });
     edge(id, node.next);
-    for (const c of node.choices ?? []) edge(id, c.next);
+    for (const c of node.choices ?? []) {
+      edge(id, c.next);
+      // a `once` with nothing to remember it by silently repeats forever
+      if (c.once && !c.id) problems.push({ kind: "once-without-id", node: id });
+    }
   }
   for (const id of ids) {
     if (!reached.has(id)) problems.push({ kind: "unreachable", node: id });

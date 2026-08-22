@@ -266,4 +266,65 @@ independently shippable. Phases 1–2 are this session's work.
 
 ---
 
-_Report ends. Implementation begins with Phase 0._
+## G. Post-program audit (2026-08-22, after phases 0–7)
+
+A fresh end-to-end read of `src/engine` after the program completed: every
+core module, the runtime, systems, UI layer, perf machinery, and the audio
+timer discipline.
+
+### Confirmed bugs — found and fixed
+
+1. **`DialogueChoice.once` was a dead contract** — declared, documented
+   ("offered once per save"), enforced nowhere; an author's `once: true`
+   choice repeated forever. Same failure class as the historic dead
+   `onEnter`. Now enforced: `offeredChoices` filters spent choices,
+   `chooseDialogue` marks them through the ctx flag store (persisted with
+   the save), and a ctx without flags degrades to always-offered.
+2. **`validateTree` had zero callers** — the authoring safety net existed
+   and caught nothing. Now wired into `openDialogue` (dev only, once per
+   tree), and it learned the new mistake: `once` without an `id`.
+3. **`frameTicker`: one throwing subscriber killed the clock for every
+   character on screen** (the exception skipped re-arming). Callbacks are
+   now isolated.
+4. **Sequencer cancel-inside-`{do}`** (found during extraction): the old
+   inline code re-read `seqRef` mid-run, so a `{do}` step cancelling or
+   replacing the sequence corrupted the successor run. The extracted
+   runner takes `host.cancelled(run)` and stops cold. Regression-tested.
+
+### Safe improvements noted, deliberately not made
+
+- `detectObjects` default depth tolerance (DEPTH_RANGE = 20) under-reaches
+  in bands deeper than 20 gp. Authoring rule: give far-line objects a
+  `yRange` ≥ the band depth. A depth-derived default would change scoring
+  semantics — revisit if a deep band ever ships.
+- Travelling to the scene you are already in does not re-fire
+  `enter`/`onSceneChange` (pre-existing; the `[scene]` effect is the
+  contract). Fine until someone wants a same-scene reset — then travel
+  needs an explicit `reenter` option, not a hidden behavior change.
+- A lazy scene that never loads (network death) lifts the fade onto the
+  black pending stub after 10 s instead of aborting back to the origin
+  scene. Graceful abort would be nicer; the stub is safe and reachable
+  only under a dead network.
+- The barrel still exports authoring internals (pixelKit, sprite builders)
+  alongside the public surface — deliberate, documented in
+  `src/engine/README.md`: the paste-driven scene-authoring workflow
+  imports from `@/engine`, and trimming happens at packaging time.
+
+### Scorecard, re-scored (was → is)
+
+| Dimension | Was | Is | What moved it |
+|---|---|---|---|
+| Modularity | 6 | 8 | five pure core modules; GameRuntime orchestrates |
+| Extensibility | 5 | 7 | ground band, lifecycle hooks, SceneSource, up/down input; SeqStep still a closed union |
+| Reusability | 7 | 8 | the /example game is proof by construction |
+| Performance | 8 | 9 | code-split scenes: FP 428 ms, 60 fps @ p95 16.8 ms, entries 52–141 ms |
+| Testability | 3 | 7 | 62 tests across core + systems; the runtime itself still needs the browser |
+| Maintainability | 6 | 8 | god-component logic extracted, dead code gone, lint gate real |
+| API quality | 6 | 7 | documented public surface; package split still pending |
+| Separation of concerns | 5 | 7 | sim/render/UI boundaries are now structural in core/, conventional in runtime/ |
+| Resource management | 7 | 8 | lazy scene chunks, cached resolution, owned everything |
+| Developer experience | 7 | 8 | README, example game, wired validateTree, drive + bench harnesses, CI net |
+| Public-release readiness | 3 | 6 | docs + example + API stance exist; packaging, versioning, license work remain |
+
+_Report ends. The program's remaining horizon: packaging (Phase 7 tail),
+sequencer step extensibility, and a graceful lazy-scene abort — none urgent._

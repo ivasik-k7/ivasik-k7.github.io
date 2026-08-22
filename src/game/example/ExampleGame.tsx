@@ -16,11 +16,6 @@ type World = { read: number };
 
 /* --- the player: a 9×14-cell figure, cell 2 => 18×28 logical px ---------- */
 
-const P = {
-  ".........": undefined, // (row template for reference only)
-};
-void P;
-
 const BODY = [
   "...ooo...",
   "...ooo...",

@@ -48,7 +48,13 @@ export function createFrameTicker(now: () => number = () => performance.now()): 
         // re-anchor on the shared clock: a starved background tab catches up
         // with one beat instead of a burst of them
         s.next = t + s.period;
-        s.cb();
+        // a throwing subscriber must not kill the clock for everyone else —
+        // this timer is shared by every breathing figure on screen
+        try {
+          s.cb();
+        } catch (err) {
+          console.error("frameTicker: subscriber threw", err);
+        }
       }
     }
     arm();
