@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EngineRouteImport } from './routes/engine'
+import { Route as ExampleRouteImport } from './routes/example'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const EngineRoute = EngineRouteImport.update({
   path: '/engine',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExampleRoute = ExampleRouteImport.update({
+  id: '/example',
+  path: '/example',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/engine': typeof EngineRoute
+  '/example': typeof ExampleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/engine': typeof EngineRoute
+  '/example': typeof ExampleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/engine': typeof EngineRoute
+  '/example': typeof ExampleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/engine'
+  fullPaths: '/' | '/engine' | '/example'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/engine'
-  id: '__root__' | '/' | '/engine'
+  to: '/' | '/engine' | '/example'
+  id: '__root__' | '/' | '/engine' | '/example'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EngineRoute: typeof EngineRoute
+  ExampleRoute: typeof ExampleRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EngineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/example': {
+      id: '/example'
+      path: '/example'
+      fullPath: '/example'
+      preLoaderRoute: typeof ExampleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EngineRoute: EngineRoute,
+  ExampleRoute: ExampleRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
