@@ -161,6 +161,7 @@ export type RuntimeSceneExtras<W extends AnyWorld> = {
    * fade still covers the screen — the seam for warming lazy chunks or assets.
    * Fire-and-forget: the travel never waits on it.
    */
+  // biome-ignore lint/suspicious/noConfusingVoidType: void is deliberate — a plain `() => { warm(); }` must satisfy this without an explicit return
   preload: () => void | Promise<unknown>;
   /**
    * Cheap fingerprint of everything the scene artwork actually reads.
@@ -299,6 +300,8 @@ export type LiveState = {
   y: number;
   /** the ground zone underfoot (null between zones / zone-less scenes) */
   surface: string | null;
+  /** the object currently holding interaction focus */
+  target: string | null;
   /** the frame shown on the tick before, so a transition is visible as a pair */
   prevFrame: string;
   /** the running action, if any */

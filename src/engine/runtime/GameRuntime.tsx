@@ -445,6 +445,13 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const defResolved = def !== (PENDING_SCENE as RuntimeSceneDef<W>);
   const walkSpeed = player.walkSpeed ?? DEFAULT_WALK_SPEED;
   const walkSpeedY = player.walkSpeedY ?? walkSpeed * WALK_SPEED_Y_RATIO;
+  /**
+   * Depth to walk in this scene. It also decides what the vertical keys MEAN:
+   * with depth they walk; without it they cycle targets, exactly as they did
+   * before the ground grew a second axis — a flat room has nothing else for
+   * up and down to do, and losing target cycling there was a regression.
+   */
+  const bandHasDepth = hasDepth(groundOf(def));
 
   // --- sprite atlas (opt-in, with a DOM fallback) --------------------------------
   const playerPalette = useMemo(
@@ -1178,6 +1185,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     menuOverlay: config.menuOverlay,
     pauseOverlay: config.pauseOverlay,
     debugAllowed: opts.debug,
+    hasDepth: bandHasDepth,
   });
   inputBag.current = {
     keymap,
@@ -1189,6 +1197,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     menuOverlay: config.menuOverlay,
     pauseOverlay: config.pauseOverlay,
     debugAllowed: opts.debug,
+    hasDepth: bandHasDepth,
   };
 
   useEffect(() => {
@@ -1232,11 +1241,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           event.preventDefault();
           break;
         case "up":
-          keys.current.up = true;
+          // flat scene: the old target-cycling gesture; band scene: walk away
+          if (bag.hasDepth) keys.current.up = true;
+          else bag.cycleTarget(1);
           event.preventDefault();
           break;
         case "down":
-          keys.current.down = true;
+          if (bag.hasDepth) keys.current.down = true;
+          else bag.cycleTarget(-1);
           event.preventDefault();
           break;
         case "interact":
@@ -1418,6 +1430,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     frame: "stand",
     y: FLOOR_Y,
     surface: null,
+    target: null,
     prevFrame: "stand",
     action: null,
     actionProgress: 0,
@@ -2102,6 +2115,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
               ? "walk"
               : "idle";
         live.moving = moving;
+        live.target = nearRef.current?.id ?? null;
         live.surface = ground.zones ? surfaceAt(ground, p.x, p.y) : null;
         live.facing = p.facing as 1 | -1;
         live.x = Math.round(p.x);
@@ -2395,8 +2409,6 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   // --- render ---------------------------------------------------------------------------------------
   const { scale } = view;
-  /** Depth to walk in this scene — the touch controls grow a vertical pair. */
-  const bandHasDepth = hasDepth(groundOf(def));
   const activeTarget = targets.activeId
     ? (targets.list.find((o) => o.id === targets.activeId) ?? null)
     : null;

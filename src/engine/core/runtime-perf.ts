@@ -470,11 +470,15 @@ export class AtlasSprite {
 /* ------------------------------------------------------------------ input */
 
 /**
- * The vertical keys belong to movement now that the ground is a band:
- * ArrowUp/W walk away from the camera, ArrowDown/S walk toward it — and in a
- * dialogue they still move the choice cursor, which is what a player expects
- * those keys to do there anyway. Target cycling moved to Q/Z (it also lives
- * on the gamepad shoulders and on tap-to-pick).
+ * The vertical keys are contextual, matching what the player sees:
+ *  - in a ground-band scene ArrowUp/W walk away from the camera and
+ *    ArrowDown/S toward it;
+ *  - in a flat scene they cycle interaction targets, exactly as they always
+ *    did — a flat room has nothing else for them to do, and losing the
+ *    cycling gesture there was a regression;
+ *  - in a dialogue they move the choice cursor either way.
+ * Q/Z cycle targets unconditionally (the only way in a band scene), and the
+ * gamepad shoulders and tap-to-pick always work.
  */
 export const DEFAULT_KEYMAP: Record<InputAction, string[]> = {
   left: ["ArrowLeft", "KeyA"],
