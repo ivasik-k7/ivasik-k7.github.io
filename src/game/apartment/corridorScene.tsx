@@ -2816,6 +2816,14 @@ export const CORRIDOR_SCENE: RuntimeSceneDef<WorldState> = {
   id: "corridor",
   width: W,
   /**
+   * The landing floor is a walkable band, not a line: FLOOR (150) is the
+   * skirting edge where the doors and neighbours stand, 170 is the nearest
+   * tile course before the foreground row. Everything painted on the tiles —
+   * mats, the PPOZ stencil, contact shadows — sits at the back line, so the
+   * player only ever passes in front of it.
+   */
+  ground: { top: FLOOR, bottom: 170 },
+  /**
    * Every world read the art performs, and nothing else. This scene had no
    * artKey at all, so the art plane repainted on any world change; these are the
    * fifteen reads that can actually alter a pixel — twelve of its own and the

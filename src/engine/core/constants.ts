@@ -10,6 +10,18 @@ export const FLOOR_Y = 150;
 /** Player can't walk closer than this to a scene edge. */
 export const EDGE_MARGIN = 20;
 
+/* --- ground band -----------------------------------------------------------------
+ * The floor is a band, not a line. A scene may declare `ground: {top, bottom}`
+ * (feet-space y, top < bottom) and the player walks up and down inside it —
+ * River City style depth. Without a declaration the band is degenerate
+ * ({FLOOR_Y, FLOOR_Y}) and everything behaves exactly as the single line did.
+ */
+
+/** Vertical walk speed as a fraction of horizontal — depth is foreshortened. */
+export const WALK_SPEED_Y_RATIO = 0.62;
+/** Depth tolerance (gp) for interaction when an object doesn't set `yRange`. */
+export const DEPTH_RANGE = 20;
+
 /** Default interaction radius when an object doesn't specify one. */
 export const DEFAULT_RANGE = 26;
 

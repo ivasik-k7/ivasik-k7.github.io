@@ -66,6 +66,8 @@ export interface PlayerConfig<F extends string = string> {
   /** Logical px per sprite cell (default 2). */
   cell?: number;
   walkSpeed?: number;
+  /** Depth walk speed; defaults to walkSpeed × WALK_SPEED_Y_RATIO. */
+  walkSpeedY?: number;
 }
 
 // --- scene objects -----------------------------------------------------------
@@ -77,8 +79,15 @@ export interface SceneObject {
   kind: string;
   /** Interaction center, in logical scene px. */
   x: number;
+  /**
+   * The object's feet line in the ground band (scenes with `ground` only).
+   * Defaults to FLOOR_Y — the back edge, where counters and doors stand.
+   */
+  y?: number;
   /** Proximity radius; DEFAULT_RANGE when omitted. */
   range?: number;
+  /** Depth tolerance around `y` for interaction; DEPTH_RANGE when omitted. */
+  yRange?: number;
   /**
    * Targeting weight: each point counts as PRIORITY_GP closer. Lets NPCs and
    * doors win focus over background flavor sharing the same spot.
@@ -89,7 +98,7 @@ export interface SceneObject {
   /** Height (gp from scene top) of the floating target marker; MARKER_Y default. */
   markerY?: number;
   /** Doors: travel target. Handled by the engine's built-in `door` handler. */
-  to?: { scene: string; spawnX: number };
+  to?: { scene: string; spawnX: number; spawnY?: number };
   /** Sport-style objects: which player action animation to run. */
   action?: string;
   /** Force facing during interaction (sit facing the TV). */
@@ -159,7 +168,7 @@ export interface InteractionCtx<W extends AnyWorld = AnyWorld> {
   /** Run a player action animation (id must exist in PlayerConfig.actions). */
   startAction: (id: string, opts?: { onInterrupt?: () => void }) => void;
   /** Fade out, switch scene, fade in. */
-  travel: (scene: string, spawnX: number) => void;
+  travel: (scene: string, spawnX: number, spawnY?: number) => void;
   /** Slow fade to black, hold, fade back, then toast (toilet, bath…). */
   blackout: (holdMs: number, text: string) => void;
   /** Hand an opaque overlay object to the game's overlay renderer. */
@@ -182,7 +191,7 @@ export type InteractionHandler<W extends AnyWorld = AnyWorld> = (ctx: Interactio
 
 export interface GameConfig<W extends AnyWorld = AnyWorld> {
   scenes: Record<string, SceneDef<W>>;
-  start: { scene: string; x: number };
+  start: { scene: string; x: number; y?: number };
   initialWorld: W;
   player: PlayerConfig;
   /** Handler table by object kind. `door` is built in but can be overridden. */

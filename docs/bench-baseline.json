@@ -1,0 +1,32 @@
+{
+  "at": "2026-08-22T13:36:37.032Z",
+  "base": "http://localhost:4173/?drive=1",
+  "boot": {
+    "firstPaintMs": 704,
+    "longTasks": [54, 211, 92],
+    "enterToGameReadyMs": 1164
+  },
+  "sceneEntry": {
+    "corridor": 86,
+    "outside": 140,
+    "district": 243,
+    "station": 189,
+    "gym": 112,
+    "zabka": 94
+  },
+  "idle": {
+    "district": {
+      "fps": 52,
+      "p95Ms": 33.4,
+      "worstMs": 50.1,
+      "heapMb": 18
+    },
+    "outside": {
+      "fps": 47,
+      "p95Ms": 33.4,
+      "worstMs": 50,
+      "heapMb": 24
+    }
+  },
+  "pageErrors": []
+}

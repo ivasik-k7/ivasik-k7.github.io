@@ -140,7 +140,7 @@ export function TargetMarker({ obj, scale }: { obj: SceneObject; scale: number }
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute top-0 left-0 z-20 text-signal"
+      className="pointer-events-none absolute top-0 left-0 z-[360] text-signal"
       style={{
         transform: `translate3d(${obj.x * scale}px, ${(obj.markerY ?? MARKER_Y) * scale}px, 0)`,
       }}

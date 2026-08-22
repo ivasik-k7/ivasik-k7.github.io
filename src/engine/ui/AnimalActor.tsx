@@ -3,6 +3,7 @@ import { FLOOR_Y } from "../core/constants";
 import type { SpriteMap } from "../core/types";
 import type { AnimalConfig } from "../sprite/animalBuilder";
 import { useReducedMotion } from "./animationGate";
+import { frameTicker } from "./frameTicker";
 import { PixelSprite } from "./PixelSprite";
 
 /**
@@ -49,11 +50,8 @@ export function useAnimalFrame(animal: AnimalConfig, action?: string, playing = 
   useEffect(() => {
     setI(start);
     if (!playing || still || frames.length < 2) return;
-    const timer = window.setInterval(
-      () => setI((n) => (n + 1) % frames.length),
-      def?.frameMs ?? 500,
-    );
-    return () => window.clearInterval(timer);
+    // shared ticker — see frameTicker.ts; one timer for the whole kennel
+    return frameTicker.every(def?.frameMs ?? 500, () => setI((n) => (n + 1) % frames.length));
   }, [frames, def?.frameMs, playing, still, start]);
 
   return animal.frames[frames[i] ?? "stand"] ?? animal.frames.stand;

@@ -32,12 +32,30 @@ export type SceneKeyOf<W extends AnyWorld> = keyof GameConfig<W>["scenes"] & str
 export type InputAction =
   | "left"
   | "right"
+  | "up"
+  | "down"
   | "interact"
   | "cancel"
   | "menu"
   | "targetNext"
   | "targetPrev"
   | "debug";
+
+/* ---------------------------------------------------------------- ground */
+
+/** An unwalkable rectangle in feet-space (a bench, a parked car, a planter). */
+export type GroundBlocker = { x0: number; y0: number; x1: number; y1: number };
+
+/**
+ * The walkable depth band. `top` is the far feet line (small y), `bottom` the
+ * near one (large y). Scenes without one get the degenerate {FLOOR_Y, FLOOR_Y}
+ * band and behave exactly as before — a single line.
+ */
+export type GroundBand = {
+  top: number;
+  bottom: number;
+  blockers?: readonly GroundBlocker[];
+};
 
 /* ------------------------------------------------------- objects & scenes */
 
@@ -49,6 +67,8 @@ export type RuntimeObjectExtras = {
   hitPad: number;
   /** Where the player should stand to use this. Defaults to the object's own x. */
   approachX: number;
+  /** Feet line to stand on while using this (ground-band scenes). */
+  approachY: number;
   /** Consumed after one successful interaction — stops being a candidate. */
   once: boolean;
   /** Ignore repeat interactions for this long. */
@@ -80,7 +100,10 @@ export type ActorDef<W extends AnyWorld> = {
   /** Simple back-and-forth patrol. */
   patrol?: { from: number; to: number; speed?: number; pauseMs?: number };
   /** Full manual control; return a partial pose. Called at most once per frame. */
-  step?: (t: number, world: W) => { x?: number; facing?: 1 | -1; frame?: string } | undefined;
+  step?: (
+    t: number,
+    world: W,
+  ) => { x?: number; y?: number; facing?: 1 | -1; frame?: string } | undefined;
   /** Hidden entirely (and skipped) when this returns false. */
   visible?: (world: W) => boolean;
   /** Stacking order relative to the player (player sits at 10). */
@@ -94,6 +117,13 @@ export type RuntimeSceneExtras<W extends AnyWorld> = {
    * only re-renders when its own inputs change. The single biggest win here.
    */
   artKey: (world: W, phase: string) => string;
+  /**
+   * The runtime reads RuntimeObjectExtras (width, hitPad, approachX/Y, once,
+   * cooldownMs…) off scene objects and always has — this override just lets a
+   * RuntimeSceneDef literal *say so* without a cast. A plain SceneObject[] is
+   * still valid: every extra is optional.
+   */
+  objects: RuntimeObject[];
   /** Background characters. */
   actors: ActorDef<W>[];
   /** Screen-reader description of the room. */
@@ -102,6 +132,8 @@ export type RuntimeSceneExtras<W extends AnyWorld> = {
   spawnX: number;
   /** Culling granularity for <CullBox> children (logical px). */
   chunkWidth: number;
+  /** Walkable depth band; omit for the classic single floor line. */
+  ground: GroundBand;
 };
 
 export type RuntimeSceneDef<W extends AnyWorld> = SceneDefOf<W> & Partial<RuntimeSceneExtras<W>>;
@@ -112,7 +144,7 @@ export type RuntimeSceneDef<W extends AnyWorld> = SceneDefOf<W> & Partial<Runtim
 export type SeqStep<W extends AnyWorld> =
   | { wait: number }
   | { say: string }
-  | { walkTo: number; timeoutMs?: number }
+  | { walkTo: number; y?: number; timeoutMs?: number }
   | { face: 1 | -1 }
   | { hold: string; forMs: number }
   | { action: string }
@@ -122,7 +154,7 @@ export type SeqStep<W extends AnyWorld> =
   | { flash: { color?: string; ms?: number } }
   | { focus: number | null; ms?: number }
   | { letterbox: boolean }
-  | { travel: { scene: string; spawnX?: number } }
+  | { travel: { scene: string; spawnX?: number; spawnY?: number } }
   | { dialogue: unknown }
   | { sound: string }
   | { do: (ctx: RuntimeCtx<W>) => void }
@@ -132,8 +164,8 @@ export type SeqStep<W extends AnyWorld> =
 
 /** Everything the runtime adds on top of the original InteractionCtx. */
 export type RuntimeCtxExtras<W extends AnyWorld> = {
-  /** Walk the player to a logical x. Resolves true on arrival, false if cancelled. */
-  walkTo(x: number, opts?: { timeoutMs?: number }): Promise<boolean>;
+  /** Walk the player to a logical x (and feet-y in ground-band scenes). Resolves true on arrival, false if cancelled. */
+  walkTo(x: number, opts?: { y?: number; timeoutMs?: number }): Promise<boolean>;
   /** Pin the camera to a point (or null to follow the player again). */
   focusCamera(x: number | null, ms?: number): void;
   /** Eased zoom multiplier around the current focus. 1 = normal. */
@@ -162,7 +194,7 @@ export type RuntimeCtxExtras<W extends AnyWorld> = {
   setPlayerFrame(frame: string | null): void;
   /** Game-clock milliseconds. */
   now(): number;
-  playerAt(): { x: number; facing: 1 | -1 };
+  playerAt(): { x: number; y: number; facing: 1 | -1 };
   setTarget(id: string): void;
   vibrate(ms: number): void;
 };
@@ -201,6 +233,8 @@ export type RuntimeStats = {
 export type LiveState = {
   /** the frame actually on screen */
   frame: string;
+  /** feet-y in the ground band (FLOOR_Y in single-line scenes) */
+  y: number;
   /** the frame shown on the tick before, so a transition is visible as a pair */
   prevFrame: string;
   /** the running action, if any */
@@ -220,8 +254,8 @@ export type LiveState = {
 /** Imperative handle handed to `config.onReady`, for tests and debug tooling. */
 export type RuntimeApi<W extends AnyWorld> = {
   interact(id?: string): void;
-  travel(scene: string, spawnX?: number): void;
-  walkTo(x: number): Promise<boolean>;
+  travel(scene: string, spawnX?: number, spawnY?: number): void;
+  walkTo(x: number, y?: number): Promise<boolean>;
   runSequence(steps: SeqStep<W>[], opts?: { cinematic?: boolean }): Promise<boolean>;
   getWorld(): W;
   updateWorld(patch: Partial<W> | ((w: W) => W)): void;
@@ -310,8 +344,11 @@ export type SavePayload<W extends AnyWorld> = {
   scene: string;
   x: number;
   savedAt: string;
+  /** Feet-y in the ground band. Absent in old saves — restored as FLOOR_Y. */
+  y?: number;
   facing?: 1 | -1;
   flags?: Record<string, true>;
   counters?: Record<string, number>;
   sceneX?: Record<string, number>;
+  sceneY?: Record<string, number>;
 };

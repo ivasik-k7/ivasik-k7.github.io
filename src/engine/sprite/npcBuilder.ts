@@ -212,7 +212,7 @@ function legs(build: NpcBuild, opts: { gap?: number; stride?: number } = {}): Sp
   rows.push(shell(CENTRE, wa, "p", "q"));
   // the near leg catches the light down its outer edge; the far one is a
   // whole leg in shadow, which is what makes two legs read as two legs
-  const near = (w: number) => "m" + "p".repeat(Math.max(0, w - 2)) + "q";
+  const near = (w: number) => `m${"p".repeat(Math.max(0, w - 2))}q`;
   for (let i = 0; i < 5; i++) rows.push(row([L, near(legW)], band(R, legW, "q")));
   for (let i = 0; i < 6; i++) {
     const lean = Math.round((stride * (i + 1)) / 6);

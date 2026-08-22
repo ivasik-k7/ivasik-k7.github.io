@@ -1,16 +1,20 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ActionRun, stepAction } from "../core/actionPlayer";
+import { type CamRig, newCamRig, stepCamRig } from "../core/cameraRig";
 import {
   DEFAULT_WALK_SPEED,
   EDGE_MARGIN,
   FLOOR_Y,
   SCENE_HEIGHT,
-  STICKY_MARGIN,
   TRAVEL_FADE_IN_DELAY_MS,
   TRAVEL_FADE_OUT_MS,
   TRAVEL_SWITCH_AT_MS,
+  WALK_SPEED_Y_RATIO,
 } from "../core/constants";
-import { cameraTransform, detectObjects, viewportScale } from "../core/math";
+import { clampY, groundOf, hasDepth, stepOnGround } from "../core/ground";
+import { newIdleState, resetIdle, stepIdle } from "../core/idleBrain";
+import { detectObjects, resolveActiveTarget, viewportScale } from "../core/math";
 import { BandProvider } from "../core/runtime-cull";
 import {
   AtlasSprite,
@@ -46,6 +50,7 @@ import type {
   SavePayload,
   SeqStep,
 } from "../core/runtime-types";
+import { newSeqRun, type SeqHost, type SeqRun, stepSequence } from "../core/sequencer";
 import type { AnyWorld, FxInstance, InteractionCtx, SceneObject } from "../core/types";
 import {
   advanceDialogue,
@@ -95,28 +100,28 @@ import { SpeakingProvider, type SpeakingState } from "../ui/speaking";
 const ARRIVE_EPS = 1.2;
 const IDLE_PROMOTE_MS = 700;
 const DETECT_SAFETY_MS = 400;
+/** Auto-walk gives up once the gap stops shrinking for this long (blocked path). */
+const WALK_STALL_MS = 600;
+
+/* Stacking. Single-line scenes keep the legacy numbers (actors 5, player 10).
+ * Ground-band scenes sort every figure by its feet line — z = BAND_BASE + y,
+ * which tops out around 200 — and the fixed chrome sits above all of it. */
+const Z_ACTOR_FLAT = 5;
+const Z_PLAYER_FLAT = 10;
+const Z_BAND_BASE = 20;
+const Z_FOREGROUND = 300;
 
 type ActorRuntime = {
   x: number;
+  y: number;
   facing: 1 | -1;
   dist: number;
   dir: 1 | -1;
   pauseUntil: number;
   frame: string;
   hidden: boolean;
+  z: number;
 };
-
-type SeqRun<W extends AnyWorld> = {
-  steps: SeqStep<W>[];
-  i: number;
-  entered: boolean;
-  enteredAt: number;
-  deadline: number;
-  cinematic: boolean;
-  resolve: (ok: boolean) => void;
-};
-
-const EMPTY_FRAME_LIST: readonly string[] = [];
 
 /**
  * The frames an actor can actually be asked to show.
@@ -136,25 +141,6 @@ function actorFrameNames<W extends AnyWorld>(actor: ActorDef<W>): string[] {
   if (actor.step) return Object.keys(actor.frames);
   const names = new Set<string>([actor.idleFrame ?? "stand", ...(actor.walkCycle ?? [])]);
   return [...names].filter((n) => actor.frames[n]);
-}
-
-/** A blink is 170 ms whatever else is happening. */
-const BLINK_MS = 170;
-/** He stands for at least this long before doing anything with it. */
-const IDLE_FLOURISH_MIN = 7000;
-const IDLE_FLOURISH_SPREAD = 9000;
-const IDLE_FLOURISHES = 3;
-
-/**
- * Deterministic jitter — the same input always gives the same offset, so the
- * idle is reproducible frame to frame within one beat while still being
- * irregular across beats. `Math.random` would change the answer on every tick
- * and make the pose flicker.
- */
-function jitter(seed: number, span: number): number {
-  let h = Math.imul(seed | 0, 2654435761);
-  h ^= h >>> 15;
-  return Math.abs(h) % Math.max(1, span);
 }
 
 export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeConfig<W> }) {
@@ -242,21 +228,15 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   const pos = useRef({
     x: restored?.x ?? config.start.x,
+    y: restored?.y ?? config.start.y ?? FLOOR_Y,
     facing: (restored?.facing ?? 1) as 1 | -1,
     walkDist: 0,
   });
-  const keys = useRef({ left: false, right: false });
+  const keys = useRef({ left: false, right: false, up: false, down: false });
   const padRef = useRef<PadState>(newPadState());
   const padPrev = useRef<PadState>(newPadState());
   const padPresentRef = useRef(false);
-  const actionRef = useRef<{
-    id: string;
-    start: number;
-    onInterrupt?: () => void;
-    /** the frames being played on the way out, once the action is leaving */
-    leaving?: readonly string[];
-    leftAt?: number;
-  } | null>(null);
+  const actionRef = useRef<ActionRun | null>(null);
   const sceneRef = useRef(scene);
   const overlayRef = useRef<unknown>(overlay);
   const introRef = useRef(intro);
@@ -275,19 +255,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const movingRef = useRef(false);
   // the camera rig: eased position, look-ahead, walk bob, shake impulses,
   // plus a cinematic focus point and an eased zoom
-  const camRig = useRef({
-    x: Number.NaN, // NaN = snap to target on the first frame / after travel
-    look: 0,
-    bobT: 0,
-    swayT: 0,
-    shakeMag: 0,
-    shakeUntil: 0,
-    focusX: null as number | null,
-    zoom: 1,
-    zoomTarget: 1,
-    zoomRate: 3.5,
-  });
-  const camStateRef = useRef({ pan: 0, zoom: 1, originX: 0, scale: 3 });
+  const camRig = useRef<CamRig>(null as unknown as CamRig);
+  if (!camRig.current) camRig.current = newCamRig();
+  const camStateRef = useRef({ pan: 0, panY: 0, zoom: 1, originX: 0, originY: 0, scale: 3 });
   const viewRef = useRef(view);
   const gestureFired = useRef(false);
   // last written DOM values — the tick skips writes (and the repaints/composites
@@ -298,6 +268,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     cam: Number.NaN,
     vis: "",
     player: "",
+    playerZ: "",
     mono: "",
     frame: "",
   });
@@ -324,6 +295,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const flagsRef = useRef<Record<string, true>>({ ...(restored?.flags ?? {}) });
   const countersRef = useRef<Record<string, number>>({ ...(restored?.counters ?? {}) });
   const sceneXRef = useRef<Record<string, number>>({ ...(restored?.sceneX ?? {}) });
+  const sceneYRef = useRef<Record<string, number>>({ ...(restored?.sceneY ?? {}) });
   const usedRef = useRef<Map<string, number>>(new Map());
   const consumedRef = useRef<Set<string>>(new Set());
   const worldRevRef = useRef(0);
@@ -337,20 +309,30 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   /** The scene's SVG roots, so their SMIL clocks can be stopped together. */
   const smilRootsRef = useRef<SVGSVGElement[]>([]);
   const smilPausedRef = useRef(false);
-  /** Shared empty list, so an action without an entry allocates nothing per frame. */
-  const EMPTY_FRAMES: readonly string[] = EMPTY_FRAME_LIST;
   /** How long he has been standing still, and what he does about it next. */
-  const idleRef = useRef({ since: 0, nextBlink: 0, nextFlourish: 0, flourish: 0 });
+  const idleRef = useRef(newIdleState());
   const bufferedInteractRef = useRef(0);
   const autoWalkRef = useRef<{
     x: number;
+    /** Target feet-y; undefined = keep the current depth (legacy behavior). */
+    y?: number;
     deadline: number;
     interactId: string | null;
     resolve?: (ok: boolean) => void;
+    /** Stall detection: the last gap and when it last shrank. */
+    lastGap: number;
+    progressAt: number;
   } | null>(null);
   const seqRef = useRef<SeqRun<W> | null>(null);
   const ctxFactoryRef = useRef<((obj: SceneObject) => RuntimeCtx<W>) | null>(null);
-  const detectRef = useRef({ x: Number.NaN, facing: 0, rev: -1, sceneKey: "", at: 0 });
+  const detectRef = useRef({
+    x: Number.NaN,
+    y: Number.NaN,
+    facing: 0,
+    rev: -1,
+    sceneKey: "",
+    at: 0,
+  });
   const objectCacheRef = useRef({ key: "", list: [] as SceneObject[] });
   const actorStateRef = useRef<Record<string, ActorRuntime>>({});
   const promoteCache = useRef({ on: false });
@@ -368,6 +350,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   const def = scenes[scene] as RuntimeSceneDef<W>;
   const walkSpeed = player.walkSpeed ?? DEFAULT_WALK_SPEED;
+  const walkSpeedY = player.walkSpeedY ?? walkSpeed * WALK_SPEED_Y_RATIO;
 
   // --- sprite atlas (opt-in, with a DOM fallback) --------------------------------
   const playerPalette = useMemo(
@@ -421,11 +404,13 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       world: worldRef.current,
       scene: sceneRef.current,
       x: pos.current.x,
+      y: pos.current.y,
       savedAt: new Date().toISOString(),
       facing: pos.current.facing,
       flags: flagsRef.current,
       counters: countersRef.current,
       sceneX: { ...sceneXRef.current, [sceneRef.current]: pos.current.x },
+      sceneY: { ...sceneYRef.current, [sceneRef.current]: pos.current.y },
     };
     return payload;
   }, [persist]);
@@ -644,25 +629,23 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   }, []);
 
   // --- auto-walk ------------------------------------------------------------------------
-  const walkTo = useCallback((x: number, o?: { timeoutMs?: number }) => {
+  const walkTo = useCallback((x: number, o?: { y?: number; timeoutMs?: number }) => {
     cancelAutoWalkStatic(autoWalkRef);
     wakeRef.current();
     return new Promise<boolean>((resolve) => {
-      autoWalkRef.current = {
-        x,
-        deadline: nowMs() + (o?.timeoutMs ?? 8000),
-        interactId: null,
-        resolve,
-      };
+      autoWalkRef.current = newAutoWalk(x, o?.y, nowMs() + (o?.timeoutMs ?? 8000), null, resolve);
     });
   }, []);
 
   // --- travel & blackout ----------------------------------------------------------------
   const travel = useCallback(
-    (target: string, spawnX?: number) => {
+    (target: string, spawnX?: number, spawnY?: number) => {
       if (fadingRef.current) return;
       fadingRef.current = true;
-      if (opts.rememberSceneX) sceneXRef.current[sceneRef.current] = pos.current.x;
+      if (opts.rememberSceneX) {
+        sceneXRef.current[sceneRef.current] = pos.current.x;
+        sceneYRef.current[sceneRef.current] = pos.current.y;
+      }
       const timers = timersRef.current;
       setFade({ on: true, ms: reducedRef.current ? 90 : TRAVEL_FADE_OUT_MS });
       timers.after(() => {
@@ -670,6 +653,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         const remembered = opts.rememberSceneX ? sceneXRef.current[target] : undefined;
         const fallback = nextDef?.spawnX ?? (nextDef ? nextDef.width / 2 : pos.current.x);
         pos.current.x = spawnX ?? remembered ?? fallback;
+        const rememberedY = opts.rememberSceneX ? sceneYRef.current[target] : undefined;
+        pos.current.y = clampY(groundOf(nextDef), spawnY ?? rememberedY ?? FLOOR_Y);
         camRig.current.x = Number.NaN;
         camRig.current.look = 0;
         camRig.current.focusX = null;
@@ -762,15 +747,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       }
       wakeRef.current();
       return new Promise<boolean>((resolve) => {
-        seqRef.current = {
-          steps,
-          i: 0,
-          entered: false,
-          enteredAt: 0,
-          deadline: 0,
-          cinematic,
-          resolve,
-        };
+        seqRef.current = newSeqRun(steps, cinematic, resolve);
       });
     },
     [cancelSequence],
@@ -826,7 +803,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           forcedFrameRef.current = frame;
         },
         now: () => clockRef.current.t,
-        playerAt: () => ({ x: pos.current.x, facing: pos.current.facing }),
+        playerAt: () => ({ x: pos.current.x, y: pos.current.y, facing: pos.current.facing }),
         setTarget: selectTarget,
         vibrate,
       };
@@ -881,7 +858,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         handlers[obj.kind] ??
         (obj.kind === "door"
           ? () => {
-              if (obj.to) travel(obj.to.scene, obj.to.spawnX);
+              if (obj.to) travel(obj.to.scene, obj.to.spawnX, obj.to.spawnY);
             }
           : undefined);
       if (!handler) return;
@@ -909,11 +886,13 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         return;
       }
       cancelAutoWalkStatic(autoWalkRef);
-      autoWalkRef.current = {
-        x: clamp(meta.approachX ?? obj.x, EDGE_MARGIN, def.width - EDGE_MARGIN),
-        deadline: nowMs() + 8000,
-        interactId: obj.id,
-      };
+      autoWalkRef.current = newAutoWalk(
+        clamp(meta.approachX ?? obj.x, EDGE_MARGIN, def.width - EDGE_MARGIN),
+        // stand at the object's own depth when it declares one; stay put otherwise
+        meta.approachY ?? obj.y,
+        nowMs() + 8000,
+        obj.id,
+      );
       wakeRef.current();
     },
     [def.width, interact, opts.autoWalkToTargets, selectTarget],
@@ -1027,10 +1006,10 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         if (action === "interact") {
           event.preventDefault();
           bag.dialogueAdvance();
-        } else if (action === "targetNext") {
+        } else if (action === "up" || action === "targetNext") {
           event.preventDefault();
           bag.dialogueMoveCursor(-1);
-        } else if (action === "targetPrev") {
+        } else if (action === "down" || action === "targetPrev") {
           event.preventDefault();
           bag.dialogueMoveCursor(1);
         }
@@ -1050,6 +1029,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           break;
         case "right":
           keys.current.right = true;
+          event.preventDefault();
+          break;
+        case "up":
+          keys.current.up = true;
+          event.preventDefault();
+          break;
+        case "down":
+          keys.current.down = true;
           event.preventDefault();
           break;
         case "interact":
@@ -1092,11 +1079,15 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       const action = inputBag.current.keymap.get(event.code);
       if (action === "left") keys.current.left = false;
       if (action === "right") keys.current.right = false;
+      if (action === "up") keys.current.up = false;
+      if (action === "down") keys.current.down = false;
     };
     // alt-tabbing mid-stride used to leave the player walking forever
     const releaseAll = () => {
       keys.current.left = false;
       keys.current.right = false;
+      keys.current.up = false;
+      keys.current.down = false;
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -1141,15 +1132,36 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           engage(picked);
           return;
         }
+        // nothing under the tap, nothing in reach: in a ground-band scene an
+        // empty tap is "walk there" — the natural touch control for depth
+        const sceneDef = scenes[sceneRef.current] as RuntimeSceneDef<W>;
+        const band = groundOf(sceneDef);
+        if (!nearRef.current && hasDepth(band)) {
+          const localY =
+            cam.originY + (event.clientY - box.top - cam.originY - cam.panY) / cam.zoom;
+          walkTo(clamp(local / cam.scale, EDGE_MARGIN, sceneDef.width - EDGE_MARGIN), {
+            y: clampY(band, localY / cam.scale),
+          });
+          return;
+        }
       }
       interact(nearRef.current);
     },
-    [engage, fireGesture, interact, opts.pointerPicking, scenes],
+    [engage, fireGesture, interact, opts.pointerPicking, scenes, walkTo],
   );
 
   const pointerStop = useCallback(() => {
     keys.current.left = false;
     keys.current.right = false;
+    keys.current.up = false;
+    keys.current.down = false;
+  }, []);
+
+  /** Touch walk buttons press virtual keys; the sim reads them like real ones. */
+  const pressWalk = useCallback((dir: "left" | "right" | "up" | "down") => {
+    keys.current[dir] = true;
+    cancelAutoWalkStatic(autoWalkRef);
+    wakeRef.current();
   }, []);
 
   // --- gamepad presence ---------------------------------------------------------------------------
@@ -1207,6 +1219,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
    */
   const liveRef = useRef<LiveState>({
     frame: "stand",
+    y: FLOOR_Y,
     prevFrame: "stand",
     action: null,
     actionProgress: 0,
@@ -1249,6 +1262,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     scenes,
     player,
     walkSpeed,
+    walkSpeedY,
     opts,
     interact,
     pushTargets,
@@ -1270,6 +1284,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     scenes,
     player,
     walkSpeed,
+    walkSpeedY,
     opts,
     interact,
     pushTargets,
@@ -1310,6 +1325,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       cancelAnimationFrame(raf);
       keys.current.left = false;
       keys.current.right = false;
+      keys.current.up = false;
+      keys.current.down = false;
     };
     const wake = () => {
       if (!parked) return;
@@ -1321,6 +1338,60 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     };
     parkRef.current = park;
     wakeRef.current = wake;
+
+    /**
+     * The runtime's side of the sequencer contract. Built once per loop
+     * mount; every method reads live state through refs, so the host never
+     * goes stale and never re-subscribes anything.
+     */
+    const seqAnchor = (): SceneObject =>
+      (nearRef.current ??
+        (loopBag.current.scenes[sceneRef.current] as RuntimeSceneDef<W>).objects[0]) as SceneObject;
+    const seqHost: SeqHost<W> = {
+      showToast: (text) => loopBag.current.showToast(text),
+      startWalk: (x, y, deadline) => {
+        cancelAutoWalkStatic(autoWalkRef);
+        autoWalkRef.current = newAutoWalk(x, y, deadline, null);
+      },
+      walking: () => autoWalkRef.current !== null,
+      setFacing: (facing) => {
+        pos.current.facing = facing;
+      },
+      holdFrame: (frame) => {
+        forcedFrameRef.current = frame;
+      },
+      startAction: (id) => loopBag.current.startAction(id),
+      actionRunning: () => actionRef.current !== null,
+      updateWorld: (patch) => loopBag.current.updateWorld(patch),
+      spawnFx: (kind, x, ttlMs, data) => loopBag.current.spawnFx(kind, x, ttlMs, data),
+      shakeCamera: (intensity, ms) => loopBag.current.shakeCamera(intensity, ms),
+      flash: (color, ms) => loopBag.current.flash(color, ms),
+      focusCamera: (x, ms) => loopBag.current.focusCamera(x, ms),
+      letterbox: (on) => loopBag.current.letterbox(on),
+      travel: (scene, spawnX, spawnY) => loopBag.current.travel(scene, spawnX, spawnY),
+      fading: () => fadingRef.current,
+      openDialogue: (tree) => {
+        const obj = seqAnchor();
+        const open = openDialogue(tree as DialogueTree<never>, () => ctxFactoryRef.current?.(obj));
+        if (open.kind === "continue") {
+          open.onEnter?.(ctxFactoryRef.current?.(obj));
+          setDialogue({ state: open.state, obj });
+        }
+      },
+      dialogueOpen: () => dialogueRef.current !== null,
+      playSound: (name) => soundRef.current?.(name),
+      playerX: () => pos.current.x,
+      clampWalkX: (x) =>
+        clamp(
+          x,
+          EDGE_MARGIN,
+          (loopBag.current.scenes[sceneRef.current] as RuntimeSceneDef<W>).width - EDGE_MARGIN,
+        ),
+      clampWalkY: (y) =>
+        clampY(groundOf(loopBag.current.scenes[sceneRef.current] as RuntimeSceneDef<W>), y),
+      makeCtx: () => ctxFactoryRef.current?.(seqAnchor()),
+      cancelled: (run) => seqRef.current !== run,
+    };
 
     function tick(now: number) {
       raf = requestAnimationFrame(tick);
@@ -1372,75 +1443,41 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       statAccum.current.frames += 1;
       statAccum.current.frameMs = frameMs;
 
-      // --- action animation ---------------------------------------------------
+      // --- action animation (core/actionPlayer owns the timing table) ----------
       let actionFrame: string | null = null;
       const act = actionRef.current;
       if (act) {
-        const adef = player.actions[act.id];
-        if (!adef) {
-          // An action id that does not exist used to throw here — inside the
-          // frame loop, so it threw again on the next frame and every frame
-          // after, and the game was gone. Scene data and cutscene steps both
-          // reach this by name, which makes a typo in content a hard lock.
-          // Drop the action, say so once, carry on.
-          if (import.meta.env.DEV) console.warn(`runtime: unknown action "${act.id}"`);
+        const wantsMove =
+          keys.current.left ||
+          keys.current.right ||
+          keys.current.up ||
+          keys.current.down ||
+          padRef.current.left ||
+          padRef.current.right ||
+          padRef.current.up ||
+          padRef.current.down;
+        const step = stepAction(act, player.actions[act.id], now, wantsMove, inputLockRef.current);
+        if (step.unknown && import.meta.env.DEV) {
+          console.warn(`runtime: unknown action "${act.id}"`);
+        }
+        if (step.interrupted) {
+          act.onInterrupt?.();
+          bag.cancelQueuedToasts();
+        }
+        actionFrame = step.frame;
+        if (step.done) {
           actionRef.current = null;
           setActionUi(null);
-        } else {
-          const elapsed = now - act.start;
-          const enter = adef.enter ?? EMPTY_FRAMES;
-          const exit = adef.exit ?? EMPTY_FRAMES;
-          const enterMs = enter.length * adef.frameMs;
-          const loopMs = adef.frames.length * adef.frameMs * adef.loops;
-          const exitMs = exit.length * adef.frameMs;
-          const wantsMove =
-            keys.current.left || keys.current.right || padRef.current.left || padRef.current.right;
-          /**
-           * An interrupt does not cut on the spot any more: it stops the loop
-           * where it is and plays the way out. `abort` is there for the cases
-           * where the full exit is too long to sit through once the player has
-           * already asked to leave.
-           */
+          // a press that landed mid-action fires now instead of vanishing —
+          // but only when the action played out; an interrupt already means
+          // the player asked for something else
           if (
-            !act.leaving &&
-            adef.interruptible &&
-            wantsMove &&
-            !inputLockRef.current &&
-            elapsed >= enterMs
+            step.natural &&
+            bufferedInteractRef.current > 0 &&
+            now - bufferedInteractRef.current <= cfg.inputBufferMs
           ) {
-            act.leaving = adef.abort ?? exit;
-            act.leftAt = now;
-            act.onInterrupt?.();
-            bag.cancelQueuedToasts();
-          }
-          if (act.leaving) {
-            const out = act.leaving;
-            const t = now - (act.leftAt ?? now);
-            if (t >= out.length * adef.frameMs) {
-              actionRef.current = null;
-              setActionUi(null);
-            } else {
-              actionFrame = out[Math.floor(t / adef.frameMs)] ?? null;
-            }
-          } else if (elapsed >= enterMs + loopMs + exitMs) {
-            actionRef.current = null;
-            setActionUi(null);
-            // a press that landed mid-action fires now instead of vanishing
-            if (
-              bufferedInteractRef.current > 0 &&
-              now - bufferedInteractRef.current <= cfg.inputBufferMs
-            ) {
-              bufferedInteractRef.current = 0;
-              bag.interact(nearRef.current);
-            }
-          } else if (elapsed < enterMs) {
-            actionFrame = enter[Math.floor(elapsed / adef.frameMs)] ?? null;
-          } else if (elapsed < enterMs + loopMs) {
-            const t = elapsed - enterMs;
-            actionFrame = adef.frames[Math.floor(t / adef.frameMs) % adef.frames.length];
-          } else {
-            const t = elapsed - enterMs - loopMs;
-            actionFrame = exit[Math.floor(t / adef.frameMs)] ?? null;
+            bufferedInteractRef.current = 0;
+            bag.interact(nearRef.current);
           }
         }
       }
@@ -1476,13 +1513,27 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         prev.prev = pad.prev;
       }
 
-      // --- sequencer ----------------------------------------------------------
-      if (seqRef.current && !fadingRef.current) stepSequence(now);
+      // --- sequencer (core/sequencer owns the beats) ----------------------------
+      if (seqRef.current && !fadingRef.current) {
+        const running = seqRef.current;
+        if (stepSequence(running, seqHost, now)) {
+          seqRef.current = null;
+          if (running.cinematic) {
+            inputLockRef.current = false;
+            setCinema(false);
+            camRig.current.focusX = null;
+            camRig.current.zoomTarget = 1;
+          }
+          forcedFrameRef.current = null;
+          running.resolve(true);
+        }
+      }
 
       const blocked = paused || actionFrame !== null;
 
-      // --- simulation: fixed steps, bounded backlog ---------------------------
+      // --- simulation: fixed steps, bounded backlog, band-aware ---------------
       const p = pos.current;
+      const ground = groundOf(def);
       let moving = false;
       let arrived = false;
       let simSteps = 0;
@@ -1492,32 +1543,69 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         const stepMs = 1000 / Math.max(15, cfg.simHz);
         while (acc >= stepMs && simSteps < cfg.maxSubsteps) {
           const dt = stepMs / 1000;
-          let dir = 0;
+          let dirX = 0;
+          let dirY = 0;
+          const k = keys.current;
+          const pad = padRef.current;
           const manual =
             !inputLockRef.current &&
-            (keys.current.left ||
-              keys.current.right ||
-              padRef.current.left ||
-              padRef.current.right);
+            (k.left || k.right || k.up || k.down || pad.left || pad.right || pad.up || pad.down);
           if (manual) {
-            if (keys.current.left || padRef.current.left) dir -= 1;
-            if (keys.current.right || padRef.current.right) dir += 1;
-            if (dir !== 0 && autoWalkRef.current) cancelAutoWalkStatic(autoWalkRef);
+            if (k.left || pad.left) dirX -= 1;
+            if (k.right || pad.right) dirX += 1;
+            if (k.up || pad.up) dirY -= 1;
+            if (k.down || pad.down) dirY += 1;
+            if ((dirX !== 0 || dirY !== 0) && autoWalkRef.current) {
+              cancelAutoWalkStatic(autoWalkRef);
+            }
           } else if (autoWalkRef.current) {
-            const gap = autoWalkRef.current.x - p.x;
-            if (Math.abs(gap) <= ARRIVE_EPS || now > autoWalkRef.current.deadline) {
+            const walk = autoWalkRef.current;
+            const gapX = walk.x - p.x;
+            const gapY = walk.y === undefined ? 0 : clampY(ground, walk.y) - p.y;
+            const gap = Math.abs(gapX) + Math.abs(gapY);
+            if (gap < walk.lastGap - 0.05) {
+              walk.lastGap = gap;
+              walk.progressAt = now;
+            }
+            if (Math.abs(gapX) <= ARRIVE_EPS && Math.abs(gapY) <= ARRIVE_EPS) {
               arrived = true;
+            } else if (now > walk.deadline) {
+              // the old contract: a timeout still counts as "close enough"
+              arrived = true;
+            } else if (now - walk.progressAt > WALK_STALL_MS) {
+              // a blocker in the way: stop trying instead of moonwalking
+              autoWalkRef.current = null;
+              walk.resolve?.(false);
             } else {
-              dir = gap > 0 ? 1 : -1;
+              if (Math.abs(gapX) > ARRIVE_EPS) dirX = gapX > 0 ? 1 : -1;
+              if (Math.abs(gapY) > ARRIVE_EPS) dirY = gapY > 0 ? 1 : -1;
             }
           }
-          if (dir !== 0) {
-            p.facing = dir as 1 | -1;
-            p.x = clamp(p.x + dir * bag.walkSpeed * dt, EDGE_MARGIN, def.width - EDGE_MARGIN);
-            // bounded, and aligned to the cycle so wrapping never skips a frame
+          if (dirX !== 0 || dirY !== 0) {
+            if (dirX !== 0) p.facing = dirX as 1 | -1;
+            const dx = dirX * bag.walkSpeed * dt;
+            const dy = dirY * bag.walkSpeedY * dt;
+            const next = stepOnGround(
+              ground,
+              p.x,
+              p.y,
+              dx,
+              dy,
+              EDGE_MARGIN,
+              def.width - EDGE_MARGIN,
+            );
+            p.x = next.x;
+            p.y = next.y;
+            // attempted distance, not actual: pushing against an edge or a
+            // blocker keeps the walk cycle alive, as it always has at the
+            // scene margins. Bounded, and aligned to the cycle so wrapping
+            // never skips a frame.
             const span = 16 * Math.max(1, player.walkCycle.length) * 512;
-            p.walkDist = (p.walkDist + Math.abs(dir * bag.walkSpeed * dt)) % span;
+            p.walkDist = (p.walkDist + Math.abs(dx) + Math.abs(dy)) % span;
             moving = true;
+          } else if (p.y < ground.top || p.y > ground.bottom) {
+            // self-heal a stale save or a scene whose band changed under it
+            p.y = clampY(ground, p.y);
           }
           acc -= stepMs;
           simSteps++;
@@ -1553,12 +1641,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         const stale =
           Number.isNaN(detect.x) ||
           Math.abs(p.x - detect.x) > 0.5 ||
+          Math.abs(p.y - detect.y) > 0.5 ||
           detect.facing !== p.facing ||
           detect.rev !== worldRevRef.current ||
           detect.sceneKey !== sceneKey ||
           now - detect.at > DETECT_SAFETY_MS;
         if (stale) {
           detect.x = p.x;
+          detect.y = p.y;
           detect.facing = p.facing;
           detect.rev = worldRevRef.current;
           detect.sceneKey = sceneKey;
@@ -1576,31 +1666,17 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                 : def.objects.filter((o) => !consumedRef.current.has(o.id));
           }
 
-          const detected = detectObjects(cache.list, p.x, p.facing, worldRef.current);
+          const detected = detectObjects(cache.list, p.x, p.facing, worldRef.current, p.y);
           candidatesRef.current = detected.map((d) => d.obj);
-          let active: SceneObject | null = null;
-          if (detected.length > 0) {
-            const locked = lockIdRef.current
-              ? detected.find((d) => d.obj.id === lockIdRef.current)
-              : undefined;
-            if (locked) {
-              active = locked.obj;
-            } else {
-              lockIdRef.current = null; // lock left range — release it
-              const prev = nearRef.current
-                ? detected.find((d) => d.obj.id === nearRef.current?.id)
-                : undefined;
-              // hysteresis: the current target keeps focus unless clearly beaten
-              active =
-                prev && prev.score <= detected[0].score + STICKY_MARGIN
-                  ? prev.obj
-                  : detected[0].obj;
-            }
-          } else {
-            lockIdRef.current = null;
-          }
-          nearRef.current = active;
-          bag.pushTargets(candidatesRef.current, active?.id ?? null);
+          // manual lock while it lasts, then sticky hysteresis (core/math owns the rules)
+          const resolved = resolveActiveTarget(
+            detected,
+            nearRef.current?.id ?? null,
+            lockIdRef.current,
+          );
+          lockIdRef.current = resolved.lockId;
+          nearRef.current = resolved.active;
+          bag.pushTargets(candidatesRef.current, resolved.active?.id ?? null);
         }
       }
 
@@ -1609,69 +1685,26 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         if (target) bag.interact(target);
       }
 
-      // --- camera -------------------------------------------------------------
-      // a rig, not a bolt: eased follow, look-ahead into the walk, step bob,
-      // an idle breath, decaying shake, plus a cinematic focus and zoom
+      // --- camera (core/cameraRig owns the curves) ------------------------------
       const rig = camRig.current;
-      const scrollable = def.width * scale > viewW;
-      const focused = rig.focusX;
-      const cam = cameraTransform(p.x, def.width, scale, viewW, viewH);
-      const idealPan = focused === null ? cam.x : viewW / 2 - focused * scale;
-
-      if (Number.isNaN(rig.x)) {
-        rig.x = idealPan;
-        rig.look = 0;
-        rig.zoom = rig.zoomTarget;
-      }
-      // exponential ease toward the ideal position — frame-rate independent
-      const follow = reduced ? 1 : 1 - Math.exp(-(frameMs / 1000) * 6.5);
-      rig.x += (idealPan - rig.x) * follow;
-      rig.zoom += (rig.zoomTarget - rig.zoom) * (1 - Math.exp(-(frameMs / 1000) * rig.zoomRate));
-      if (Math.abs(rig.zoom - rig.zoomTarget) < 0.002) rig.zoom = rig.zoomTarget;
-      // look-ahead: lean into the walk, settle back when standing
-      const lookTarget =
-        scrollable && moving && focused === null && !reduced ? -p.facing * 22 * scale : 0;
-      rig.look += (lookTarget - rig.look) * (1 - Math.exp(-(frameMs / 1000) * 2.2));
-      // step bob while walking, a slow breath while standing
-      let bobY = 0;
-      if (reduced) {
-        rig.bobT = 0;
-      } else if (moving) {
-        rig.bobT += frameMs / 1000;
-        bobY = Math.sin(rig.bobT * 13) * 0.3 * scale;
-      } else {
-        rig.bobT = 0;
-        rig.swayT += frameMs / 1000;
-        bobY = Math.sin(rig.swayT * 0.9) * 0.12 * scale;
-      }
-      // shake: random decaying offset
-      let shakeX = 0;
-      let shakeY = 0;
-      if (now < rig.shakeUntil) {
-        const left = (rig.shakeUntil - now) / 300;
-        const mag = rig.shakeMag * Math.min(1, left);
-        shakeX = (Math.random() * 2 - 1) * mag;
-        shakeY = (Math.random() * 2 - 1) * mag;
-      } else {
-        rig.shakeMag = 0;
-      }
-
-      // scale about the focus point, so pan math stays zoom-independent
-      const originX = (focused === null ? p.x : focused) * scale;
-      const originY = FLOOR_Y * scale;
-      const zoom = rig.zoom;
-      let panX = rig.x + rig.look + shakeX;
-      if (scrollable || zoom !== 1) {
-        // keep both scene edges outside the viewport under the composed transform
-        const worldW = def.width * scale;
-        const maxPan = originX * (zoom - 1);
-        const minPan = viewW - originX - (worldW - originX) * zoom;
-        panX = minPan > maxPan ? (minPan + maxPan) / 2 : clamp(panX, minPan, maxPan);
-      }
-      const panY = cam.y + bobY + shakeY;
+      const camView = stepCamRig(rig, {
+        frameMs,
+        now,
+        reduced,
+        moving,
+        playerX: p.x,
+        facing: p.facing,
+        sceneW: def.width,
+        scale,
+        viewW,
+        viewH,
+      });
+      const { panX, panY, zoom, originX, originY, scrollable } = camView;
       camStateRef.current.pan = panX;
+      camStateRef.current.panY = panY;
       camStateRef.current.zoom = zoom;
       camStateRef.current.originX = originX;
+      camStateRef.current.originY = originY;
       camStateRef.current.scale = scale;
 
       const dom = domCache.current;
@@ -1763,10 +1796,11 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       }
 
       // player transform + the monologue anchor riding above their head
+      const bandDepth = hasDepth(ground);
       const playerEl = playerElRef.current;
       if (playerEl) {
         const px = (p.x - player.width / 2) * scale;
-        const py = (FLOOR_Y - player.height) * scale;
+        const py = (p.y - player.height) * scale;
         const playerT = `translate3d(${px}px, ${py}px, 0) scaleX(${p.facing})`;
         if (playerT !== dom.player) {
           dom.player = playerT;
@@ -1775,12 +1809,17 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         } else {
           domCounters.current.skips += 1;
         }
+        // depth sort: in a band scene the nearer figure paints in front
+        const playerZ = bandDepth ? String(Z_BAND_BASE + Math.round(p.y)) : String(Z_PLAYER_FLAT);
+        if (playerZ !== dom.playerZ) {
+          dom.playerZ = playerZ;
+          playerEl.style.zIndex = playerZ;
+          domCounters.current.writes += 1;
+        }
       }
       const monoEl = monologueElRef.current;
       if (monoEl) {
-        const monoT = `translate3d(${p.x * scale}px, ${
-          (FLOOR_Y - player.height - 4) * scale
-        }px, 0)`;
+        const monoT = `translate3d(${p.x * scale}px, ${(p.y - player.height - 4) * scale}px, 0)`;
         if (monoT !== dom.mono) {
           dom.mono = monoT;
           monoEl.style.transform = monoT;
@@ -1788,79 +1827,12 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         }
       }
 
-      // --- player frame -------------------------------------------------------
-      /**
-       * Standing about.
-       *
-       * The old program was three wall-clock modulos — `now % 1700` for the
-       * breath, `now % 4200` for the blink, `now % 11000` for a flourish. Three
-       * problems came out of that, all of them visible:
-       *
-       *  – the blink derived from `stand` and the out-breath from `stand` minus
-       *    a pixel, so every blink bounced the whole body up and back down;
-       *  – the flourish was keyed to the wall clock rather than to how long he
-       *    had actually been standing, so stopping at the wrong moment made him
-       *    stretch overhead 200 ms later, and it fired during conversations;
-       *  – and being modulo, it was perfectly regular. Metronomic idles are the
-       *    single clearest tell that a character is a sprite rather than a person.
-       *
-       * What replaced it: breath and blink run on the same clock so a blink
-       * takes the breath's current pose rather than resetting it, the intervals
-       * are jittered from a cheap hash so no two are the same length, and the
-       * flourish waits on real idle time and never runs while the game is paused.
-       */
+      // --- player frame (core/idleBrain owns the standing-about behaviour) -----
       let idleFrame = "stand";
       if (!moving && !actionFrame) {
-        const idle = idleRef.current;
-        if (idle.since === 0) {
-          idle.since = now;
-          idle.nextBlink = now + 2200 + jitter(now, 3200);
-          idle.nextFlourish = now + IDLE_FLOURISH_MIN + jitter(now + 1, IDLE_FLOURISH_SPREAD);
-        }
-        // the breath: down for a beat, up for a beat, the beat itself drifting
-        const cycle = 1500 + jitter(Math.floor(now / 3400), 500);
-        const out = now % cycle < cycle * 0.52;
-        const breath = out ? "stand" : "idleB";
-
-        if (now >= idle.nextBlink) {
-          if (now >= idle.nextBlink + BLINK_MS) {
-            idle.nextBlink = now + 1800 + jitter(now, 4200);
-          } else {
-            // blink at whatever height the breath has him: the lids close, the
-            // ribs do not jump
-            const lowBlink = out ? "blink" : "blinkLow";
-            idleFrame = player.frames[lowBlink] ? lowBlink : "blink";
-          }
-        }
-        if (idleFrame === "stand") idleFrame = breath;
-
-        if (!paused && now >= idle.nextFlourish) {
-          const ft = now - idle.nextFlourish;
-          const pick = idle.flourish;
-          const done = (ms: number) => {
-            if (ft >= ms) {
-              idle.flourish = (pick + 1 + (jitter(now, 3) % 2)) % IDLE_FLOURISHES;
-              idle.nextFlourish = now + IDLE_FLOURISH_MIN + jitter(now, IDLE_FLOURISH_SPREAD);
-              return true;
-            }
-            return false;
-          };
-          if (def.idleLean) {
-            if (!done(2600)) idleFrame = "leanIdle";
-          } else if (pick === 0) {
-            if (!done(2400)) {
-              idleFrame = ft < 500 ? "stretchA" : ft < 1900 ? "stretchB" : "stretchA";
-            }
-          } else if (pick === 1) {
-            if (!done(1600)) idleFrame = "lookBack";
-          } else {
-            // the shortest one: weight off one foot and back, which is what
-            // people actually do while they are waiting for nothing
-            if (!done(2000)) idleFrame = ft < 1000 ? "idleB" : breath;
-          }
-        }
+        idleFrame = stepIdle(idleRef.current, now, paused, player.frames, def.idleLean ?? false);
       } else {
-        idleRef.current.since = 0;
+        resetIdle(idleRef.current);
       }
       let frame =
         forcedFrameRef.current ??
@@ -1895,6 +1867,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         live.moving = moving;
         live.facing = p.facing as 1 | -1;
         live.x = Math.round(p.x);
+        live.y = Math.round(p.y);
         live.scene = sceneRef.current;
       }
 
@@ -1938,12 +1911,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           if (!st) {
             st = {
               x: actor.x,
+              y: actor.y ?? FLOOR_Y,
               facing: actor.facing ?? 1,
               dist: 0,
               dir: 1,
               pauseUntil: 0,
               frame: actor.idleFrame ?? "stand",
               hidden: false,
+              z: Number.NaN,
             };
             actorStateRef.current[actor.id] = st;
           }
@@ -1965,6 +1940,10 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
               if (custom.x !== undefined) {
                 actorMoving = Math.abs(custom.x - st.x) > 0.01;
                 st.x = custom.x;
+              }
+              if (custom.y !== undefined) {
+                if (Math.abs(custom.y - st.y) > 0.01) actorMoving = true;
+                st.y = clampY(ground, custom.y);
               }
               if (custom.facing) st.facing = custom.facing;
               if (custom.frame) st.frame = custom.frame;
@@ -1994,11 +1973,18 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                 ? cycle[Math.floor(st.dist / 16) % cycle.length]
                 : (actor.idleFrame ?? "stand");
           }
-          const baseY = (actor.y ?? FLOOR_Y) - actor.height;
+          const baseY = st.y - actor.height;
           const t = `translate3d(${(st.x - actor.width / 2) * scale}px, ${baseY * scale}px, 0) scaleX(${st.facing})`;
           if (el.dataset.t !== t) {
             el.dataset.t = t;
             el.style.transform = t;
+            domCounters.current.writes += 1;
+          }
+          // depth sort against the player and each other in band scenes
+          const z = bandDepth ? Z_BAND_BASE + Math.round(st.y) : (actor.z ?? Z_ACTOR_FLAT);
+          if (z !== st.z) {
+            st.z = z;
+            el.style.zIndex = String(z);
             domCounters.current.writes += 1;
           }
           const shownKey = `${actor.id}:${st.frame}`;
@@ -2057,120 +2043,6 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           sa.frames = 0;
           sa.since = now;
         }
-      }
-    }
-
-    /** One beat at a time; instant steps collapse in the same frame. */
-    function stepSequence(now: number) {
-      const run = seqRef.current;
-      if (!run) return;
-      const bag = loopBag.current;
-      const make = ctxFactoryRef.current;
-      const anchor = (nearRef.current ??
-        (bag.scenes[sceneRef.current] as RuntimeSceneDef<W>).objects[0]) as SceneObject;
-      let guard = 0;
-      while (run.i < run.steps.length && guard++ < 32) {
-        const step = run.steps[run.i] as Record<string, unknown>;
-        if (!run.entered) {
-          run.entered = true;
-          run.enteredAt = now;
-          run.deadline = 0;
-          enterStep(step, now, anchor);
-        }
-        if (!stepDone(step, now)) return;
-        run.i++;
-        run.entered = false;
-      }
-      if (run.i >= run.steps.length) {
-        seqRef.current = null;
-        if (run.cinematic) {
-          inputLockRef.current = false;
-          setCinema(false);
-          camRig.current.focusX = null;
-          camRig.current.zoomTarget = 1;
-        }
-        forcedFrameRef.current = null;
-        run.resolve(true);
-      }
-
-      function enterStep(step: Record<string, unknown>, at: number, obj: SceneObject) {
-        const run2 = seqRef.current;
-        if (!run2) return;
-        if ("wait" in step) {
-          run2.deadline = at + Number(step.wait);
-        } else if ("say" in step) {
-          const text = String(step.say);
-          bag.showToast(text);
-          run2.deadline = at + Math.min(3200, 1200 + text.length * 28);
-        } else if ("walkTo" in step) {
-          cancelAutoWalkStatic(autoWalkRef);
-          autoWalkRef.current = {
-            x: clamp(
-              Number(step.walkTo),
-              EDGE_MARGIN,
-              (bag.scenes[sceneRef.current] as RuntimeSceneDef<W>).width - EDGE_MARGIN,
-            ),
-            deadline: at + Number(step.timeoutMs ?? 8000),
-            interactId: null,
-          };
-        } else if ("face" in step) {
-          pos.current.facing = step.face === -1 ? -1 : 1;
-        } else if ("hold" in step) {
-          forcedFrameRef.current = String(step.hold);
-          run2.deadline = at + Number(step.forMs ?? 600);
-        } else if ("action" in step) {
-          bag.startAction(String(step.action));
-        } else if ("world" in step) {
-          bag.updateWorld(step.world as Partial<W>);
-        } else if ("fx" in step) {
-          const spec = step.fx as { kind: string; x?: number; ttlMs?: number; data?: unknown };
-          bag.spawnFx(spec.kind, spec.x ?? pos.current.x, spec.ttlMs ?? 900, spec.data);
-        } else if ("shake" in step) {
-          bag.shakeCamera(Number(step.shake), Number(step.ms ?? 300));
-        } else if ("flash" in step) {
-          const spec = step.flash as { color?: string; ms?: number };
-          bag.flash(spec.color, spec.ms);
-        } else if ("focus" in step) {
-          bag.focusCamera(step.focus as number | null, Number(step.ms ?? 500));
-        } else if ("letterbox" in step) {
-          bag.letterbox(Boolean(step.letterbox));
-        } else if ("travel" in step) {
-          const spec = step.travel as { scene: string; spawnX?: number };
-          bag.travel(spec.scene, spec.spawnX);
-        } else if ("dialogue" in step) {
-          const open = openDialogue(
-            step.dialogue as DialogueTree<never>,
-            () => ctxFactoryRef.current?.(obj) as unknown,
-          );
-          if (open.kind === "continue") {
-            open.onEnter?.(ctxFactoryRef.current?.(obj) as unknown);
-            setDialogue({ state: open.state, obj });
-          }
-        } else if ("sound" in step) {
-          soundRef.current?.(String(step.sound));
-        } else if ("do" in step) {
-          if (make) (step.do as (c: RuntimeCtx<W>) => void)(make(obj));
-        } else if ("until" in step) {
-          run2.deadline = at + Number(step.timeoutMs ?? 10000);
-        }
-      }
-
-      function stepDone(step: Record<string, unknown>, at: number): boolean {
-        const run2 = seqRef.current;
-        if (!run2) return false;
-        if ("walkTo" in step) return autoWalkRef.current === null;
-        if ("action" in step) return actionRef.current === null;
-        if ("dialogue" in step) return dialogueRef.current === null;
-        if ("travel" in step) return !fadingRef.current;
-        if ("until" in step) {
-          return (step.until as () => boolean)() || at >= run2.deadline;
-        }
-        if (run2.deadline > 0) {
-          if (at < run2.deadline) return false;
-          if ("hold" in step) forcedFrameRef.current = null;
-          return true;
-        }
-        return true;
       }
     }
 
@@ -2242,8 +2114,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           : nearRef.current;
         if (obj) bag.interact(obj);
       },
-      travel: (scene, spawnX) => apiBag.current.travel(scene, spawnX),
-      walkTo: (x) => apiBag.current.walkTo(x),
+      travel: (scene, spawnX, spawnY) => apiBag.current.travel(scene, spawnX, spawnY),
+      walkTo: (x, y) => apiBag.current.walkTo(x, y === undefined ? undefined : { y }),
       runSequence: (steps, o) => apiBag.current.runSequence(steps, o),
       getWorld: () => worldRef.current,
       updateWorld: (patch) => apiBag.current.updateWorld(patch),
@@ -2285,6 +2157,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
   // --- render ---------------------------------------------------------------------------------------
   const { scale } = view;
+  /** Depth to walk in this scene — the touch controls grow a vertical pair. */
+  const bandHasDepth = hasDepth(groundOf(def));
   const activeTarget = targets.activeId
     ? (targets.list.find((o) => o.id === targets.activeId) ?? null)
     : null;
@@ -2314,7 +2188,6 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     ),
     [SceneArt, def.width, artWorld, artKey, phase],
   );
-  // biome-ignore lint/correctness/useExhaustiveDependencies: artKey stands in for world when provided
   /**
    * Re-find the scene's parallax layers whenever the artwork remounts. Doing
    * it here rather than in the frame loop keeps a `querySelectorAll` out of
@@ -2494,11 +2367,12 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                   {playerNode}
                 </div>
 
-                {/* the character's inner monologue, spoken over their head */}
+                {/* the character's inner monologue, spoken over their head —
+                    above every depth-sorted figure (band z tops out ~200) */}
                 <div
                   ref={monologueElRef}
-                  className="absolute top-0 left-0 z-20"
-                  style={{ willChange: "transform" }}
+                  className="absolute top-0 left-0"
+                  style={{ willChange: "transform", zIndex: Z_FOREGROUND + 50 }}
                 >
                   {config.renderMonologue ? (
                     config.renderMonologue(toast && !intro && !overlay ? toast : null, scale)
@@ -2527,11 +2401,16 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                   )}
                 </div>
 
-                {/* the Foreground CONTRACT: in front of the player, always. The player
-                div carries zIndex 10, so an unstyled scene Foreground (z auto)
-                would paint behind him — this wrapper makes the promise true
-                for every scene without each one remembering a z-index. */}
-                <div className="pointer-events-none absolute inset-0" style={{ zIndex: 15 }}>
+                {/* the Foreground CONTRACT: in front of the player, always. The
+                player div carries zIndex 10 (or 20+feetY in a ground-band
+                scene, which tops out near 200), so an unstyled scene
+                Foreground (z auto) would paint behind him — this wrapper makes
+                the promise true for every scene without each one remembering
+                a z-index. */}
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{ zIndex: Z_FOREGROUND }}
+                >
                   {foregroundNode}
                 </div>
 
@@ -2576,38 +2455,58 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
               className="absolute right-0 bottom-0 left-0 hidden justify-between p-4 [@media(pointer:coarse)]:flex"
               style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
             >
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  aria-label="Walk left"
-                  className="h-14 w-14 border border-parchment/30 bg-black/40 text-parchment text-xl active:bg-parchment/20"
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    keys.current.left = true;
-                    cancelAutoWalkStatic(autoWalkRef);
-                    wakeRef.current();
-                  }}
-                  onPointerUp={pointerStop}
-                  onPointerLeave={pointerStop}
-                >
-                  ◀
-                </button>
-                <button
-                  type="button"
-                  aria-label="Walk right"
-                  className="h-14 w-14 border border-parchment/30 bg-black/40 text-parchment text-xl active:bg-parchment/20"
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    keys.current.right = true;
-                    cancelAutoWalkStatic(autoWalkRef);
-                    wakeRef.current();
-                  }}
-                  onPointerUp={pointerStop}
-                  onPointerLeave={pointerStop}
-                >
-                  ▶
-                </button>
-              </div>
+              {bandHasDepth ? (
+                /* a d-pad when the scene has depth: ▲ over ◀ ▼ ▶ */
+                <div className="grid grid-cols-3 gap-1">
+                  <div />
+                  <WalkButton
+                    label="Walk up"
+                    glyph="▲"
+                    dir="up"
+                    press={pressWalk}
+                    stop={pointerStop}
+                  />
+                  <div />
+                  <WalkButton
+                    label="Walk left"
+                    glyph="◀"
+                    dir="left"
+                    press={pressWalk}
+                    stop={pointerStop}
+                  />
+                  <WalkButton
+                    label="Walk down"
+                    glyph="▼"
+                    dir="down"
+                    press={pressWalk}
+                    stop={pointerStop}
+                  />
+                  <WalkButton
+                    label="Walk right"
+                    glyph="▶"
+                    dir="right"
+                    press={pressWalk}
+                    stop={pointerStop}
+                  />
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  <WalkButton
+                    label="Walk left"
+                    glyph="◀"
+                    dir="left"
+                    press={pressWalk}
+                    stop={pointerStop}
+                  />
+                  <WalkButton
+                    label="Walk right"
+                    glyph="▶"
+                    dir="right"
+                    press={pressWalk}
+                    stop={pointerStop}
+                  />
+                </div>
+              )}
               <button
                 type="button"
                 aria-label="Interact"
@@ -2719,7 +2618,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                     : stats.live.moving
                       ? "walking"
                       : "idle"}{" "}
-                  · {stats.live.scene} @{stats.live.x} · face {stats.live.facing > 0 ? "→" : "←"}
+                  · {stats.live.scene} @{stats.live.x},{stats.live.y} · face{" "}
+                  {stats.live.facing > 0 ? "→" : "←"}
                 </div>
               </div>
             ))
@@ -2729,10 +2629,60 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   );
 }
 
+/** One touch walk key. Press-and-hold; releasing (or sliding off) stops. */
+function WalkButton({
+  label,
+  glyph,
+  dir,
+  press,
+  stop,
+}: {
+  label: string;
+  glyph: string;
+  dir: "left" | "right" | "up" | "down";
+  press: (dir: "left" | "right" | "up" | "down") => void;
+  stop: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className="h-14 w-14 border border-parchment/30 bg-black/40 text-parchment text-xl active:bg-parchment/20"
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        press(dir);
+      }}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+    >
+      {glyph}
+    </button>
+  );
+}
+
 /** Cancel an in-flight auto-walk from anywhere, resolving its promise as false. */
 function cancelAutoWalkStatic(ref: { current: { resolve?: (ok: boolean) => void } | null }): void {
   const walk = ref.current;
   if (!walk) return;
   ref.current = null;
   walk.resolve?.(false);
+}
+
+/** A fresh auto-walk record, with the stall detector armed. */
+function newAutoWalk(
+  x: number,
+  y: number | undefined,
+  deadline: number,
+  interactId: string | null,
+  resolve?: (ok: boolean) => void,
+) {
+  return {
+    x,
+    y,
+    deadline,
+    interactId,
+    resolve,
+    lastGap: Number.POSITIVE_INFINITY,
+    progressAt: nowMs(),
+  };
 }

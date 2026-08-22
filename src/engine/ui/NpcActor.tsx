@@ -5,6 +5,7 @@ import type { ActorDef } from "../core/runtime-types";
 import type { AnyWorld, SpriteMap } from "../core/types";
 import type { NpcConfig } from "../sprite/npcBuilder";
 import { useAnimationGate, useReducedMotion } from "./animationGate";
+import { frameTicker } from "./frameTicker";
 import { PixelSprite } from "./PixelSprite";
 import { speakingAction, useSpeaking } from "./speaking";
 
@@ -51,11 +52,9 @@ export function useNpcFrame(npc: NpcConfig, action?: string, playing = true): Sp
   useEffect(() => {
     setI(start);
     if (!playing || still || frames.length < 2) return;
-    const timer = window.setInterval(
-      () => setI((n) => (n + 1) % frames.length),
-      def?.frameMs ?? 500,
-    );
-    return () => window.clearInterval(timer);
+    // the shared ticker, not an own interval: every breathing figure in the
+    // scene advances off one timer and lands in one React commit
+    return frameTicker.every(def?.frameMs ?? 500, () => setI((n) => (n + 1) % frames.length));
   }, [frames, def?.frameMs, playing, still, start]);
 
   return npc.frames[frames[i] ?? "stand"] ?? npc.frames.stand;

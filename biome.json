@@ -6,7 +6,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!public/*.svg", "!src/routeTree.gen.ts"]
+    "includes": ["**", "!public/*.svg", "!src/routeTree.gen.ts", "!.probe.mjs", "!.probe-shim.mjs"]
   },
   "css": {
     "parser": {

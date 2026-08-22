@@ -609,17 +609,6 @@ export const PLAYER_FRAMES: Record<FrameName, string[]> = {
   prayD: compose(LEGS_STAND, [{ r: 10, c: 11, rows: ["ssss"] }]),
 };
 
-// Contact, pass, contact, pass — two steps. It used to read
-// ["strideLow", "stand", "pass", "stand"], which put the standing idle pose in
-// half of the walk: he covered one step per cycle and came to attention twice
-// on the way. `stride` and `strideLow` are the same contact a pixel apart in
-// height, which is as close to an opposite contact as this legacy set gets.
-//
-// The rig that actually ships is the part-built one in game/apartment/player.ts
-// and it declares its own cycle beside the frames it names. This constant is
-// only read by the superseded ApartmentGame.
-export const WALK_CYCLE: FrameName[] = ["strideLow", "pass", "stride", "pass"];
-
 export const PLAYER_W = 48; // gp (24 cells × 2)
 export const PLAYER_H = 76; // gp (38 cells × 2)
 

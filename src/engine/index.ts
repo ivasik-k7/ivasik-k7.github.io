@@ -25,6 +25,7 @@ export { playSfx, type SfxName, setSfxLevel } from "./audio/sfx";
 export { mumble, type VoiceProfile, voiceFor } from "./audio/voice";
 // core
 export * from "./core/constants";
+export * from "./core/ground";
 export * from "./core/math";
 export {
   DEFAULT_PREFS,
@@ -45,6 +46,8 @@ export {
 export { CullBox, CullStrip, useIsVisible, useVisibleBand } from "./core/runtime-cull";
 export type {
   ActorDef,
+  GroundBand,
+  GroundBlocker,
   InputAction,
   LiveState,
   QualityTier,

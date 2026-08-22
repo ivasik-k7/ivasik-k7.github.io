@@ -469,14 +469,23 @@ export class AtlasSprite {
 
 /* ------------------------------------------------------------------ input */
 
+/**
+ * The vertical keys belong to movement now that the ground is a band:
+ * ArrowUp/W walk away from the camera, ArrowDown/S walk toward it — and in a
+ * dialogue they still move the choice cursor, which is what a player expects
+ * those keys to do there anyway. Target cycling moved to Q/Z (it also lives
+ * on the gamepad shoulders and on tap-to-pick).
+ */
 export const DEFAULT_KEYMAP: Record<InputAction, string[]> = {
   left: ["ArrowLeft", "KeyA"],
   right: ["ArrowRight", "KeyD"],
+  up: ["ArrowUp", "KeyW"],
+  down: ["ArrowDown", "KeyS"],
   interact: ["KeyE", "Enter", "NumpadEnter", "Space"],
   cancel: ["Escape"],
   menu: ["Tab", "KeyM"],
-  targetNext: ["ArrowUp", "KeyW"],
-  targetPrev: ["ArrowDown", "KeyS"],
+  targetNext: ["KeyQ"],
+  targetPrev: ["KeyZ"],
   debug: ["F3", "Backquote"],
 };
 
@@ -496,6 +505,8 @@ export type PadState = {
   connected: boolean;
   left: boolean;
   right: boolean;
+  up: boolean;
+  down: boolean;
   interact: boolean;
   cancel: boolean;
   menu: boolean;
@@ -507,6 +518,8 @@ export const newPadState = (): PadState => ({
   connected: false,
   left: false,
   right: false,
+  up: false,
+  down: false,
   interact: false,
   cancel: false,
   menu: false,
@@ -517,7 +530,8 @@ export const newPadState = (): PadState => ({
 /** Polled, not evented — a gamepad read costs nothing and allocates nothing here. */
 export function readPad(out: PadState, deadzone = 0.35): PadState {
   out.connected = false;
-  out.left = out.right = out.interact = out.cancel = out.menu = out.next = out.prev = false;
+  out.left = out.right = out.up = out.down = false;
+  out.interact = out.cancel = out.menu = out.next = out.prev = false;
   const nav = typeof navigator !== "undefined" ? navigator : undefined;
   if (!nav?.getGamepads) return out;
   const pads = nav.getGamepads();
@@ -525,9 +539,12 @@ export function readPad(out: PadState, deadzone = 0.35): PadState {
     if (!pad?.connected) continue;
     out.connected = true;
     const axis = pad.axes.length > 0 ? pad.axes[0] : 0;
+    const axisY = pad.axes.length > 1 ? pad.axes[1] : 0;
     const btn = (i: number) => Boolean(pad.buttons[i]?.pressed);
     if (axis < -deadzone || btn(14)) out.left = true;
     if (axis > deadzone || btn(15)) out.right = true;
+    if (axisY < -deadzone || btn(12)) out.up = true;
+    if (axisY > deadzone || btn(13)) out.down = true;
     if (btn(0)) out.interact = true;
     if (btn(1)) out.cancel = true;
     if (btn(9) || btn(8)) out.menu = true;
