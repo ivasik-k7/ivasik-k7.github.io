@@ -31,7 +31,7 @@ export function RouteMap({
   /** the station id the player boarded at, ringed on the diagram */
   here: string;
   onClose: () => void;
-  onTravel: (scene: string, spawnX: number) => void;
+  onTravel: (scene: string, spawnX: number, stationAt?: string) => void;
 }) {
   const reachable = LINE.map((st, i) => ({ ...st, i })).filter((st) => st.scene);
   const [pick, setPick] = useState(() => {
@@ -55,7 +55,8 @@ export function RouteMap({
     if (!target?.scene) return;
     playSfx("chime");
     /* each station knows where its stair puts you — LINE carries the spawn */
-    onTravel(target.scene, target.spawnX);
+    /* stops sharing the generic platform carry the identity it should wear */
+    onTravel(target.scene, target.spawnX, (target as { stationAt?: string }).stationAt);
   }, [pick, reachable, onTravel]);
 
   const selected = reachable[pick];

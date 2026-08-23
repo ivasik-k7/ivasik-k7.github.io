@@ -189,4 +189,33 @@ describe("planRoute", () => {
     const end = route[route.length - 1];
     expect(insideBlocker(FURNISHED.blockers, end.x, end.y)).toBe(false);
   });
+
+  /**
+   * The walker does not travel straight lines — x and y move at their own
+   * speeds — so every planned leg must be axis-aligned. A diagonal leg that
+   * merely GRAZED a blocker's corner used to validate (the straight segment
+   * was clear) and then wedge the real walker into the corner: the station's
+   * suitcase at {858..876, 158..164} stalled every eastward walk at (858,159).
+   */
+  it("emits only axis-aligned legs, so the decomposed walker cannot bow into corners", async () => {
+    const { planRoute } = await import("./ground");
+    const station: GroundBand = {
+      top: 152,
+      bottom: 170,
+      blockers: [
+        { x0: 678, y0: 152, x1: 712, y1: 158 },
+        { x0: 858, y0: 158, x1: 876, y1: 164 },
+      ],
+    };
+    const route = planRoute(station, 520, 160, 1180, 160, 20, 1980);
+    expect(route[route.length - 1]).toEqual({ x: 1180, y: 160 });
+    let px = 520;
+    let py = 160;
+    for (const w of route) {
+      const diagonal = Math.abs(w.x - px) > 1 && Math.abs(w.y - py) > 1;
+      expect(diagonal).toBe(false);
+      px = w.x;
+      py = w.y;
+    }
+  });
 });

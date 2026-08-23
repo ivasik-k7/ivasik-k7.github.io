@@ -88,6 +88,11 @@ export const resources = {
         /* --- Przymorze-Uniwersytet --- */
         "station-stairs": "UNDERPASS",
         "station-name": "STATION NAME",
+        "station-name-zaspa": "STATION NAME",
+        "station-stairs-closed": "UNDERPASS (SHUT)",
+        "station-mural": "THE MURALS",
+        "station-trolley": "PKP TROLLEY",
+        "station-case": "SOMEONE'S SUITCASE",
         "station-name-2": "STATION NAME",
         "station-timetable": "TIMETABLE",
         "station-biletomat": "TICKET MACHINE",
@@ -393,6 +398,12 @@ export const resources = {
         "club-rules": "HOUSE RULES",
         portaloo: "TOI TOI",
         "dock-fence": "DOCK GATE",
+        "festoon-switch": "FESTOON BREAKER",
+        "street-kosz": "STREET BIN",
+        "bar-crates": "EMPTY CRATES",
+        "drum-table": "CABLE DRUM",
+        "yard-welding": "LIGHT ACROSS THE YARD",
+        "spur-cat": "SOMETHING ON THE WALL",
         /* --- inside Turbina --- */
         "club-exit": "THE STREET",
         "club-cloak": "SZATNIA",
@@ -415,6 +426,26 @@ export const resources = {
         "club-fusebox": "FUSE CABINET",
         "club-yarddoor": "SMOKING YARD",
         "club-cleaner": "PANI SPRZĄTAJĄCA",
+        "club-stamp": "UV STAMP LAMP",
+        "club-tally": "TALLY MARKS",
+        "club-sticky": "THE STICKY PATCH",
+        "club-pallet": "WATER PALLET",
+        "club-heart": "KASIA + ?",
+        "club-shoe": "ONE TRAINER",
+        "club-drum-table": "CABLE DRUM",
+        "club-uv-wall": "GLOW ON THE WALL",
+        "club-graffiti": "THE BIG PIECE",
+        "club-machine-bed": "BOLTS IN THE FLOOR",
+        "club-hoist": "THE OLD HOIST",
+        "club-tags": "TAG WALL",
+        "club-broom": "THE BROOM",
+        "club-couple": "OLA & KUBA",
+        "wc-queue": "THE QUEUE",
+        "club-caller": "MAN ON THE PHONE",
+        "club-technik": "TECHNIK",
+        "club-extinguisher": "CO2 EXTINGUISHER",
+        "club-clock": "THE STOPPED CLOCK",
+        "club-fan": "WALL FAN",
       },
       flavor: {
         cabinet: "A grey utility cabinet, humming with the whole street's internet.",
@@ -442,6 +473,16 @@ export const resources = {
         "station-stairs":
           "Down into the underpass. Tiles, a puddle that never leaves, and somebody's tag on the handrail.",
         "station-name": "PRZYMORZE-UNIWERSYTET. Longer than the platform, nearly.",
+        "station-name-zaspa":
+          "GDAŃSK ZASPA. Under the paint you can just read the old letters saying the same thing. Some facts get repainted, not changed.",
+        "station-stairs-closed":
+          "Mesh barriers and tape over the stair mouth. PRZEJŚCIE ZAMKNIĘTE — REMONT. The date on the notice was three renovations ago.",
+        "station-mural":
+          "The gable ends across the cutting carry murals three storeys tall — a sun, a figure with a raised arm. Zaspa paints its blocks the way other places plant trees.",
+        "station-trolley":
+          "A PKP platform barrow with one strapped bundle, parked at the angle of a job somebody walked away from in 1987. It is not abandoned. It is PKP property.",
+        "station-case":
+          "A hard-shell suitcase, ribbed, one airline sticker. Waiting more patiently than its owner ever did. You decide it is being collected any minute now.",
         "station-name-2": "The same name again, in case the train stops at the other end.",
         "station-timetable":
           "The timetable, behind glass, sun-bleached. Weekdays down the left. You already know it.",
@@ -730,6 +771,16 @@ export const resources = {
           "House rules: no photos on the floor, respect the neighbours (the neighbours are cranes), water is free, go home happy.",
         "dock-fence":
           "The gate to the slipways, locked. Through the palisade: black water, a hull, and the crane K-2 with its light on.",
+        "street-kosz":
+          "The little green bin, planted exactly where frytki finish. Municipal clairvoyance.",
+        "bar-crates":
+          "Empties, stacked into a monument by the container's corner. The deposit on this pile could fund a small festival.",
+        "drum-table":
+          "A cable drum on its end — the yard's furniture line since 1971. Wax from somebody's candle, rings from somebody's glasses.",
+        "yard-welding":
+          "Across the yard a blue light stutters in a shed window. Somebody is on nights over there, joining steel while the street dances.",
+        "spur-cat":
+          "You look up at the wall. Nothing. There was a cat. There was definitely a cat.",
         /* --- inside Turbina --- */
         "club-cloak":
           "SZATNIA, 5 zł. The numbered hooks hold coats, one helmet, and something long and furry nobody has claimed since March.",
@@ -746,6 +797,36 @@ export const resources = {
           "Salvaged LED panels, one dead since opening night. The dead one is somehow the most watchable — everything else obeys the music.",
         "club-crates":
           "Crates of empties, stacked into furniture. By two a.m. someone will be sitting on them explaining techno to a stranger.",
+        "club-tally":
+          "Tally strokes in marker by the bar: four, four, three. Nobody behind the bar will say what they count. The barman's eyes say: don't be the twelfth.",
+        "club-sticky":
+          "The floor here holds your soles a half-beat longer than the music does. Ten years of spilled sugar, lacquered by dancing.",
+        "club-pallet":
+          "A pallet of bottled water behind the bar, shrink-wrapped. Tomorrow's heroes, still in their armour.",
+        "club-heart":
+          "KASIA + a question mark. The plus is confident; the question mark was added later, in different ink.",
+        "club-shoe":
+          "One white trainer, size 43, waiting by the sofa. Its owner is having either the best or the worst night of his life.",
+        "club-drum-table":
+          "The drum table followed the crowd indoors. Candle wax on the top, ring stains from a hundred cups — the yard's furniture line, promoted.",
+        "club-uv-wall":
+          "In the rig's UV the wall says what it never says by day: JUTRO TEŻ JEST NOC. Tomorrow is also a night. Somebody painted a promise.",
+        "club-graffiti":
+          "The big piece behind the floor — four fat letterforms nobody can read and everybody understands. The drips are original. The crowd hides it all night; the morning gets it to itself.",
+        "club-machine-bed":
+          "Anchor bolts, standing proud of the concrete in a neat rectangle. You are dancing on the bed of a lathe. The lathe worked here longer than the club has.",
+        "club-hoist":
+          "The runway hoist, parked at the quiet end with its chain hung. It lifted engines. Now it watches other machinery move people.",
+        "club-tags":
+          "Three tags arguing over one square metre by the WC. The oldest is under the newest, which is the whole history of art.",
+        "club-broom":
+          "The broom, parked with intent. In this building, at this hour, it outranks the sound system.",
+        "club-extinguisher":
+          "CO2, serviced in March, chained to its bracket like it might dance off. The licence's favourite object.",
+        "club-clock":
+          "The wall clock stopped at 4:23 some legendary morning and nobody has dared wind it since. In here it is always 4:23, which is always correct.",
+        "club-fan":
+          "The wall fan above the bar, doing its sincere best against two hundred dancing people. A teaspoon against the tide.",
       },
       toast: {
         boarding: "You step up into the carriage.",
@@ -863,6 +944,11 @@ export const resources = {
         earplugsAgain: "You have a pair. The box knows you have a pair.",
         clubFuse:
           "Behind the steel: a century-old cabinet running a very modern rig. Something in there ticks in three-four against the music.",
+        festoonOff:
+          "You throw the breaker. Forty bulbs die at once and the street remembers it is a shipyard.",
+        festoonOn:
+          "You throw it back. The bulbs catch one strand at a time, like a held breath let out.",
+        festoonAuto: "You set the breaker to AUTO. The street goes back to keeping its own hours.",
         "pallet-bench":
           "You sit on the pallets. They give exactly one centimetre, in a friendly way.",
         "smoke-corner":
@@ -870,6 +956,8 @@ export const resources = {
         "picnic-table": "You sit at the picnic table. The wood remembers every summer since 2016.",
         "club-sofa":
           "You sink into the sofa. It was somebody's living room once; it has stories and no springs.",
+        "club-stamp":
+          "You hold your hand under the violet lamp. The stamp glows back: a small turbine, still turning. You're in. You were already in.",
       },
       dog: {
         "0": "Gross opens one eye, finds everything in order, and closes it.",
@@ -914,6 +1002,8 @@ export const resources = {
         gym: "SIŁKA",
         district: "OSIEDLE",
         station: "PRZYMORZE-UNIW.",
+        "station-przymorze": "PRZYMORZE-UNIW.",
+        "station-zaspa": "GDAŃSK ZASPA",
         train: "SKM",
         elektrykow: "UL. ELEKTRYKÓW",
         raveclub: "TURBINA",

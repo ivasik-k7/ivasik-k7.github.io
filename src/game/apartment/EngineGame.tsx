@@ -10,6 +10,7 @@ import {
   FpsMeter,
   GameRuntime,
   lofiPlayer,
+  Monologue,
   type RuntimeApi,
   type RuntimeConfig,
   type RuntimeSceneDef,
@@ -24,7 +25,6 @@ import {
 import { PauseMenu } from "../menu/PauseMenu";
 import { PLACE_NAME, SAVE_KEY, SAVE_VERSION } from "../menu/saveSummary";
 import { paletteForAppearanceCached } from "./appearance";
-import { CharacterMonologue } from "./CharacterMonologue";
 import { APARTMENT_HANDLERS } from "./handlers";
 import { OUTSIDE_SCENES } from "./outsideScenes";
 import { PLAYER } from "./player";
@@ -43,9 +43,14 @@ const NpcStudio = lazy(() => import("./NpcStudio").then((m) => ({ default: m.Npc
 const PlayerStudio = lazy(() =>
   import("./PlayerStudio").then((m) => ({ default: m.PlayerStudio })),
 );
+/** Minigames ride their own chunks; nobody pays for the bankomat at boot. */
+const Bankomat = lazy(() => import("../minigames/Bankomat").then((m) => ({ default: m.Bankomat })));
+const Guitar = lazy(() => import("../minigames/Guitar").then((m) => ({ default: m.Guitar })));
 
 type Overlay =
   | { type: "panel"; id: PanelId }
+  | { type: "bankomat" }
+  | { type: "guitar" }
   | { type: "terminal" }
   | { type: "menu" }
   | { type: "wardrobe" }
@@ -138,6 +143,8 @@ const VERB: Record<string, string> = {
   speaker: "FEEL",
   earplugs: "TAKE",
   clubfuse: "PEEK",
+  festoon: "SWITCH",
+  bankomat: "USE",
 };
 
 /** Which sound bed each location breathes. */
@@ -168,11 +175,18 @@ const AMBIENCE: Record<string, AmbienceName> = {
  * by the time the map is open the current scene is always "train".
  */
 const SCENE_STATION: Record<string, string> = {
-  station: "przymorze",
+  /* "station" is resolved from world.station.at at scene change — the one
+     scene here that is more than one place */
   district: "oliwa",
   elektrykow: "stocznia",
   raveclub: "stocznia",
 };
+
+/** Which station the generic platform is being right now. */
+function stationIdOf(world: WorldState | undefined): string {
+  const at = (world as unknown as { station?: { at?: unknown } } | undefined)?.station?.at;
+  return typeof at === "string" ? at : "przymorze";
+}
 
 /**
  * The full game, assembled on the Scene Engine: the original apartment
@@ -258,7 +272,8 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     dayPhase: () => dayPhase(new Date().getHours()),
     renderHud: (scene, world, phase, openOverlay) => (
       <HUD
-        room={scene}
+        /* the generic platform names itself by which station it currently is */
+        room={scene === "station" ? `station-${stationIdOf(world)}` : scene}
         phase={phase as DayPhase}
         visited={visited}
         onOpenMenu={() => openOverlay({ type: "menu" })}
@@ -272,9 +287,39 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
       />
     ),
     playerAppearance: (w) => paletteForAppearanceCached(w.appearance),
-    renderMonologue: (toast, scale) => <CharacterMonologue toast={toast} scale={scale} />,
+    renderMonologue: (toast, scale) => (
+      <Monologue kind="thought" scale={scale} text={toast?.text ?? null} contentKey={toast?.id} />
+    ),
     renderOverlay: (overlay, close, world, updateWorld) => {
       const o = overlay as Overlay;
+      if (o.type === "guitar")
+        return (
+          <Suspense key="guitar" fallback={<div className="absolute inset-0 bg-black/85" />}>
+            <Guitar
+              onClose={close}
+              onVerdict={() => {
+                /* the verdict line is the reward; nothing else to award */
+              }}
+            />
+          </Suspense>
+        );
+      if (o.type === "bankomat")
+        return (
+          <Suspense key="bankomat" fallback={<div className="absolute inset-0 bg-black/85" />}>
+            <Bankomat
+              money={world.money}
+              account={world.account ?? 0}
+              onWithdraw={(amount) =>
+                updateWorld((w) => ({
+                  ...w,
+                  money: w.money + amount,
+                  account: (w.account ?? 0) - amount,
+                }))
+              }
+              onClose={close}
+            />
+          </Suspense>
+        );
       if (o.type === "pause")
         return (
           <PauseMenu
@@ -293,8 +338,26 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
             key="routemap"
             here={boardedAt}
             onClose={close}
-            onTravel={(scene, x) => {
+            onTravel={(scene, x, stationAt) => {
               close();
+              /**
+               * The generic platform: stops that share the "station" scene
+               * carry which station it should wake up wearing. Written BEFORE
+               * the travel, so the scene's first paint already has the right
+               * name on its boards.
+               */
+              if (stationAt) {
+                runtimeApi?.updateWorld(
+                  (w) =>
+                    ({
+                      ...w,
+                      station: {
+                        ...((w as unknown as { station?: object }).station ?? {}),
+                        at: stationAt,
+                      },
+                    }) as typeof w,
+                );
+              }
               runtimeApi?.travel(scene, x);
             }}
           />
@@ -343,7 +406,8 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     onSceneChange: (scene) => {
       ambience.set(AMBIENCE[scene] ?? "room");
       setHere(scene);
-      if (SCENE_STATION[scene]) setBoardedAt(SCENE_STATION[scene]);
+      if (scene === "station") setBoardedAt(stationIdOf(runtimeApi?.getWorld()));
+      else if (SCENE_STATION[scene]) setBoardedAt(SCENE_STATION[scene]);
       setVisited((v) => (v.includes(scene) ? v : [...v, scene]));
     },
     onFirstGesture: () => {

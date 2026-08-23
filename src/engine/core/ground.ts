@@ -274,8 +274,49 @@ export function planRoute(
   const target = nearestWalkable(band, tx, ty, minX, maxX);
   const blockers = band.blockers;
   if (!blockers || blockers.length === 0) return [target];
+  const bl = blockers as readonly GroundBlocker[];
   const route = plan(sx, sy, target.x, target.y, depth);
   return route ?? [target];
+
+  /**
+   * A leg the WALKER can actually follow. The walker does not travel straight
+   * lines — it applies x and y at their own speeds (y at 0.62×), so a
+   * diagonal leg bows off any line the planner validated, and a route that
+   * grazed a blocker's corner wedged the player INTO it and stalled the walk.
+   * So the plannable unit is not a segment but an L: two axis-aligned halves,
+   * which a decomposed walker traces exactly. Returns the waypoints of a
+   * clear L (corner included when one is needed), or null.
+   */
+  function lLeg(x0: number, y0: number, x1: number, y1: number): { x: number; y: number }[] | null {
+    if (Math.abs(x1 - x0) <= 1 || Math.abs(y1 - y0) <= 1) {
+      return firstHit(bl, x0, y0, x1, y1) ? null : [{ x: x1, y: y1 }];
+    }
+    const xFirst = { x: x1, y: clampYAt(band, x1, y0) };
+    if (
+      !insideBlocker(bl, xFirst.x, xFirst.y) &&
+      !firstHit(bl, x0, y0, xFirst.x, xFirst.y) &&
+      !firstHit(bl, xFirst.x, xFirst.y, x1, y1)
+    ) {
+      return [xFirst, { x: x1, y: y1 }];
+    }
+    const yFirst = { x: x0, y: clampYAt(band, x0, y1) };
+    if (
+      !insideBlocker(bl, yFirst.x, yFirst.y) &&
+      !firstHit(bl, x0, y0, yFirst.x, yFirst.y) &&
+      !firstHit(bl, yFirst.x, yFirst.y, x1, y1)
+    ) {
+      return [yFirst, { x: x1, y: y1 }];
+    }
+    return null;
+  }
+
+  /** The blocker an L-leg would have to get past — what the detour is FOR. */
+  function legHit(x0: number, y0: number, x1: number, y1: number): GroundBlocker | null {
+    const straight = firstHit(bl, x0, y0, x1, y1);
+    if (straight) return straight;
+    const cy = clampYAt(band, x1, y0);
+    return firstHit(bl, x0, y0, x1, cy) ?? firstHit(bl, x1, cy, x1, y1);
+  }
 
   function plan(
     x0: number,
@@ -284,9 +325,11 @@ export function planRoute(
     y1: number,
     left: number,
   ): { x: number; y: number }[] | null {
-    const hit = firstHit(blockers as readonly GroundBlocker[], x0, y0, x1, y1);
-    if (!hit) return [{ x: x1, y: y1 }];
+    const direct = lLeg(x0, y0, x1, y1);
+    if (direct) return direct;
     if (left <= 0) return null;
+    const hit = legHit(x0, y0, x1, y1);
+    if (!hit) return null;
     const pad = 3;
     const corners = [
       { x: hit.x0 - pad, y: hit.y0 - pad },

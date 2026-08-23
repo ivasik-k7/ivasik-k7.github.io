@@ -35,6 +35,15 @@ await page.addInitScript((h) => {
 }, HOUR);
 
 const live = () => page.evaluate(() => window.__game.getLive());
+/** Travel and WAIT for arrival — scenes are lazy chunks, so the first visit
+ * holds the fade until the chunk lands and a fixed sleep lies about it. */
+const go = async (scene, x, y) => {
+  await page.evaluate(([s2, tx, ty]) => window.__game.travel(s2, tx, ty), [scene, x, y]);
+  await page.waitForFunction((s2) => window.__game.getLive().scene === s2, scene, {
+    timeout: 15000,
+  });
+  await page.waitForTimeout(700);
+};
 const shot = (name) => page.screenshot({ path: `${OUT}/${name}.png` });
 const check = (label, cond) => {
   console.log(cond ? `ok   ${label}` : `FAIL ${label}`);
@@ -51,12 +60,11 @@ await page.keyboard.press("Enter");
 await page.waitForTimeout(500);
 
 // --- Ulica Elektryków --------------------------------------------------------
-await page.evaluate(() => window.__game.travel("elektrykow", 120));
-await page.waitForTimeout(1100);
+await go("elektrykow", 120);
 const spawn = await live();
 check(
-  `elektrykow spawns on band top (y=${spawn.y}, scene=${spawn.scene})`,
-  spawn.scene === "elektrykow" && spawn.y === 150,
+  `elektrykow spawns inside the profiled band (y=${spawn.y}, scene=${spawn.scene})`,
+  spawn.scene === "elektrykow" && spawn.y >= 150 && spawn.y <= 170,
 );
 await shot(`elektrykow-${tag}-1-skm`);
 
@@ -67,8 +75,7 @@ for (const [x, y, name] of [
   [1290, 162, "5-yard"],
   [1560, 154, "6-club"],
 ]) {
-  await page.evaluate(([tx, ty]) => window.__game.travel("elektrykow", tx, ty), [x, y]);
-  await page.waitForTimeout(900);
+  await go("elektrykow", x, y);
   await shot(`elektrykow-${tag}-${name}`);
 }
 
@@ -80,8 +87,7 @@ const down = await live();
 check(`band walk down (y=${down.y})`, down.y > 154);
 
 // --- the club ---------------------------------------------------------------
-await page.evaluate(() => window.__game.travel("raveclub", 90));
-await page.waitForTimeout(1100);
+await go("raveclub", 90);
 const club = await live();
 check(
   `raveclub reached (scene=${club.scene}, y=${club.y})`,
@@ -96,8 +102,7 @@ for (const [x, y, name] of [
   [900, 158, "5-dj"],
   [1080, 158, "6-corridor"],
 ]) {
-  await page.evaluate(([tx, ty]) => window.__game.travel("raveclub", tx, ty), [x, y]);
-  await page.waitForTimeout(900);
+  await go("raveclub", x, y);
   await shot(`raveclub-${tag}-${name}`);
 }
 

@@ -144,13 +144,32 @@ export const kt = (seconds: number) => (seconds / CYCLE_S).toFixed(4);
  * bottom of the Stocznia stair. The route map reads both, so opening a new
  * station is one line here and zero lines there.
  */
+/**
+ * `stationAt` is the generic-platform switch: stops that share the one
+ * "station" scene carry the identity the scene should wake up wearing, and
+ * the route map writes it into `world.station.at` before the travel. Opening
+ * another stop on the line is one entry here plus a spec in trainStation's
+ * STATIONS table — no new scene.
+ */
 export const LINE = [
   { id: "gdansk", name: "GDANSK GL.", scene: null as string | null, spawnX: 0 },
   { id: "stocznia", name: "STOCZNIA", scene: "elektrykow" as string | null, spawnX: 120 },
   { id: "politechnika", name: "POLITECHNIKA", scene: null as string | null, spawnX: 0 },
   { id: "oliwa", name: "OLIWA", scene: "district" as string | null, spawnX: 250 },
-  { id: "przymorze", name: "PRZYMORZE-UNIW.", scene: "station" as string | null, spawnX: 520 },
-  { id: "zaspa", name: "ZASPA", scene: null as string | null, spawnX: 0 },
+  {
+    id: "przymorze",
+    name: "PRZYMORZE-UNIW.",
+    scene: "station" as string | null,
+    spawnX: 520,
+    stationAt: "przymorze" as string | undefined,
+  },
+  {
+    id: "zaspa",
+    name: "ZASPA",
+    scene: "station" as string | null,
+    spawnX: 520,
+    stationAt: "zaspa" as string | undefined,
+  },
   { id: "sopot", name: "SOPOT", scene: null as string | null, spawnX: 0 },
   { id: "gdynia", name: "GDYNIA GL.", scene: null as string | null, spawnX: 0 },
 ] as const;

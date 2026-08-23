@@ -224,47 +224,11 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
   // Strums are timed to the animation (320ms frames): first stroke as the
   // hand first crosses the strings, half-time while the head nods, the
   // last chord rung out with the chin up and left to decay.
-  guitar: ({ obj, startAction, spawnFx, queueToast, shakeCamera, updateWorld }) => {
-    const timers: number[] = [];
-    startAction("strum", {
-      onInterrupt: () => {
-        for (const timer of timers) window.clearTimeout(timer);
-      },
-    });
+  /** The guitar is a minigame now — the strum timeline became its pattern. */
+  guitar: ({ openOverlay, updateWorld }) => {
     // once it has been played it stays on the stand, even after dark
     updateWorld((w) => ({ ...w, studio: { ...studioState(w), guitarOut: true } }));
-    const strums = [
-      1280,
-      1600,
-      1920,
-      2240, // first bar, eyes on the hand
-      2560,
-      3200, // half-time under the nod
-      3840,
-      4160,
-      4480,
-      4800, // chord change, second bar
-      5120,
-      5440,
-      5760,
-      6080, // weight on the back foot
-    ];
-    strums.forEach((at, i) => {
-      timers.push(
-        window.setTimeout(() => {
-          playSfx("guitar");
-          if (i % 2 === 0) spawnFx("note", obj.x - 8 + (i % 3) * 7, 1600);
-        }, at),
-      );
-    });
-    timers.push(
-      window.setTimeout(() => {
-        playSfx("guitarEnd");
-        shakeCamera(0.8, 220);
-        spawnFx("note", obj.x, 2100);
-      }, 6400),
-    );
-    queueToast(t("toast.guitar"), 7000);
+    openOverlay({ type: "guitar" });
   },
 
   panel: ({ obj, openOverlay }) => {
@@ -430,6 +394,45 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
   npc: (ctx) => openDialogueFor(ctx, ctx.obj.id),
 
   // --- Ulica Słoneczna: street furniture that answers back ------------------------
+
+  /**
+   * The festoon breaker on the pole. auto → off → on → auto, and the whole
+   * street's bulbs answer — a light switch with forty lamps on it is the most
+   * theatrical interaction three world-bytes can buy.
+   */
+  festoon: ({ world, updateWorld, showToast, startAction }) => {
+    startAction("use");
+    playSfx("click");
+    const bag = ((world as unknown as { elektrykow?: Record<string, unknown> }).elektrykow ??
+      {}) as Record<string, unknown>;
+    const cur = typeof bag.festoon === "string" ? bag.festoon : "auto";
+    const next = cur === "auto" ? "off" : cur === "off" ? "on" : "auto";
+    updateWorld(
+      (w) =>
+        ({
+          ...w,
+          elektrykow: {
+            ...((w as unknown as { elektrykow?: object }).elektrykow ?? {}),
+            festoon: next,
+          },
+        }) as typeof w,
+    );
+    showToast(
+      t(
+        next === "off"
+          ? "toast.festoonOff"
+          : next === "on"
+            ? "toast.festoonOn"
+            : "toast.festoonAuto",
+      ),
+    );
+  },
+  /** The cash machine on block 16 — a whole minigame of municipal patience. */
+  bankomat: ({ openOverlay, startAction }) => {
+    startAction("use");
+    playSfx("click");
+    openOverlay({ type: "bankomat" });
+  },
 
   paczkomat: ({ world, updateWorld, showToast, startAction }) => {
     startAction("use");

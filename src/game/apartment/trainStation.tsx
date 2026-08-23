@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   AOSet,
   aoPaths,
@@ -14,6 +13,7 @@ import {
   Light,
   M,
   type Mat,
+  Monologue,
   NpcActor,
   npcToActor,
   type Ph,
@@ -31,6 +31,7 @@ import {
   vignettePaths,
 } from "@/engine";
 import { dayPhase, type WorldState } from "@/lib/worldState";
+import { propActor, SUITCASE_PALETTE, suitcaseMap, TROLLEY_PALETTE, trolleyMap } from "./bandProps";
 import { NPCS } from "./npcs";
 import { SkmUnit } from "./skmTrain";
 import {
@@ -303,7 +304,68 @@ const LEAF: Record<Ph, Mat> = {
 type Weather = "clear" | "overcast" | "rain" | "wet";
 type Season = "green" | "autumn" | "bare";
 
+/* ================================================================== *
+ * WHICH station this is — the scene is generic
+ * ================================================================== */
+
+/**
+ * One platform scene, many stations. An SKM stop is the most standardised
+ * piece of architecture in the Trójmiasto — the same masts, the same shelter,
+ * the same yellow line from Gdańsk to Gdynia — so the scene keeps ONE set of
+ * furniture and varies the four things that actually differ from stop to
+ * stop: the name on the boards, what stands across the cutting, where the
+ * underpass lets you out, and what the direction sign promises next.
+ *
+ * The identity lives in `world.station.at`. Three writers, one reader:
+ *  – the route map writes it BEFORE travelling here (LINE.stationAt);
+ *  – the scene's own `enter` hook writes it when you arrive ON FOOT, from
+ *    the counterpart scene the travel came from;
+ *  – arriving from the train writes nothing and trusts the bag, which is how
+ *    stepping off at the doors returns you to the platform you boarded from.
+ * Everything else — boards, backdrop, exits, HUD, describe — reads the spec.
+ */
+export type StationId = "przymorze" | "zaspa";
+
+export type StationSpec = {
+  id: StationId;
+  /** what the boards along the platform say */
+  boardName: string;
+  /** neighbours, for the direction sign under the departure display */
+  prev: string;
+  next: string;
+  /** what stands across the cutting */
+  backdrop: "przymorze" | "zaspa";
+  /** where the underpass lets you out — null while it is shut for renovation */
+  exit: { scene: string; spawnX: number } | null;
+  describe: string;
+};
+
+export const STATIONS: Record<StationId, StationSpec> = {
+  przymorze: {
+    id: "przymorze",
+    boardName: "PRZYMORZE-UNIWERSYTET",
+    prev: "OLIWA",
+    next: "ZASPA",
+    backdrop: "przymorze",
+    exit: { scene: "district", spawnX: 250 },
+    describe:
+      "The SKM platform at Przymorze-Uniwersytet: a long concrete island in a shallow cutting, the falowiec and Alchemia across the fence, trains on a timetable that does not care whether you are ready.",
+  },
+  zaspa: {
+    id: "zaspa",
+    boardName: "GDANSK ZASPA",
+    prev: "PRZYMORZE-UNIW.",
+    next: "SOPOT",
+    backdrop: "zaspa",
+    /** the underpass at Zaspa is shut for renovation — honest, and Polish */
+    exit: null,
+    describe:
+      "The SKM platform at Gdańsk Zaspa: the same concrete island, but the wave blocks stand close here and their gable ends carry murals three storeys tall. The underpass is shut for renovation, so the platform is the whole world.",
+  },
+};
+
 export interface StationState {
+  at: StationId;
   weather: Weather;
   season: Season;
   crowd: number;
@@ -315,6 +377,7 @@ export interface StationState {
 }
 
 const DEFAULTS: StationState = {
+  at: "przymorze",
   weather: "clear",
   season: "autumn",
   crowd: 2,
@@ -328,7 +391,15 @@ const DEFAULTS: StationState = {
 /** Defensive read: the world need not carry a `station` slice at all. */
 export function stationState(world: WorldState): StationState {
   const raw = (world as { station?: Partial<StationState> }).station;
-  return raw ? { ...DEFAULTS, ...raw } : DEFAULTS;
+  const merged = raw ? { ...DEFAULTS, ...raw } : DEFAULTS;
+  /* an untrusted save may hold any string in `at` — clamp to a real station */
+  if (!(merged.at in STATIONS)) merged.at = "przymorze";
+  return merged;
+}
+
+/** The spec of the station this platform currently is. */
+export function stationSpecOf(world: WorldState): StationSpec {
+  return STATIONS[stationState(world).at];
 }
 
 const lampsOn = (s: StationState, ph: Ph) =>
@@ -538,6 +609,55 @@ const UNIWERSYTET: Rect[] = [
 ];
 const UNI_SET = bevelPaths(UNIWERSYTET);
 
+/* ---- the Zaspa backdrop ----------------------------------------------------
+ * At Zaspa the wave blocks are not a line on the horizon — they are the
+ * neighbourhood, close enough that their gable ends carry the monumental
+ * murals the district is famous for, three storeys tall and repainted every
+ * festival. Two blocks, nearer and taller than Przymorze's, their gables
+ * facing the line; the old airfield's control tower stands between them,
+ * because Zaspa was a runway before it was anybody's address. */
+const ZASPA_BLOCKS: Rect[] = [
+  [40, 70, 240, 38],
+  [340, 64, 300, 44],
+];
+const ZASPA_SET = bevelPaths(ZASPA_BLOCKS);
+const ZASPA_BANDS = pxPath(
+  ZASPA_BLOCKS.flatMap(([x, y, w, h]) =>
+    Array.from({ length: Math.floor((h - 6) / 5) }, (_, i) => [x, y + 4 + i * 5, w, 2] as Rect),
+  ),
+);
+const ZASPA_LIT = pxPath(
+  ZASPA_BLOCKS.flatMap(([x, y, w, h], b) =>
+    Array.from({ length: Math.floor((h - 6) / 5) }, (_, i) =>
+      Array.from(
+        { length: Math.floor(w / 11) },
+        (_, j) => [x + j * 11 + 3, y + 4 + i * 5, 5, 2] as Rect,
+      ).filter((_, j) => (b * 17 + i * 5 + j * 3) % 9 < 3),
+    ).flat(),
+  ),
+);
+/** The murals on the gable ends: big flat fields, off-register, unmistakable. */
+const ZASPA_MURALS: [Rect, string][] = [
+  /* the gable at the right end of block one: a sun over a wave */
+  [[262, 72, 18, 36], "#8a5a94"],
+  [[265, 76, 12, 10], "#f2c218"],
+  [[263, 90, 16, 6], "#3a7d84"],
+  /* the gable at the left end of block two: a figure with a raised arm */
+  [[340, 66, 18, 42], "#b3442e"],
+  [[346, 72, 6, 14], "#e8e2d2"],
+  [[344, 86, 10, 4], "#e8e2d2"],
+  /* a third piece mid-block, where a stairwell face takes paint */
+  [[470, 66, 14, 42], "#2d5236"],
+  [[473, 74, 8, 8], "#f2c218"],
+];
+/** The old airfield control tower, standing where the runway was. */
+const ZASPA_TOWER: Rect[] = [
+  [306, 78, 10, 30],
+  [302, 70, 18, 10],
+  [304, 66, 14, 4],
+];
+const ZASPA_TOWER_SET = bevelPaths(ZASPA_TOWER);
+
 function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
   const night = ph === "night";
   const bands = SKY_SIX[ph];
@@ -568,32 +688,71 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
         opacity={flat ? 0.22 : 0.36}
       />
 
-      {/* Alchemia, small and hazed, standing over Oliwa */}
-      <Bev set={ALCHEMIA_SET} mat={CLAD[ph]} />
-      <path d={ALCHEMIA_GRID} fill={CLAD[ph].lo} opacity={0.7} />
-      {night ? <path d={ALCHEMIA_LIT} fill="#ffd98a" opacity={0.7} /> : null}
-      {!night ? <path d={ALCHEMIA_GRID} fill={K.glass[ph]} opacity={0.25} /> : null}
-
-      {/* the falowiec */}
-      <Bev set={FALOWIEC_SET} mat={SLAB[ph]} />
-      <path d={FALOWIEC_BANDS} fill={SLAB[ph].lo} opacity={0.55} />
-      {night ? <path d={FALOWIEC_LIT} fill="#ffd98a" opacity={0.6} /> : null}
-      {/* dusk: the west face catches the last of the sun — the lighting
-       * premise promises this and it is the one moment the block is the
-       * brightest thing in the frame instead of the dullest */}
-      {ph === "dusk" && !flat ? (
+      {s.at === "zaspa" ? (
         <>
-          <path
-            d={pxPath(FALOWIEC.map(([x, y, w]) => [x, y, w, 3] as Rect))}
-            fill="#f2a65a"
-            opacity={0.5}
-          />
-          <path d={pxPath(FALOWIEC)} fill="#f2a65a" opacity={0.14} />
+          {/* Zaspa: the wave blocks ARE the neighbourhood here — near, tall,
+           * gable murals facing the line, the old airfield tower between them */}
+          <Bev set={ZASPA_TOWER_SET} mat={CLAD[ph]} />
+          <Bev set={ZASPA_SET} mat={SLAB[ph]} />
+          <path d={ZASPA_BANDS} fill={SLAB[ph].lo} opacity={0.55} />
+          {night ? <path d={ZASPA_LIT} fill="#ffd98a" opacity={0.6} /> : null}
+          {ZASPA_MURALS.map(([r, c]) => (
+            <path
+              key={`${r[0]}-${r[1]}`}
+              d={pxPath([r])}
+              fill={c}
+              opacity={night ? 0.4 : ph === "dusk" ? 0.6 : 0.8}
+            />
+          ))}
+          {ph === "dusk" && !flat ? (
+            <path d={pxPath(ZASPA_BLOCKS)} fill="#f2a65a" opacity={0.14} />
+          ) : null}
         </>
-      ) : null}
+      ) : (
+        <>
+          {/* Przymorze: Alchemia, small and hazed, standing over Oliwa */}
+          <Bev set={ALCHEMIA_SET} mat={CLAD[ph]} />
+          <path d={ALCHEMIA_GRID} fill={CLAD[ph].lo} opacity={0.7} />
+          {night ? <path d={ALCHEMIA_LIT} fill="#ffd98a" opacity={0.7} /> : null}
+          {!night ? <path d={ALCHEMIA_GRID} fill={K.glass[ph]} opacity={0.25} /> : null}
 
-      {/* the university, and then the trees in front of all of it */}
-      <Bev set={UNI_SET} mat={dim(CONC[ph], K.sky[ph][3], 0.2)} />
+          {/* the falowiec */}
+          <Bev set={FALOWIEC_SET} mat={SLAB[ph]} />
+          <path d={FALOWIEC_BANDS} fill={SLAB[ph].lo} opacity={0.55} />
+          {night ? <path d={FALOWIEC_LIT} fill="#ffd98a" opacity={0.6} /> : null}
+          {/* one flat on the third bend keeps odd hours — a window that goes
+           * out, waits, and comes back. Somebody lives there. */}
+          {night ? (
+            <path d={pxPath([[384, 96, 4, 2]])} fill="#ffd98a">
+              <animate
+                attributeName="opacity"
+                calcMode="discrete"
+                values="0.9;0.9;0;0;0;0.9;0.9;0.9"
+                dur="23s"
+                repeatCount="indefinite"
+              />
+            </path>
+          ) : null}
+          {/* dusk: the west face catches the last of the sun — the lighting
+           * premise promises this and it is the one moment the block is the
+           * brightest thing in the frame instead of the dullest */}
+          {ph === "dusk" && !flat ? (
+            <>
+              <path
+                d={pxPath(FALOWIEC.map(([x, y, w]) => [x, y, w, 3] as Rect))}
+                fill="#f2a65a"
+                opacity={0.5}
+              />
+              <path d={pxPath(FALOWIEC)} fill="#f2a65a" opacity={0.14} />
+            </>
+          ) : null}
+
+          {/* the university */}
+          <Bev set={UNI_SET} mat={dim(CONC[ph], K.sky[ph][3], 0.2)} />
+        </>
+      )}
+
+      {/* the trees, in front of whichever skyline is standing today */}
       <path d={TRUNKS} fill={LEAF[ph].deep} />
       <path
         d={TREES_PATH}
@@ -724,9 +883,65 @@ function FarSide({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
       {/* the road bridge at the Gdańsk end */}
       <path d={BRIDGE.deck} fill={wall.base} />
       <path d={BRIDGE.soffit} fill={wall.deep} />
+      {/* a bus crosses it now and then — Obrońców Wybrzeża going about its day */}
+      <g>
+        <path
+          d={pxPath([
+            [-34, 47, 30, 9],
+            [-31, 49, 7, 4],
+            [-22, 49, 7, 4],
+            [-13, 49, 7, 4],
+          ])}
+          fill={night ? "#4a3438" : "#c9463c"}
+          opacity={0}
+        >
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="0;1;1;0;0;0;0"
+            dur="41s"
+            repeatCount="indefinite"
+          />
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0;40 0;190 0;200 0;200 0;200 0;0 0"
+            keyTimes="0;0.06;0.3;0.32;0.5;0.9;1"
+            dur="41s"
+            repeatCount="indefinite"
+          />
+        </path>
+      </g>
       <path d={BRIDGE.parapet} fill={GALV[ph].base} />
       <path d={BRIDGE.abutment} fill={wall.mid} />
       <path d={BRIDGE.abutment} fill={dth("n", "12")} opacity={0.4} />
+      {/* the crow that owns the fence rail: lands, hops twice, leaves */}
+      <g fill={night ? "#1e222c" : "#23262b"}>
+        <path
+          d={pxPath([
+            [1245, 90, 6, 4],
+            [1249, 88, 3, 3],
+            [1243, 92, 2, 2],
+          ])}
+          opacity={0}
+        >
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="0;1;1;1;1;0;0;0"
+            dur="52s"
+            repeatCount="indefinite"
+          />
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            calcMode="discrete"
+            values="0 0;0 0;5 0;5 0;12 0;12 0;12 0;0 0"
+            dur="52s"
+            repeatCount="indefinite"
+          />
+        </path>
+      </g>
 
       {/* street lamps on the road, behind the fence */}
       {ROAD_LAMPS.map((l) => (
@@ -773,9 +988,27 @@ function Catenary({ ph }: { ph: Ph }) {
     </g>
   );
 }
-
 /* ================================================================== *
- * PLANE 3 — the track and the platform (parallax 1.0)
+ * PLANE 3 — the track and the platform (parallax 1.0), enriched pass
+ *
+ * Same bones, more history. What got added, all deterministic:
+ *   - the rails now have rusty webs under polished heads, four
+ *     insulated joints with fishplates and bolts, and wheel-burn
+ *     smears where the units brake
+ *   - two sleepers were renewed in spring and are still pale;
+ *     the ballast has a crest line and oil from the units
+ *   - the coping declares its precast joints; one stretch of the
+ *     yellow line was repainted and still holds its colour
+ *   - the tactile studs glint on one corner and go smooth where
+ *     the crowd stands; every fourth slab joint was recut and
+ *     sealed black; one slab is a younger replacement; there is
+ *     an expansion joint with bitumen squeezed proud
+ *   - rain now also floods the four-foot and two slab hollows,
+ *     and the puddles hold a pixel of sky
+ *   - litter, a clogged grate in autumn, and three animated
+ *     residents: a pigeon working the edge by day, a rat that
+ *     owns the four-foot after midnight, one leaf that refuses
+ *     to settle
  * ================================================================== */
 
 /**
@@ -794,9 +1027,30 @@ function Catenary({ ph }: { ph: Ph }) {
 const BALLAST = pxPath([[0, 126, W, 24]]);
 /** Ballast texture: two dither passes, one coarse and one fine. */
 const BALLAST_TEX = pxPath([[0, 126, W, 24]]);
+/** The shoulder has a crest — one darker line where the profile breaks. */
+const BALLAST_CREST = pxPath([[0, 126, W, 1]]);
 const SLEEPERS = pxPath(repeat(Math.ceil(W / 23), 23, [0, 132, 13, 16] as Rect));
 /** Concrete sleepers, so the ends are pale where the ballast has worn off them. */
 const SLEEPER_ENDS = pxPath(repeat(Math.ceil(W / 23), 23, [0, 132, 13, 3] as Rect));
+/** Two sleepers were renewed in spring; concrete that young is still pale. */
+const SLEEPERS_NEW = pxPath([
+  [23 * 30, 132, 13, 16],
+  [23 * 61, 132, 13, 16],
+]);
+/** What the units drip between the rails, in the metres where they idle. */
+const TRACK_OIL = pxPath(
+  Array.from({ length: 7 }, (_, i) => {
+    const x = (i * 293 + 210) % W;
+    return [x, 137, 8 + ((i * 3) % 8), 3] as Rect;
+  }),
+);
+/** Standing water in the four-foot after rain. */
+const TRACK_PUDDLES = pxPath(
+  Array.from({ length: 10 }, (_, i) => {
+    const x = (i * 197 + 60) % W;
+    return [x, 139, 7 + ((i * 3) % 6), 2] as Rect;
+  }),
+);
 
 /** Both rails, with the near one at the platform edge and polished on top. */
 const RAIL_FAR = pxPath([
@@ -809,6 +1063,33 @@ const RAIL_NEAR = pxPath([
   [0, 149, W, 2],
 ]);
 const RAIL_NEAR_TOP = pxPath([[0, 145, W, 1]]);
+/** The webs rust; only the heads stay bright, because wheels do that. */
+const RAIL_FAR_WEB_RUST = pxPath([[0, 133, W, 1]]);
+const RAIL_NEAR_WEB_RUST = pxPath([[0, 147, W, 2]]);
+/**
+ * Four insulated joints in the near rail: the gap you would hear, the
+ * fishplate over it, and the two bolt heads. The one piece of track detail
+ * that reads at this scale and says somebody signals these lines.
+ */
+const RAIL_JOINT_X = [312, 782, 1294, 1730];
+const RAIL_JOINT_GAPS = pxPath(RAIL_JOINT_X.map((x) => [x, 145, 1, 6] as Rect));
+const RAIL_FISHPLATES = pxPath(RAIL_JOINT_X.map((x) => [x - 5, 146, 11, 3] as Rect));
+const RAIL_FISHBOLTS = pxPath(
+  RAIL_JOINT_X.flatMap(
+    (x) =>
+      [
+        [x - 3, 147, 1, 1],
+        [x + 3, 147, 1, 1],
+      ] as Rect[],
+  ),
+);
+/** Wheel-burn: brighter smears on the near head where the units brake. */
+const RAIL_BURNISH = pxPath(
+  Array.from({ length: 9 }, (_, i) => {
+    const x = (i * 229 + 120) % W;
+    return [x, 145, 10 + ((i * 5) % 12), 1] as Rect;
+  }),
+);
 /** Rail fastenings at every sleeper — the detail that says this is modern track. */
 const FASTENINGS = pxPath([
   ...repeat(Math.ceil(W / 23), 23, [1, 143, 3, 3] as Rect),
@@ -831,6 +1112,8 @@ const PLAT_COPING = pxPath([
   [0, RAIL_Y, W, 5],
   [0, RAIL_Y + 5, W, 1],
 ]);
+/** The coping is precast in 2.5 m units, and every unit declares its joint. */
+const COPING_JOINTS = pxPath(repeat(Math.ceil(W / 96), 96, [0, RAIL_Y, 1, 6] as Rect));
 /** The yellow line, cast into the coping and repainted over the top of that. */
 const PLAT_YELLOW = pxPath([[0, RAIL_Y + 1, W, 4]]);
 /** Where the paint has gone: deterministic, so it does not crawl. */
@@ -840,12 +1123,31 @@ const PLAT_YELLOW_WORN = pxPath(
     return [x, RAIL_Y + 1, 4 + ((i * 7) % 9), 4] as Rect;
   }),
 );
+/** The stretch the maintainer repainted last spring, still holding its colour. */
+const YELLOW_FRESH = pxPath([[588, RAIL_Y + 1, 168, 4]]);
 /** Tactile studs, 0.60 m back from the edge. */
 const PLAT_TACTILE = pxPath(repeat(Math.ceil(W / 8), 8, [2, RAIL_Y + 9, 4, 4] as Rect));
+/** Each stud catches light on one corner… */
+const TACTILE_GLINTS = pxPath(repeat(Math.ceil(W / 8), 8, [2, RAIL_Y + 9, 1, 1] as Rect));
+/** …and goes smooth where the crowd has stood on it for twenty years. */
+const TACTILE_WORN = pxPath([[Z.shelterL - 6, RAIL_Y + 9, Z.shelterR - Z.shelterL + 12, 4]]);
 /** Slab joints, every 1.5 m, running back from the edge. */
 const PLAT_JOINTS = pxPath(repeat(Math.ceil(W / 57), 57, [0, RAIL_Y + 6, 1, 24] as Rect));
+/** Every fourth joint was recut last year and sealed black. */
+const JOINTS_SEALED = pxPath(repeat(Math.ceil(W / 228), 228, [57, RAIL_Y + 6, 1, 24] as Rect));
 /** The joint parallel to the edge, where the coping beam meets the slabs. */
 const PLAT_SEAM = pxPath([[0, RAIL_Y + 15, W, 1]]);
+/** One slab is a replacement — younger concrete, and edges still crisp. */
+const SLAB_PATCH = pxPath([[1141, RAIL_Y + 6, 55, 24]]);
+const SLAB_PATCH_EDGE = pxPath([
+  [1140, RAIL_Y + 6, 1, 24],
+  [1196, RAIL_Y + 6, 1, 24],
+]);
+/** The expansion joint mid-platform, its bitumen squeezed proud in summer. */
+const EXPANSION_JOINT = pxPath([
+  [988, RAIL_Y + 6, 3, 24],
+  [986, RAIL_Y + 14, 7, 2],
+]);
 
 /**
  * Wear. A platform is not a clean surface and this is the layer that says so:
@@ -906,6 +1208,13 @@ const PLAT_BURNS = pxPath([
   [1618, RAIL_Y + 22, 1, 1],
 ]);
 
+/** Dropped paper, a flattened cup, a bottle cap — ahead of the sweeper. */
+const PLAT_LITTER = pxPath([
+  [536, RAIL_Y + 21, 3, 2],
+  [1462, RAIL_Y + 13, 2, 2],
+  [872, RAIL_Y + 24, 2, 1],
+]);
+
 /**
  * Grass through the joints past the ramp, where the sweeper turns round. The
  * far end of every platform belongs to the plants; the tufts sit exactly on
@@ -932,6 +1241,21 @@ const LEAVES = pxPath(
 /** Drainage: a channel along the back of the platform, and its gratings. */
 const PLAT_CHANNEL = pxPath([[0, 176, W, 4]]);
 const PLAT_GRATES = pxPath(repeat(Math.ceil(W / 220), 220, [40, 176, 26, 4] as Rect));
+/** A clump of leaves has found the third grate and means to stay. */
+const GRATE_CLOG = pxPath([
+  [478, 175, 12, 3],
+  [482, 173, 5, 2],
+]);
+/** Puddles hold the sky in the two hollows the slabs have settled into. */
+const PLAT_PUDDLES = pxPath([
+  [452, RAIL_Y + 16, 30, 3],
+  [458, RAIL_Y + 19, 16, 1],
+  [1358, RAIL_Y + 17, 24, 2],
+]);
+const PLAT_PUDDLE_GLINT = pxPath([
+  [460, RAIL_Y + 16, 7, 1],
+  [1364, RAIL_Y + 17, 5, 1],
+]);
 
 /**
  * Platform markings. Two things, both real and both useful: the "8" and "6" car
@@ -961,7 +1285,6 @@ function textRectsAt(text: string, x: number, y: number): Rect[] {
   }
   return out;
 }
-/** Boarding hatching under each door position, so the doors have a target. */
 /**
  * The boarding hatching, which is the game telling the player where to stand
  * without a word of UI. It has to be legible or it is decoration: a bracket of
@@ -987,15 +1310,29 @@ function TrackAndPlatform({ ph, s }: { ph: Ph; s: StationState }) {
       <path d={BALLAST} fill={night ? "#3a3d42" : "#7a756c"} />
       <path d={BALLAST_TEX} fill={dth("n", "25")} opacity={0.55} />
       <path d={BALLAST_TEX} fill={dth("c", "12")} opacity={night ? 0.06 : 0.18} />
+      <path d={BALLAST_CREST} fill="#000" opacity={0.2} />
       <path d={SLEEPERS} fill={night ? "#4a4d52" : "#8e8a80"} />
+      <path d={SLEEPERS_NEW} fill={night ? "#5e6168" : "#a4a096"} />
       <path d={SLEEPER_ENDS} fill={night ? "#5a5d62" : "#a8a49a"} />
+      {/* the oil the units leave in the metres where they idle */}
+      <path d={TRACK_OIL} fill="#14120e" opacity={night ? 0.35 : 0.3} />
+      {/* rain floods the four-foot before it floods anything else */}
+      {wet ? <path d={TRACK_PUDDLES} fill="#3a4450" opacity={0.55} /> : null}
 
       {/* the two rails. The near rail head is the brightest thing here by day. */}
       <path d={RAIL_FAR} fill={night ? "#4f5358" : "#6d7278"} />
+      <path d={RAIL_FAR_WEB_RUST} fill="#6a4a34" opacity={night ? 0.25 : 0.45} />
       <path d={RAIL_FAR_TOP} fill={night ? K.railTopNight : K.railTop} opacity={0.8} />
       <path d={FASTENINGS} fill={night ? "#3f4348" : "#5f646a"} />
       <path d={RAIL_NEAR} fill={night ? "#54585d" : "#7d8085"} />
+      <path d={RAIL_NEAR_WEB_RUST} fill="#6a4a34" opacity={night ? 0.25 : 0.45} />
+      {/* the joints: fishplate, two bolts, and the gap the wheels count */}
+      <path d={RAIL_FISHPLATES} fill={night ? "#464a50" : "#6a6e74"} />
+      <path d={RAIL_FISHBOLTS} fill={night ? "#5c6066" : "#8d9096"} />
+      <path d={RAIL_JOINT_GAPS} fill="#000" opacity={0.45} />
       <path d={RAIL_NEAR_TOP} fill={night ? K.railTopNight : K.railTop} />
+      {/* wheel-burn: the braking metres shine harder than the rest */}
+      <path d={RAIL_BURNISH} fill="#f2f5f8" opacity={night ? 0.25 : 0.5} />
 
       {/* the platform */}
       <path d={PLAT_SURFACE} fill={conc.base} />
@@ -1004,42 +1341,159 @@ function TrackAndPlatform({ ph, s }: { ph: Ph; s: StationState }) {
       <path d={PLAT_COPING} fill={conc.mid} />
       <path d={PLAT_YELLOW} fill={night ? K.safetyWorn : K.safety} />
       <path d={PLAT_YELLOW_WORN} fill={conc.mid} opacity={0.55} />
+      {/* the repainted stretch goes on over the wear, which is the point */}
+      <path d={YELLOW_FRESH} fill={night ? K.safetyWorn : K.safety} opacity={0.75} />
+      <path d={COPING_JOINTS} fill={conc.deep} opacity={0.4} />
       <path d={PLAT_TACTILE} fill={conc.lo} />
+      <path d={TACTILE_GLINTS} fill={conc.hi} opacity={0.5} />
+      <path d={TACTILE_WORN} fill={conc.base} opacity={0.45} />
       <path d={PLAT_JOINTS} fill={conc.deep} opacity={0.5} />
+      <path d={JOINTS_SEALED} fill="#0e0c0a" opacity={0.65} />
       <path d={PLAT_SEAM} fill={conc.deep} opacity={0.45} />
+      {/* the replacement slab: younger concrete, and it shows */}
+      <path d={SLAB_PATCH} fill={conc.hi} opacity={0.25} />
+      <path d={SLAB_PATCH_EDGE} fill={conc.deep} opacity={0.7} />
+      {/* the expansion joint, bitumen proud of the surface since July */}
+      <path d={EXPANSION_JOINT} fill="#14120e" opacity={0.7} />
       <path d={PLAT_WEAR} fill={dth("n", "12")} opacity={0.5} />
       <path d={PLAT_GUM} fill={night ? "#3a3d42" : "#6f6c66"} opacity={0.7} />
       <path d={PLAT_CRACKS} fill={conc.deep} opacity={0.7} />
       <path d={PLAT_STUBS} fill={night ? "#8a877e" : "#d8d4c8"} opacity={0.6} />
       <path d={PLAT_BURNS} fill="#2b2622" opacity={0.6} />
+      <path d={PLAT_LITTER} fill={night ? "#9a978e" : "#e8e4da"} opacity={0.7} />
       <path
         d={PLAT_TUFTS}
         fill={s.season === "bare" ? "#6b5f4a" : LEAF[ph].mid}
         opacity={night ? 0.55 : 0.9}
       />
       <path d={STOP_MARKS} fill={conc.hi} opacity={0.55} />
+      <path d={STOP_MARKS} fill={dth("n", "12")} opacity={0.3} />
       <path d={BOARD_ZONES} fill={night ? K.safetyWorn : K.safety} opacity={0.62} />
+      {/* feet have stood on the hatching since it was painted, and it shows */}
+      <path d={BOARD_ZONES} fill={dth("n", "12")} opacity={0.25} />
       <path d={PLAT_CHANNEL} fill={conc.deep} />
       <path d={PLAT_GRATES} fill={GALV[ph].deep} />
+      {/* the third grate has been collecting leaves since October */}
+      {s.season !== "green" ? (
+        <path d={GRATE_CLOG} fill={s.season === "autumn" ? "#9a6f34" : "#6b5f4a"} opacity={0.85} />
+      ) : null}
+      {/* the duct lids along the back of the walk, two of them renewed */}
+      <path d={DUCT_LIDS} fill={conc.mid} />
+      <path d={DUCT_NEW} fill={conc.hi} opacity={0.7} />
+      <path d={DUCT_JOINTS} fill={conc.deep} opacity={0.7} />
+      <path d={DUCT_HOLES} fill="#171009" opacity={0.4} />
+      {/* the units brake in the same metres every day, and the lane knows */}
+      <path d={BRAKE_DUST} fill="#171009" opacity={0.12} />
+      {/* where a bench stood before the shelter came: paint, and four bolts */}
+      <path d={BENCH_GHOST} fill={conc.hi} opacity={0.35} />
+      <path d={BENCH_GHOST_BOLTS} fill={conc.deep} opacity={0.8} />
+      <path d={STOP_OIL} fill="#14120e" opacity={0.55} />
 
       {/* what the trees have dropped */}
       {s.season !== "green" ? (
         <path d={LEAVES} fill={s.season === "autumn" ? "#9a6f34" : "#6b5f4a"} opacity={0.8} />
       ) : null}
+      {/* one leaf refuses to settle: it skitters in gusts, rests, goes again */}
+      {s.season === "autumn" ? (
+        <path d={pxPath([[300, RAIL_Y + 12, 3, 2]])} fill="#9a6f34" opacity={0.9}>
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            calcMode="discrete"
+            values="0 0;28 2;61 0;97 3;140 1;188 4;240 2;240 2;0 0"
+            keyTimes="0;0.08;0.14;0.22;0.31;0.42;0.5;0.96;1"
+            dur="19s"
+            repeatCount="indefinite"
+          />
+        </path>
+      ) : null}
 
-      {/* rain sheen: the platform goes darker and the rail heads go bright */}
+      {/* the residents. A pigeon works the edge by day — hop, hop, pause,
+          hop — in discrete jumps because pigeons do not glide along the
+          ground, they teleport in small amounts. */}
+      {!night ? (
+        <g fill="#5d6068">
+          <path
+            d={pxPath([
+              [604, RAIL_Y + 3, 4, 3],
+              [608, RAIL_Y + 2, 2, 2],
+            ])}
+          />
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            calcMode="discrete"
+            values="0 0;6 0;6 0;13 0;13 0;21 0;21 0;27 0;27 0;0 0"
+            keyTimes="0;0.07;0.2;0.27;0.45;0.52;0.7;0.77;0.97;1"
+            dur="11s"
+            repeatCount="indefinite"
+          />
+        </g>
+      ) : null}
+      {/* and the rat owns the four-foot after midnight: a long nothing, one
+          dash along the sleepers, gone into the ballast */}
+      {night ? (
+        <g fill="#1d1f24" opacity={0.9}>
+          <path
+            d={pxPath([
+              [420, 139, 5, 2],
+              [417, 140, 3, 1],
+            ])}
+          />
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0;0 0;230 0;230 0"
+            keyTimes="0;0.6;0.72;1"
+            dur="37s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="0;0.9;0;0"
+            keyTimes="0;0.58;0.73;1"
+            dur="37s"
+            repeatCount="indefinite"
+          />
+        </g>
+      ) : null}
+
+      {/* rain sheen: the platform goes darker, the rail heads go bright,
+          and the two hollows the slabs settled into hold the sky */}
       {wet ? (
         <>
           <rect x={0} y={RAIL_Y} width={W} height={30} fill="#2a3038" opacity={0.22} />
           <path d={RAIL_NEAR_TOP} fill="#e8ecef" opacity={0.5} />
+          <path d={PLAT_PUDDLES} fill="#3a4450" opacity={0.5} />
+          <path d={PLAT_PUDDLE_GLINT} fill="#c8d4e0" opacity={0.6} />
         </>
       ) : null}
     </g>
   );
 }
-
 /* ================================================================== *
- * PLANE 4 — platform furniture (parallax 1.0)
+ * PLANE 4 — platform furniture (parallax 1.0), enriched pass
+ *
+ * Every object keeps its geometry and gains its biography:
+ *   - the shelter: dirt and droppings on the roof, a sky band and a
+ *     frame shadow in every pane, a taped notice, a bench with a lit
+ *     nose worn shiny in the three places people actually sit
+ *   - bins with dark mouths, shaded sides and route stickers
+ *   - the CIP grows pigeon spikes (they work), drain slots, screen
+ *     glare, and hangers for the direction sign
+ *   - the biletomat gets a shaded flank, screen bezel, kick scuffs,
+ *     the worn patch where the queue stands, and one dropped receipt
+ *   - the kasownik is rubbed bare either side of the slot
+ *   - the drum: cap shadow, wrap seam, base grime, a date line
+ *   - the timetable case: cast shadow, corner screws, a glare stripe,
+ *     and one row printed red, because Saturdays are
+ *   - the clock gains a SECOND hand on the same negative-begin trick
+ *   - the signal gets its ladder rungs, lamp hoods and base cabinet
+ *   - the stair gets tread nosings and dark cheek walls
+ *   - masts get access doors and base bolts
+ *   - life: sparrows by the bins on dry days, drips off both roof
+ *     ends when it rains, the SOS beacon breathes at night
  * ================================================================== */
 
 /**
@@ -1064,12 +1518,34 @@ const SHELTER_ROOF = pxPath([
   [SH.l - 14, SH.roof, SH.r - SH.l + 28, 4],
   [SH.l - 14, SH.roof + 4, SH.r - SH.l + 28, 2],
 ]);
+/** What lands on a roof and stays: grime in the drainage line, droppings. */
+const SHELTER_ROOF_DIRT = pxPath([[SH.l - 14, SH.roof, SH.r - SH.l + 28, 6]]);
+const ROOF_DROPPINGS = pxPath([
+  [SH.l + 24, SH.roof, 2, 1],
+  [SH.l + 90, SH.roof, 3, 1],
+  [SH.r - 60, SH.roof, 2, 1],
+]);
 /** The glazed back, in four bays. */
 const SHELTER_GLASS = pxPath([
   [SH.l + 6, SH.head + 6, 96, 62],
   [SH.l + 110, SH.head + 6, SH.r - SH.l - 224, 62],
   [SH.r - 106, SH.head + 6, 96, 62],
 ]);
+/** The head beam owns the top of every pane: one line of shadow says so. */
+const GLASS_TOP_SHADE = pxPath([
+  [SH.l + 6, SH.head + 6, 96, 2],
+  [SH.l + 110, SH.head + 6, SH.r - SH.l - 224, 2],
+  [SH.r - 106, SH.head + 6, 96, 2],
+]);
+/** And each pane carries one pale band of sky, which is what glass does. */
+const GLASS_SKY_BAND = pxPath([
+  [SH.l + 8, SH.head + 10, 92, 3],
+  [SH.l + 112, SH.head + 10, SH.r - SH.l - 228, 3],
+  [SH.r - 104, SH.head + 10, 92, 3],
+]);
+/** A taped notice on the middle bay — choir concert, lost cat, who knows. */
+const GLASS_NOTICE = pxPath([[SH.l + 150, SH.head + 20, 10, 13]]);
+const GLASS_NOTICE_TAPE = pxPath([[SH.l + 153, SH.head + 18, 4, 2]]);
 /**
  * The perforated bench inside it, at seat height — which is 0.45 m, 17 px,
  * exactly as the key at the top of the file says. It was drawn at 5 px for one
@@ -1088,6 +1564,15 @@ const SHELTER_BENCH = pxPath([
 const BENCH_PERF = pxPath(
   repeat(Math.floor((SH.r - SH.l - 40) / 9), 9, [SH.l + 24, SEAT_Y + 1, 4, 2] as Rect),
 );
+/** The seat nose catches the light; three stretches of it are worn shiny,
+ * because people sit where people have always sat. */
+const BENCH_EDGE_HI = pxPath([[SH.l + 20, SEAT_Y, SH.r - SH.l - 40, 1]]);
+const BENCH_SHINE = pxPath([
+  [SH.l + 60, SEAT_Y, 18, 1],
+  [(SH.l + SH.r) / 2 - 30, SEAT_Y, 22, 1],
+  [SH.r - 90, SEAT_Y, 16, 1],
+]);
+const BENCH_SEAT_SHADOW = pxPath([[SH.l + 20, SEAT_Y + 4, SH.r - SH.l - 40, 2]]);
 /** A litter bin under each end of the shelter, which is where they go. */
 function binShape(x: number): Rect[] {
   return [
@@ -1101,6 +1586,20 @@ const BIN_HOOP = pxPath([
   [Z.bin - 3, RAIL_Y - 27, 28, 2],
   [SH.l + 19, RAIL_Y - 27, 28, 2],
 ]);
+/** The mouth is dark, the shaded flank is darker, and the sticker is a route
+ * map nobody has ever consulted. */
+const BIN_MOUTHS = pxPath([
+  [Z.bin + 3, RAIL_Y - 22, 16, 3],
+  [SH.l + 25, RAIL_Y - 22, 16, 3],
+]);
+const BIN_SIDE_SHADE = pxPath([
+  [Z.bin + 18, RAIL_Y - 24, 4, 24],
+  [SH.l + 40, RAIL_Y - 24, 4, 24],
+]);
+const BIN_STICKERS = pxPath([
+  [Z.bin + 4, RAIL_Y - 16, 6, 8],
+  [SH.l + 26, RAIL_Y - 16, 6, 8],
+]);
 
 /**
  * The station name board. Polish practice is a long white board with the name in
@@ -1108,7 +1607,6 @@ const BIN_HOOP = pxPath([
  * of them, because a train stopping anywhere along the platform has to be able
  * to see one.
  */
-const NAME = "PRZYMORZE-UNIWERSYTET";
 /**
  * The name at 1×, not 2×.
  *
@@ -1118,22 +1616,46 @@ const NAME = "PRZYMORZE-UNIWERSYTET";
  * metres long, filling a third of the frame and reading as a fence. The letters
  * are 5 px tall now, which is small, and correct, and still perfectly legible
  * because the whole scene is rendered at 4× on screen.
+ *
+ * Generic: one geometry set per station in the spec table, precomputed once at
+ * module scope, keyed by id — the artwork just picks the current station's.
  */
-const NAME_W = NAME.length * 4;
-function nameBoard(x: number): { board: Rect[]; posts: Rect[] } {
-  const w = NAME_W + 14;
-  return {
-    board: [[x, 90, w, 15]],
+type NameBoardArt = {
+  boards: string;
+  posts: string;
+  strip: string;
+  text1: string;
+  text2: string;
+  /** the boards' centres, for the interaction objects */
+  cx1: number;
+  cx2: number;
+};
+function nameBoardArt(name: string): NameBoardArt {
+  const w = name.length * 4 + 14;
+  const one = (x: number) => ({
+    board: [[x, 90, w, 15]] as Rect[],
     posts: [
       [x + 10, 105, 3, 45],
       [x + w - 13, 105, 3, 45],
-    ],
+    ] as Rect[],
+    strip: [[x, 90, w, 2]] as Rect[],
+  });
+  const a = one(Z.nameBoard);
+  const b = one(Z.nameBoard2);
+  return {
+    boards: pxPath([...a.board, ...b.board]),
+    posts: pxPath([...a.posts, ...b.posts]),
+    strip: pxPath([...a.strip, ...b.strip]),
+    text1: textPath(name, Z.nameBoard + 7, 95),
+    text2: textPath(name, Z.nameBoard2 + 7, 95),
+    cx1: Z.nameBoard + Math.round(w / 2),
+    cx2: Z.nameBoard2 + Math.round(w / 2),
   };
 }
-const NB1 = nameBoard(Z.nameBoard);
-const NB2 = nameBoard(Z.nameBoard2);
-const NAME_BOARDS = pxPath([...NB1.board, ...NB2.board]);
-const NAME_POSTS = pxPath([...NB1.posts, ...NB2.posts]);
+const NAME_ART: Record<StationId, NameBoardArt> = {
+  przymorze: nameBoardArt(STATIONS.przymorze.boardName),
+  zaspa: nameBoardArt(STATIONS.zaspa.boardName),
+};
 
 /**
  * The departure display. A CIP unit: amber dot matrix in a dark case, hung off
@@ -1153,6 +1675,13 @@ const CIP_CASE = pxPath([
   [CIP.x - 32, CIP.y + 12, 32, 4],
 ]);
 const CIP_SCREEN = pxPath([[CIP.x + 3, CIP.y + 3, CIP.w - 6, CIP.h - 6]]);
+/** The case in the round: a lit top edge, drain slots under, and the pigeon
+ * spikes along the top, which — unusually for pigeon spikes — work. */
+const CIP_TOP_HI = pxPath([[CIP.x, CIP.y, CIP.w, 1]]);
+const CIP_DRAINS = pxPath(repeat(3, 12, [CIP.x + 10, CIP.y + CIP.h - 2, 4, 1] as Rect));
+const CIP_SPIKES = pxPath(repeat(29, 5, [CIP.x + 3, CIP.y - 3, 1, 3] as Rect));
+/** One horizontal glare across the glass, because the glass is real. */
+const CIP_GLARE = pxPath([[CIP.x + 6, CIP.y + 5, 34, 2]]);
 
 /**
  * The direction sign: an arrow either way with the next stations under it, which
@@ -1160,6 +1689,11 @@ const CIP_SCREEN = pxPath([[CIP.x + 3, CIP.y + 3, CIP.w - 6, CIP.h - 6]]);
  * the railway goes. Hung under the departure display.
  */
 const DIR_SIGN = pxPath([[CIP.x + 8, CIP.y + CIP.h + 4, CIP.w - 16, 13]]);
+/** It hangs on two tabs, and hanging things have hardware. */
+const DIR_HANGERS = pxPath([
+  [CIP.x + 20, CIP.y + CIP.h, 2, 4],
+  [CIP.x + CIP.w - 22, CIP.y + CIP.h, 2, 4],
+]);
 
 /** The ticket machine — a biletomat, tall, dark, with a lit screen. */
 const BILETOMAT = pxPath([
@@ -1174,6 +1708,16 @@ const BILETOMAT_KIT = pxPath([
   [Z.biletomat + 24, RAIL_Y - 34, 6, 10],
   [Z.biletomat + 6, RAIL_Y - 18, 22, 3],
 ]);
+/** Its shaded flank, the screen bezel, the kick scuffs, the patch of platform
+ * the queue has polished, and this morning's dropped receipt. */
+const BILETOMAT_SIDE = pxPath([[Z.biletomat + 30, RAIL_Y - 62, 4, 62]]);
+const BILETOMAT_BEZEL = pxPath([
+  [Z.biletomat + 4, RAIL_Y - 57, 26, 1],
+  [Z.biletomat + 4, RAIL_Y - 57, 1, 20],
+]);
+const BILETOMAT_KICK = pxPath([[Z.biletomat + 2, RAIL_Y - 6, 30, 6]]);
+const QUEUE_WEAR = pxPath([[Z.biletomat - 4, RAIL_Y + 2, 42, 5]]);
+const RECEIPT = pxPath([[Z.biletomat + 40, RAIL_Y + 6, 4, 2]]);
 
 /**
  * The poster drum: a cylindrical advertising column, which every Tri-City
@@ -1188,6 +1732,15 @@ const DRUM_CAP = pxPath([
   [Z.drum - 2, RAIL_Y - 78, 34, 4],
   [Z.drum + 2, RAIL_Y - 2, 26, 2],
 ]);
+/** The cap shades the paper, the paper has a wrap seam, the base has the
+ * grime line every street cylinder has, and the poster has a date. */
+const DRUM_CAP_SHADOW = pxPath([[Z.drum, RAIL_Y - 74, 30, 2]]);
+const DRUM_SEAM = pxPath([[Z.drum + 16, RAIL_Y - 74, 1, 74]]);
+const DRUM_BASE_GRIME = pxPath([[Z.drum, RAIL_Y - 10, 30, 10]]);
+const DRUM_DATE = pxPath([
+  [Z.drum + 8, RAIL_Y - 40, 14, 2],
+  [Z.drum + 8, RAIL_Y - 36, 10, 2],
+]);
 
 /**
  * The timetable case, glazed, screwed to a post beside the name board — on the
@@ -1201,6 +1754,16 @@ const TT_X = Z.nameBoard - 70;
 const TT_CASE = pxPath([[TT_X, RAIL_Y - 58, 40, 50]]);
 const TT_POST = pxPath([[TT_X + 18, RAIL_Y - 8, 4, 8]]);
 const TT_ROWS = pxPath(repeat(11, 4, [TT_X + 4, RAIL_Y - 52, 32, 2] as Rect, "y"));
+/** Corner screws, a vertical glare down the glass, and one row printed red —
+ * because Saturdays are. */
+const TT_SCREWS = pxPath([
+  [TT_X + 1, RAIL_Y - 57, 1, 1],
+  [TT_X + 38, RAIL_Y - 57, 1, 1],
+  [TT_X + 1, RAIL_Y - 10, 1, 1],
+  [TT_X + 38, RAIL_Y - 10, 1, 1],
+]);
+const TT_GLARE = pxPath([[TT_X + 5, RAIL_Y - 50, 10, 34]]);
+const TT_RED_ROW = pxPath([[TT_X + 4, RAIL_Y - 32, 32, 2]]);
 
 /**
  * The kasownik — the yellow ticket validator on its own post, an arm's reach
@@ -1214,6 +1777,13 @@ const KAS_BOX = pxPath([[KAS.x, RAIL_Y - 54, 20, 22]]);
 const KAS_STRIPE = pxPath([[KAS.x, RAIL_Y - 54, 20, 3]]);
 const KAS_SLOT = pxPath([[KAS.x + 4, RAIL_Y - 46, 12, 3]]);
 const KAS_LED = pxPath([[KAS.x + 15, RAIL_Y - 51, 2, 2]]);
+/** Rubbed bare either side of the slot by forty years of tickets and thumbs,
+ * and shaded down its off side like everything with a body. */
+const KAS_RUB = pxPath([
+  [KAS.x + 2, RAIL_Y - 47, 2, 5],
+  [KAS.x + 16, RAIL_Y - 47, 2, 5],
+]);
+const KAS_SIDE = pxPath([[KAS.x + 17, RAIL_Y - 54, 3, 22]]);
 
 /**
  * The platform clock, on its own post by the shelter's Gdańsk end. The hands
@@ -1235,6 +1805,9 @@ const CLK_TICKS = pxPath([
 ]);
 const CLK_MIN_HAND = pxPath([[643, 48, 1, 7]]);
 const CLK_HOUR_HAND = pxPath([[643, 51, 1, 4]]);
+/** The second hand, one red pixel-line on the same trick, because a station
+ * clock that visibly runs is worth three that might. */
+const CLK_SEC_HAND = pxPath([[643, 47, 1, 8]]);
 
 /**
  * The freestanding bench in the open middle of the platform — the one the
@@ -1259,6 +1832,11 @@ const MID_BENCH_PERF = pxPath(
 );
 const MID_BENCH_GLOVE = pxPath([[MB.r - 12, SEAT_Y - 2, 5, 2]]);
 const MID_BENCH_BURN = pxPath([[MB.l + 14, SEAT_Y, 2, 1]]);
+/** The back rail's shadow falls across the seat; the seat nose is lit; a
+ * band sticker on the top rail is older than half the passengers. */
+const MID_BENCH_SEAT_SHADOW = pxPath([[MB.l, SEAT_Y, MB.r - MB.l, 1]]);
+const MID_BENCH_NOSE = pxPath([[MB.l, SEAT_Y, MB.r - MB.l, 1]]);
+const MID_BENCH_STICKER = pxPath([[MB.l + 10, RAIL_Y - 31, 5, 4]]);
 
 /**
  * The SOS pillar, mid-platform, blue with a green beacon — the newest thing
@@ -1272,6 +1850,10 @@ const SOS_GRILLE = pxPath(repeat(3, 3, [SOS.x + 2, 74, 8, 1] as Rect, "y"));
 const SOS_BTN = pxPath([[SOS.x + 4, 96, 4, 4]]);
 const SOS_LAMP: readonly [number, number] = [SOS.x + 6, 68];
 const SOS_BULB = bulbPaths([SOS_LAMP]);
+/** Its lit arris, the camera above the grille, the instruction placard. */
+const SOS_EDGE_HI = pxPath([[SOS.x, 66, 1, RAIL_Y - 66]]);
+const SOS_CAM = pxPath([[SOS.x + 9, 70, 2, 2]]);
+const SOS_PLACARD = pxPath([[SOS.x + 2, 104, 8, 6]]);
 
 /**
  * The relay cabinet at the far end — signalling equipment in a grey steel box,
@@ -1289,6 +1871,17 @@ const CAB_VENTS = pxPath([
 ]);
 const CAB_LOCK = pxPath([[CAB.l + 18, RAIL_Y - 22, 5, 4]]);
 const CAB_TAG_GHOST = pxPath([[CAB.l + 24, RAIL_Y - 16, 14, 8]]);
+/** Drip line under the roof edge, the padlock's shackle, the cable duct into
+ * the plinth, the lightning sticker, and the weeds at both corners. */
+const CAB_DRIP = pxPath([[CAB.l - 1, RAIL_Y - 45, CAB.r - CAB.l + 2, 1]]);
+const CAB_SHACKLE = pxPath([[CAB.l + 19, RAIL_Y - 24, 3, 2]]);
+const CAB_CABLE = pxPath([[CAB.l + 8, RAIL_Y - 4, 4, 4]]);
+const CAB_STICKER = pxPath([[CAB.l + 26, RAIL_Y - 36, 5, 6]]);
+const CAB_STICKER_BOLT = pxPath([[CAB.l + 28, RAIL_Y - 34, 1, 3]]);
+const CAB_WEEDS = pxPath([
+  [CAB.l - 4, RAIL_Y - 4, 2, 4],
+  [CAB.r + 2, RAIL_Y - 3, 2, 3],
+]);
 
 /**
  * The colour light signal at the Gdańsk end of the platform, for the track the
@@ -1304,6 +1897,14 @@ const SIG_HEAD = pxPath([[SIG.x - 2, 20, 14, 28]]);
 const SIG_LAMP_R: Rect = [SIG.x + 2, 24, 6, 6];
 const SIG_LAMP_G: Rect = [SIG.x + 2, 36, 6, 6];
 const SIG_PLATE = pxPath([[SIG.x + 2, 118, 10, 12]]);
+/** The maintainer's ladder rungs, the hoods over both lamps, and the location
+ * cabinet at the mast foot — the three things every signal actually has. */
+const SIG_RUNGS = pxPath(repeat(12, 8, [SIG.x + 9, 34, 4, 1] as Rect, "y"));
+const SIG_HOODS = pxPath([
+  [SIG.x + 1, 23, 8, 1],
+  [SIG.x + 1, 35, 8, 1],
+]);
+const SIG_BASE = pxPath([[SIG.x + 1, 140, 12, 10]]);
 /** Aspect timeline: green ahead of each movement, red behind it. */
 const SIG_TIMES = [
   0,
@@ -1376,6 +1977,18 @@ const STAIR_TREADS = pxPath(
     return [Z.stairs - 38 + inset, RAIL_Y + 10 + i * 4, 76 - inset * 2, 2] as Rect;
   }),
 );
+/** Each tread gets a lit nosing, and the flight gets its dark cheek walls —
+ * the two lines that finish the illusion of going down. */
+const STAIR_NOSINGS = pxPath(
+  Array.from({ length: 5 }, (_, i) => {
+    const inset = 4 + i * 5;
+    return [Z.stairs - 38 + inset, RAIL_Y + 10 + i * 4, 76 - inset * 2, 1] as Rect;
+  }),
+);
+const STAIR_CHEEKS = pxPath([
+  [Z.stairs - 38, RAIL_Y + 8, 3, 22],
+  [Z.stairs + 35, RAIL_Y + 8, 3, 22],
+]);
 /** The balustrade: two standards, a top rail and a knee rail, sloping down. */
 const STAIR_RAIL = pxPath([
   [Z.stairs - 44, RAIL_Y - 32, 3, 40],
@@ -1387,6 +2000,10 @@ const STAIR_RAIL = pxPath([
 ]);
 /** The sign over the stair: the underpass symbol and the exit arrow. */
 const STAIR_SIGN = pxPath([[Z.stairs - 24, RAIL_Y - 50, 48, 12]]);
+const STAIR_SIGN_HANGERS = pxPath([
+  [Z.stairs - 14, RAIL_Y - 52, 2, 2],
+  [Z.stairs + 12, RAIL_Y - 52, 2, 2],
+]);
 
 /** Mast luminaires: cold white LED, sharing the catenary masts' positions so
  * each bay reads as one upright rather than a forest of near-identical poles. */
@@ -1400,6 +2017,18 @@ function luminaire(x: number): Rect[] {
 }
 const LUMINAIRES = pxPath(MASTS.flatMap((x) => luminaire(x)));
 const LUM_LENS = pxPath(MASTS.map((x) => [x - 12, 12, 30, 2] as Rect));
+/** Each mast has an access door at waist height and two base bolts, because
+ * a pole with no door is a drawing of a pole. */
+const MAST_DOORS = pxPath(MASTS.map((x) => [x + 1, RAIL_Y - 34, 3, 10] as Rect));
+const MAST_BOLTS = pxPath(
+  MASTS.flatMap(
+    (x) =>
+      [
+        [x - 4, RAIL_Y - 2, 2, 2],
+        [x + 7, RAIL_Y - 2, 2, 2],
+      ] as Rect[],
+  ),
+);
 
 /** The pool of light each one throws on the platform, when they are on. */
 const LAMP_POOLS = MASTS.map((x) =>
@@ -1423,6 +2052,13 @@ const LUM_BULBS = bulbPaths(MASTS.map((x) => [x + 3, 13] as const));
  * when it rains.
  */
 const MOTH_HOMES = [563, 973] as const;
+
+/** Sparrows work the bin end of the shelter on dry days, in the same discrete
+ * hops as every small bird that has ever owned a platform. */
+const SPARROWS: readonly [number, number][] = [
+  [Z.bin - 22, RAIL_Y - 3],
+  [Z.bin + 30, RAIL_Y - 2],
+];
 
 /**
  * What the small screens spill after dark. The biletomat throws a cold blue
@@ -1490,6 +2126,40 @@ const DAWN_SHAFT = tiers(
 const WET_GLARE_WIDE = pxPath(MASTS.map((x) => [x - 4, RAIL_Y + 3, 13, 24] as Rect));
 const WET_GLARE_CORE = pxPath(MASTS.map((x) => [x - 1, RAIL_Y + 3, 7, 18] as Rect));
 
+/* ---- v2 surface history ------------------------------------------------ *
+ * The platform's own biography, one path per fact. */
+
+/** The cable-duct lids along the back of the walk — every PKP platform's
+ * spine: a line of concrete lids with pull-holes, some replaced and paler. */
+const DUCT_LIDS = pxPath(repeat(Math.floor(W / 46), 46, [8, 166, 42, 4] as Rect));
+const DUCT_JOINTS = pxPath(repeat(Math.floor(W / 46), 46, [50, 166, 2, 4] as Rect));
+const DUCT_HOLES = pxPath(repeat(Math.floor(W / 46), 46, [26, 167, 3, 2] as Rect));
+const DUCT_NEW = pxPath([
+  [8 + 9 * 46, 166, 42, 4],
+  [8 + 27 * 46, 166, 42, 4],
+]);
+/** Brake dust: the first lane darkens where the units stop, wheel by wheel. */
+const BRAKE_DUST = pxPath([[STOP_X + 120, RAIL_Y + 1, 1560, 3]]);
+/** The ghost of the bench that stood mid-platform before the shelter came. */
+const BENCH_GHOST = pxPath([[1114, 156, 30, 3]]);
+const BENCH_GHOST_BOLTS = pxPath([
+  [1116, 158, 2, 2],
+  [1140, 158, 2, 2],
+]);
+/** Oil off the gearboxes, on the ballast where the unit always stands. */
+const STOP_OIL = pxPath(
+  DOOR_X.flatMap((cx) => [
+    [cx - 30, 136, 8, 3],
+    [cx + 14, 139, 6, 2],
+  ]),
+);
+
+/** Contact under the band props, at their own feet lines. */
+const PROP_CONTACT = contactPaths([
+  [1498, 44, 160],
+  [858, 18, 163],
+]);
+
 /** Contact shadows: everything that stands on the platform gets one. */
 const FURNITURE_CONTACT = contactPaths([
   [Z.biletomat - 2, 40, RAIL_Y],
@@ -1527,20 +2197,29 @@ function Furniture({
   const boardLit = s.board;
   const wet = s.weather === "rain" || s.weather === "wet";
   const begin = `${(-offsetS).toFixed(2)}s`;
+  const spec = STATIONS[s.at];
+  const nameArt = NAME_ART[s.at];
   /**
    * Where the clock's hands are right now, read once at mount — the same
-   * negative-begin trick as the trains, on a 3600 s and a 43200 s cycle.
+   * negative-begin trick as the trains, on a 60 s, 3600 s and 43200 s cycle.
    */
   const clockBegin = useMemo(() => {
     const d = new Date();
-    const intoHour = d.getMinutes() * 60 + d.getSeconds();
+    const intoMinute = d.getSeconds();
+    const intoHour = d.getMinutes() * 60 + intoMinute;
     const intoHalfDay = (d.getHours() % 12) * 3600 + intoHour;
-    return { minute: `${-intoHour}s`, hour: `${-intoHalfDay}s` };
+    return {
+      second: `${-intoMinute}s`,
+      minute: `${-intoHour}s`,
+      hour: `${-intoHalfDay}s`,
+    };
   }, []);
   return (
     <g>
       {/* the light poles go behind everything on the platform */}
       <path d={LUMINAIRES} fill={galv.base} />
+      <path d={MAST_DOORS} fill={galv.deep} opacity={0.6} />
+      <path d={MAST_BOLTS} fill={galv.deep} opacity={0.7} />
       <path d={LUM_LENS} fill={lit ? "#f6f8ff" : galv.hi} />
       {lit ? MASTS.map((x, i) => <Light key={`pool-${x}`} set={LAMP_POOLS[i]} op={0.9} />) : null}
       {lit ? (
@@ -1566,7 +2245,10 @@ function Furniture({
 
       {/* the colour light signal at the Gdańsk end, on the timetable's clock */}
       <path d={SIG_MAST} fill={GALV[ph].lo} />
+      <path d={SIG_RUNGS} fill={GALV[ph].base} opacity={0.8} />
+      <path d={SIG_BASE} fill={GALV[ph].lo} />
       <path d={SIG_HEAD} fill="#23262b" />
+      <path d={SIG_HOODS} fill="#101216" />
       <path d={SIG_PLATE} fill={K.white} opacity={0.85} />
       <g transform={`translate(${SIG.x + 3} 120)`}>
         <path d={textPath("S1", 0, 0)} fill={K.signBlue} />
@@ -1598,18 +2280,50 @@ function Furniture({
 
       {/* the stair down to the underpass */}
       <path d={STAIR_OPENING} fill="#12141a" />
+      <path d={STAIR_CHEEKS} fill="#000" opacity={0.4} />
       <path d={STAIR_TREADS} fill={conc.mid} opacity={0.75} />
+      <path d={STAIR_NOSINGS} fill={conc.hi} opacity={0.5} />
       <path d={STAIR_LIP} fill={conc.hi} />
       <path d={STAIR_RAIL} fill={galv.base} />
-      <path d={STAIR_SIGN} fill={K.signBlue} />
+      <path d={STAIR_SIGN_HANGERS} fill={galv.base} />
+      <path d={STAIR_SIGN} fill={spec.exit ? K.signBlue : "#8a2424"} />
       <g transform={`translate(${Z.stairs - 18} ${RAIL_Y - 46})`}>
-        <path d={textPath("WYJSCIE", 0, 0)} fill={K.white} opacity={0.9} />
+        <path
+          d={textPath(spec.exit ? "WYJSCIE" : "ZAMKNIETE", 0, 0)}
+          fill={K.white}
+          opacity={0.9}
+        />
       </g>
+      {spec.exit ? null : (
+        <>
+          {/* shut for renovation: mesh barriers across the mouth, tape over
+           * the rail, and the notice nobody reads because everybody knows */}
+          <path
+            d={pxPath([
+              ...repeat(9, 9, [Z.stairs - 40, RAIL_Y - 24, 2, 24] as Rect),
+              [Z.stairs - 42, RAIL_Y - 24, 84, 2],
+              [Z.stairs - 42, RAIL_Y - 12, 84, 2],
+            ])}
+            fill={galv.base}
+          />
+          <path
+            d={pxPath(repeat(7, 12, [Z.stairs - 40, RAIL_Y - 19, 7, 3] as Rect))}
+            fill={K.safety}
+            opacity={0.8}
+          />
+          <path d={pxPath([[Z.stairs - 26, RAIL_Y - 40, 52, 14]])} fill={K.white} opacity={0.9} />
+          <g transform={`translate(${Z.stairs - 22} ${RAIL_Y - 36})`}>
+            <path d={textPath("REMONT", 0, 0)} fill="#8a2424" />
+          </g>
+        </>
+      )}
 
       {/* the shelter */}
       <AOSet set={SHELTER_AO} op={0.5} />
       <path d={SHELTER_GLASS} fill={K.glass[ph]} opacity={night ? 0.5 : 0.42} />
       <path d={SHELTER_GLASS} fill={dth("c", "12")} opacity={0.3} />
+      <path d={GLASS_TOP_SHADE} fill="#000" opacity={0.25} />
+      <path d={GLASS_SKY_BAND} fill={K.glass[ph]} opacity={0.5} />
       {/* one pane has been scratched and one patch scrubbed — glass remembers */}
       <path d={pxPath([[SH.l + 128, SH.head + 14, 22, 12]])} fill={K.glass[ph]} opacity={0.35} />
       <path
@@ -1620,18 +2334,67 @@ function Furniture({
         fill={galv.hi}
         opacity={0.35}
       />
+      {/* the taped notice, and the tape outliving whatever it advertised */}
+      <path d={GLASS_NOTICE} fill={night ? "#c9c4b6" : K.white} opacity={0.9} />
+      <path
+        d={pxPath([
+          [SH.l + 152, SH.head + 23, 6, 1],
+          [SH.l + 152, SH.head + 26, 5, 1],
+          [SH.l + 152, SH.head + 29, 6, 1],
+        ])}
+        fill={K.signBlue}
+        opacity={0.6}
+      />
+      <path d={GLASS_NOTICE_TAPE} fill={K.white} opacity={0.5} />
       <path d={SHELTER_FRAME} fill={galv.base} />
       <path d={SHELTER_ROOF} fill={galv.mid} />
+      <path d={SHELTER_ROOF_DIRT} fill={dth("n", "12")} opacity={0.3} />
+      <path d={ROOF_DROPPINGS} fill={K.white} opacity={0.45} />
       <path d={pxPath([[SH.l - 14, SH.roof, SH.r - SH.l + 28, 1]])} fill={galv.hi} />
       {/* the strip light under the roof, and what it lands on */}
       <path d={SHELTER_STRIP} fill={lit ? "#f6f8ff" : galv.hi} opacity={lit ? 0.9 : 0.5} />
       {lit ? <Light set={SHELTER_POOL} op={0.9} /> : null}
       <path d={SHELTER_BENCH} fill={galv.lo} />
+      <path d={BENCH_SEAT_SHADOW} fill="#000" opacity={0.2} />
       <path d={BENCH_PERF} fill="#2b2e32" opacity={0.6} />
+      <path d={BENCH_EDGE_HI} fill={galv.hi} opacity={0.35} />
+      <path d={BENCH_SHINE} fill={galv.hi} opacity={0.55} />
+      {/* rain runs off both roof ends, one drip each, splash where it lands */}
+      {wet ? (
+        <>
+          {[SH.l - 13, SH.r + 10].map((x, i) => (
+            <path
+              key={`drip-${x}`}
+              d={pxPath([[x, SH.roof + 6, 1, 3]])}
+              fill="#c8d4e0"
+              opacity={0.7}
+            >
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                values="0 0;0 84"
+                dur={`${0.9 + i * 0.25}s`}
+                repeatCount="indefinite"
+              />
+            </path>
+          ))}
+          <path
+            d={pxPath([
+              [SH.l - 14, RAIL_Y + 1, 3, 1],
+              [SH.r + 9, RAIL_Y + 1, 3, 1],
+            ])}
+            fill="#c8d4e0"
+            opacity={0.35}
+          />
+        </>
+      ) : null}
 
       {/* bins */}
       <path d={BINS} fill={galv.mid} />
+      <path d={BIN_SIDE_SHADE} fill="#000" opacity={0.2} />
+      <path d={BIN_MOUTHS} fill="#101215" opacity={0.8} />
       <path d={BIN_HOOP} fill={galv.hi} />
+      <path d={BIN_STICKERS} fill={K.white} opacity={0.55} />
       {s.litter >= 2 ? (
         <path
           d={pxPath([
@@ -1643,29 +2406,54 @@ function Furniture({
           opacity={0.8}
         />
       ) : null}
+      {/* sparrows work the bin end on dry days — discrete hops, like the
+          pigeon on the track, only smaller and busier */}
+      {!night && !wet
+        ? SPARROWS.map(([x, y], i) => (
+            <path
+              key={`spr-${x}`}
+              d={pxPath([
+                [x, y, 2, 2],
+                [x + 2, y - 1, 1, 1],
+              ])}
+              fill="#4a4038"
+              opacity={0.9}
+            >
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                calcMode="discrete"
+                values={
+                  i === 0 ? "0 0;4 0;4 0;9 1;9 1;3 0;3 0;0 0" : "0 0;-5 0;-5 0;-9 1;-9 1;-2 0;0 0"
+                }
+                keyTimes={
+                  i === 0 ? "0;0.1;0.3;0.38;0.6;0.68;0.92;1" : "0;0.12;0.4;0.5;0.72;0.8;0.95;1"
+                }
+                dur={`${6.5 + i * 2.3}s`}
+                repeatCount="indefinite"
+              />
+            </path>
+          ))
+        : null}
 
-      {/* the name boards */}
-      <path d={NAME_POSTS} fill={galv.base} />
-      <path d={NAME_BOARDS} fill={night ? "#c9c4b6" : K.white} />
-      <path
-        d={pxPath([
-          [Z.nameBoard, 90, NAME_W + 14, 2],
-          [Z.nameBoard2, 90, NAME_W + 14, 2],
-        ])}
-        fill={K.signBlue}
-      />
-      <g transform={`translate(${Z.nameBoard + 7} 95)`}>
-        <path d={textPath(NAME, 0, 0)} fill={K.signBlue} />
-      </g>
-      <g transform={`translate(${Z.nameBoard2 + 7} 95)`}>
-        <path d={textPath(NAME, 0, 0)} fill={K.signBlue} />
-      </g>
+      {/* the name boards — whichever station this platform is being today */}
+      <path d={nameArt.posts} transform="translate(1,2)" fill="#000" opacity={0.15} />
+      <path d={nameArt.posts} fill={galv.base} />
+      <path d={nameArt.boards} transform="translate(1,2)" fill="#000" opacity={0.15} />
+      <path d={nameArt.boards} fill={night ? "#c9c4b6" : K.white} />
+      <path d={nameArt.strip} fill={K.signBlue} />
+      <path d={nameArt.text1} fill={K.signBlue} />
+      <path d={nameArt.text2} fill={K.signBlue} />
 
       {/* the departure display and the direction sign under it. The text is
        * live and lives in Effects, where it can tick; the art owns the case,
        * the dark of the screen, the cursor, and the amber it spills at night. */}
       <path d={CIP_CASE} fill="#23262b" />
+      <path d={CIP_TOP_HI} fill="#3a3e44" />
+      <path d={CIP_SPIKES} fill={galv.base} opacity={0.8} />
+      <path d={CIP_DRAINS} fill="#101216" opacity={0.8} />
       <path d={CIP_SCREEN} fill={boardLit ? "#0d0f12" : "#1a1d22"} />
+      <path d={CIP_GLARE} fill="#3a4048" opacity={0.4} />
       {boardLit ? (
         <g>
           {/* the cursor block that every one of these displays has */}
@@ -1681,33 +2469,50 @@ function Furniture({
           {night ? <Light set={CIP_POOL} op={0.9} /> : null}
         </g>
       ) : null}
+      <path d={DIR_HANGERS} fill={galv.lo} />
       <path d={DIR_SIGN} fill={K.signBlue} />
       <g transform={`translate(${CIP.x + 12} ${CIP.y + CIP.h + 8})`}>
-        <path d={textPath("SOPOT - GDYNIA", 0, 0)} fill={K.white} opacity={0.9} />
+        {/* the neighbours, which is what a direction sign is actually for */}
+        <path
+          d={textPath(`< ${spec.prev}  ·  ${spec.next} >`, 0, 0)}
+          fill={K.white}
+          opacity={0.9}
+        />
       </g>
 
       {/* the biletomat */}
       <path d={BILETOMAT} fill={night ? "#2b2e32" : "#3a3d42"} />
+      <path d={BILETOMAT_SIDE} fill="#000" opacity={0.25} />
+      <path d={BILETOMAT_KICK} fill="#000" opacity={0.2} />
       <path d={BILETOMAT_SCREEN} fill="#0f2a4a" />
       <path d={BILETOMAT_SCREEN} fill={dth("c", "12")} opacity={0.35} />
+      <path d={BILETOMAT_BEZEL} fill="#000" opacity={0.4} />
       <g transform={`translate(${Z.biletomat + 7} ${RAIL_Y - 52})`}>
         <path d={textPath("BILET", 0, 0)} fill={K.skmYellow} />
       </g>
       <path d={BILETOMAT_KIT} fill={galv.lo} />
       <path d={pxPath([[Z.biletomat + 24, RAIL_Y - 34, 6, 3]])} fill={K.ledGreen} />
+      {/* where the queue stands, and what the queue drops */}
+      <path d={QUEUE_WEAR} fill={dth("n", "12")} opacity={0.35} />
+      <path d={RECEIPT} fill={K.white} opacity={0.75} />
       {night ? <Light set={BILETOMAT_POOL} op={0.9} /> : null}
 
       {/* the kasownik, an arm's reach from the machine */}
       <path d={KAS_POST} fill={galv.base} />
       <path d={KAS_BOX} fill={night ? K.safetyWorn : K.safety} />
+      <path d={KAS_SIDE} fill="#000" opacity={0.18} />
       <path d={KAS_STRIPE} fill={K.signBlue} />
       <path d={KAS_SLOT} fill="#23262b" />
+      <path d={KAS_RUB} fill={night ? "#8a8578" : "#c9c4a8"} opacity={0.6} />
       <path d={KAS_LED} fill={K.ledGreen} opacity={0.9} />
 
       {/* the poster drum */}
       <path d={DRUM} fill={s.season === "autumn" ? "#8a3a44" : "#3a5f8a"} />
       <path d={DRUM} fill={dth("c", "12")} opacity={0.2} />
       <path d={DRUM_SHADE} fill="#000" opacity={0.18} />
+      <path d={DRUM_CAP_SHADOW} fill="#000" opacity={0.3} />
+      <path d={DRUM_SEAM} fill="#000" opacity={0.2} />
+      <path d={DRUM_BASE_GRIME} fill={dth("n", "12")} opacity={0.35} />
       <path d={DRUM_CAP} fill={galv.mid} />
       <g transform={`translate(${Z.drum + 6} ${RAIL_Y - 66})`}>
         <path d={textPath("TEATR", 0, 0)} fill={K.cream} opacity={0.85} />
@@ -1715,17 +2520,23 @@ function Furniture({
       <g transform={`translate(${Z.drum + 6} ${RAIL_Y - 58})`}>
         <path d={textPath("MUZYKI", 0, 0)} fill={K.cream} opacity={0.7} />
       </g>
+      <path d={DRUM_DATE} fill={K.cream} opacity={0.5} />
       {/* the peeled corner, and the older blue poster underneath it */}
       <path d={DRUM_PEEL_UNDER} fill={s.season === "autumn" ? "#3a5f8a" : "#8a3a44"} />
       <path d={DRUM_PEEL_CURL} fill={K.cream} opacity={0.8} />
 
       {/* the timetable case */}
+      <path d={TT_CASE} transform="translate(1,2)" fill="#000" opacity={0.15} />
       <path d={TT_POST} fill={galv.base} />
       <path d={TT_CASE} fill={galv.deep} />
       <path d={pxPath([[TT_X + 2, RAIL_Y - 56, 36, 46]])} fill={night ? "#d8d4c8" : K.white} />
       <path d={TT_ROWS} fill={K.signBlue} opacity={0.5} />
+      {/* the Saturday column, printed red like it always is */}
+      <path d={TT_RED_ROW} fill={K.red} opacity={0.55} />
       {/* sun-bleach: the top rows have been in the light longest */}
       <path d={pxPath([[TT_X + 2, RAIL_Y - 56, 36, 12]])} fill={K.white} opacity={0.35} />
+      <path d={TT_GLARE} fill={K.white} opacity={0.14} />
+      <path d={TT_SCREWS} fill={galv.hi} opacity={0.8} />
 
       {/* the clock, keeping the real time on the document clock */}
       <path d={CLK_POST} fill={galv.base} />
@@ -1754,22 +2565,40 @@ function Furniture({
           repeatCount="indefinite"
         />
       </path>
+      {/* the second hand: PKP red, sixty seconds, visibly alive */}
+      <path d={CLK_SEC_HAND} fill={K.red} opacity={0.9}>
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from={`0 ${CLK.cx} ${CLK.cy}`}
+          to={`360 ${CLK.cx} ${CLK.cy}`}
+          dur="60s"
+          begin={clockBegin.second}
+          repeatCount="indefinite"
+        />
+      </path>
       <path d={pxPath([[643, 54, 1, 1]])} fill="#23262b" />
 
       {/* the mid-platform bench, its glove, and its one cigarette burn */}
       <path d={MID_BENCH} fill={galv.lo} />
+      <path d={MID_BENCH_SEAT_SHADOW} fill="#000" opacity={0.25} />
       <path d={MID_BENCH_PERF} fill="#2b2e32" opacity={0.6} />
+      <path d={MID_BENCH_NOSE} fill={galv.hi} opacity={0.3} />
+      <path d={MID_BENCH_STICKER} fill={K.white} opacity={0.5} />
       <path d={MID_BENCH_BURN} fill="#2b2622" opacity={0.7} />
       <path d={MID_BENCH_GLOVE} fill="#8a3a44" opacity={0.9} />
 
       {/* the SOS pillar: blue, grille, button, and a beacon that never sleeps */}
       <path d={SOS_COL} fill={K.signBlue} />
+      <path d={SOS_EDGE_HI} fill="#4d7ec4" opacity={0.6} />
       <path d={SOS_CAP} fill={galv.mid} />
+      <path d={SOS_CAM} fill="#0a0c10" />
       <path d={SOS_GRILLE} fill="#0a2548" />
       <g transform={`translate(${SOS.x + 2} 84)`}>
         <path d={textPath("SOS", 0, 0)} fill={K.white} opacity={0.9} />
       </g>
       <path d={SOS_BTN} fill={K.white} opacity={0.85} />
+      <path d={SOS_PLACARD} fill={K.white} opacity={0.6} />
       <path
         d={pxPath([
           [SOS_LAMP[0] - 1, SOS_LAMP[1], 3, 1],
@@ -1777,25 +2606,42 @@ function Furniture({
         ])}
         fill={K.ledGreen}
       />
-      {night ? <path d={SOS_BULB.halo} fill={K.ledGreen} opacity={0.2} /> : null}
+      {night ? (
+        <path d={SOS_BULB.halo} fill={K.ledGreen} opacity={0.2}>
+          <animate
+            attributeName="opacity"
+            values="0.14;0.3;0.14"
+            dur="4s"
+            repeatCount="indefinite"
+          />
+        </path>
+      ) : null}
 
       {/* the relay cabinet at the far end, tagged and half-wiped */}
       <path d={CAB_PLINTH} fill={conc.deep} />
       <Bev set={CAB_BODY_SET} mat={GALV[ph]} />
+      <path d={CAB_DRIP} fill={galv.hi} opacity={0.5} />
       <path d={CAB_SEAM} fill={galv.deep} opacity={0.7} />
       <path d={CAB_VENTS} fill={galv.deep} opacity={0.8} />
+      <path d={CAB_SHACKLE} fill={galv.deep} />
       <path d={CAB_LOCK} fill="#3a3d42" />
+      <path d={CAB_STICKER} fill={K.safety} opacity={0.8} />
+      <path d={CAB_STICKER_BOLT} fill="#23262b" opacity={0.9} />
+      <path d={CAB_CABLE} fill="#101216" opacity={0.7} />
       <path d={CAB_TAG_GHOST} fill={galv.hi} opacity={0.3} />
+      <path d={CAB_WEEDS} fill={LEAF[ph].mid} opacity={night ? 0.5 : 0.8} />
       <g transform={`translate(${CAB.l + 4} ${RAIL_Y - 12})`}>
         <path d={textPath("SRK 04", 0, 0)} fill={K.white} opacity={0.55} />
       </g>
 
       {/* the end-of-platform board past the ramp */}
+      <path d={END_BOARD} transform="translate(1,2)" fill="#000" opacity={0.15} />
       <path d={END_POST} fill={galv.base} />
       <path d={END_BOARD} fill={K.white} />
       <path d={END_BOARD_STRIPES} fill={K.red} />
 
       <Contact set={FURNITURE_CONTACT} op={night ? 0.35 : 0.7} />
+      <Contact set={PROP_CONTACT} op={night ? 0.4 : 0.7} />
 
       {/* first light, raking across the open middle on a clear dawn */}
       {ph === "dawn" && s.weather === "clear" ? <Light set={DAWN_SHAFT} op={0.9} /> : null}
@@ -2356,6 +3202,49 @@ function StationEffects({
         </svg>
       ) : null}
 
+      {/* the plastic bag by the mid bench — still until the down train's
+       * slipstream takes it: three tumbles along the platform, a slump, and
+       * gone. Runs off the same negative-begin timetable clock as the train
+       * that kicks it, so cause and effect stay welded together. */}
+      {!wet ? (
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          viewBox={`0 0 ${W} 180`}
+          preserveAspectRatio="none"
+          shapeRendering="crispEdges"
+        >
+          <path
+            d={pxPath([
+              [1210, 160, 6, 5],
+              [1212, 158, 3, 2],
+            ])}
+            fill={night ? "#8a8d92" : "#e8e6df"}
+            opacity={0.8}
+          >
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              keyTimes={`0;${kt(TIMETABLE.nearEnter + 5)};${kt(TIMETABLE.nearLeave + 1)};${kt(TIMETABLE.nearLeave + 3.5)};${kt(TIMETABLE.nearLeave + 6)};1`}
+              values="0 0;0 0;-34 -4;-66 0;-92 -2;-92 -2"
+              dur={`${CYCLE_S}s`}
+              begin={begin}
+              repeatCount="indefinite"
+              calcMode="linear"
+            />
+            <animate
+              attributeName="opacity"
+              keyTimes={`0;${kt(TIMETABLE.nearLeave + 7)};${kt(TIMETABLE.nearLeave + 9)};0.985;1`}
+              values="0.8;0.8;0;0;0.8"
+              dur={`${CYCLE_S}s`}
+              begin={begin}
+              calcMode="discrete"
+              repeatCount="indefinite"
+            />
+          </path>
+        </svg>
+      ) : null}
+
       {/* rain, falling into the cutting and off the shelter roof */}
       {wet ? (
         <svg
@@ -2429,36 +3318,13 @@ function Announcement({ scale }: { scale: number }) {
     tick();
     return () => window.clearTimeout(timer);
   }, []);
-  if (!text) return null;
-  const font = Math.max(10, Math.round(2.6 * scale));
   /**
-   * Portalled to the body: Effects mount inside the camera's transform, where
-   * both `absolute` and `fixed` anchor to the *scene* — the announcement used
-   * to slide off screen with the world and clip mid-word at the frame edge.
-   * A PA speaks over the whole platform; the text belongs to the viewport.
+   * Presentation is the engine's Monologue in its `announce` kind — the PA
+   * strip: viewport-portalled, amber mono on a scrim, no typewriter. This
+   * component keeps only what is the station's own: which line the timetable
+   * calls for, and when.
    */
-  return createPortal(
-    <div
-      className="pointer-events-none fixed right-0 left-0 z-40 flex justify-center"
-      style={{ top: Math.round(10 * scale) }}
-    >
-      <div
-        style={{
-          background: "rgba(6,8,13,0.82)",
-          padding: `${Math.round(scale)}px ${Math.round(3 * scale)}px`,
-          maxWidth: "72%",
-        }}
-      >
-        <span
-          className="font-mono"
-          style={{ fontSize: font, letterSpacing: "0.06em", color: "#ffb03a", opacity: 0.9 }}
-        >
-          {text}
-        </span>
-      </div>
-    </div>,
-    document.body,
-  );
+  return <Monologue kind="announce" scale={scale} text={text} />;
 }
 
 /* ================================================================== *
@@ -2513,21 +3379,58 @@ const DOORS_AS_OBJECTS = DOOR_X.map((x, i) => ({
  * SceneDef half of the intersection would otherwise apply.
  */
 const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
-  /* --- the way out, at the Gdańsk end --- */
+  /* --- the way out, at the Gdańsk end — one stairs object per station that
+   * HAS an exit (the `to` payload is static, so each destination needs its
+   * own object, gated on which station the platform currently is), plus the
+   * closed mouth for the stations whose underpass is being renovated. --- */
+  ...Object.values(STATIONS)
+    .filter((sp) => sp.exit)
+    .map((sp) => ({
+      id: sp.id === "przymorze" ? "station-stairs" : `station-stairs-${sp.id}`,
+      kind: "stairs",
+      priority: 2,
+      x: Z.stairs,
+      range: 34,
+      approachY: 155,
+      to: {
+        scene: (sp.exit as NonNullable<StationSpec["exit"]>).scene,
+        spawnX: (sp.exit as NonNullable<StationSpec["exit"]>).spawnX,
+      },
+      when: (w: object) => stationState(w as WorldState).at === sp.id,
+    })),
   {
-    id: "station-stairs",
-    kind: "stairs",
-    priority: 2,
+    id: "station-stairs-closed",
+    kind: "flavor",
     x: Z.stairs,
     range: 34,
-    approachY: 155,
-    to: { scene: "district", spawnX: 250 },
+    when: (w) => STATIONS[stationState(w as WorldState).at].exit === null,
   },
   /* --- the railway itself --- */
   { id: "station-signal", kind: "flavor", x: SIG.x + 5, range: 20 },
   /* --- the platform, end to end --- */
   { id: "station-timetable", kind: "flavor", x: TT_X + 20, range: 22 },
-  { id: "station-name", kind: "flavor", x: Z.nameBoard + NAME_W / 2, range: 40 },
+  {
+    id: "station-name",
+    kind: "flavor",
+    x: NAME_ART.przymorze.cx1,
+    range: 40,
+    when: (w) => stationState(w as WorldState).at === "przymorze",
+  },
+  {
+    id: "station-name-zaspa",
+    kind: "flavor",
+    x: NAME_ART.zaspa.cx1,
+    range: 40,
+    when: (w) => stationState(w as WorldState).at === "zaspa",
+  },
+  {
+    id: "station-mural",
+    kind: "flavor",
+    x: 700,
+    range: 60,
+    markerY: 76,
+    when: (w) => stationState(w as WorldState).at === "zaspa",
+  },
   { id: "station-biletomat", kind: "biletomat", x: Z.biletomat + 17, range: 26 },
   /* the machine sells it, the post punches it, the conductor asks for it */
   { id: "station-kasownik", kind: "kasownik", x: KAS.x + 10, range: 20 },
@@ -2559,7 +3462,10 @@ const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
    * written line about the coffee cups was unreachable */
   { id: "station-bin", kind: "flavor", x: Z.bin + 11, range: 18 },
   { id: "station-sos", kind: "flavor", x: SOS.x + 6, range: 18 },
-  { id: "station-name-2", kind: "flavor", x: Z.nameBoard2 + NAME_W / 2, range: 40 },
+  { id: "station-name-2", kind: "flavor", x: NAME_ART.przymorze.cx2, range: 40 },
+  /* --- the band furniture: PKP property, abandoned property --- */
+  { id: "station-trolley", kind: "flavor", x: 1520, y: 160, range: 20 },
+  { id: "station-case", kind: "flavor", x: 866, y: 163, range: 14 },
   /* the edge. Looking down the line is a thing you do, and it is a warning */
   { id: "station-edge", kind: "flavor", x: 1660, range: 60, markerY: 120 },
   { id: "station-cabinet", kind: "flavor", x: CAB.l + 21, range: 18 },
@@ -2630,6 +3536,28 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
   ground: {
     top: 152,
     bottom: 170,
+    /**
+     * The platform is not a constant strip either: it ramps down past the
+     * fence at the Sopot end (the drawn ramp at Z.rampL), and the first metre
+     * at the Gdańsk end belongs to the bridge abutment's shadow and drain.
+     * Both bends are painted where they happen; the feet just agree.
+     */
+    profile: [
+      { x: 0, bottom: 162 },
+      { x: 56, bottom: 170 },
+      { x: Z.rampL, bottom: 170 },
+      { x: 1892, bottom: 158 },
+      { x: W, bottom: 158 },
+    ],
+    /**
+     * What the surface is, where it differs: the tactile strip along the
+     * yellow line (read back by live.surface), and the ramp's broom-finished
+     * slope, which genuinely walks slower.
+     */
+    zones: [
+      { x0: 0, x1: W, y0: 152, y1: 155, kind: "tactile" },
+      { x0: Z.rampL, x1: W, y0: 155, y1: 170, kind: "ramp", speed: 0.94 },
+    ],
     blockers: [
       /* the underpass opening */
       { x0: 110, y0: 157, x1: 192, y1: 170 },
@@ -2643,8 +3571,31 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
       { x0: 678, y0: 152, x1: 712, y1: 158 },
       { x0: 1286, y0: 152, x1: 1320, y1: 158 },
       { x0: 1712, y0: 152, x1: 1758, y1: 158 },
+      /* the band furniture: the trolley and the case are depth-sorted props */
+      { x0: 1498, y0: 154, x1: 1542, y1: 161 },
+      { x0: 858, y0: 158, x1: 876, y1: 164 },
     ],
   },
+  /**
+   * WHICH station this platform is, resolved on arrival. Coming on foot, the
+   * counterpart scene names the station; coming off the train, the bag was
+   * already written by the route map (or is simply the stop you boarded at,
+   * which is what stepping straight back off should mean).
+   */
+  enter: ({ updateWorld, counterpart }) => {
+    const byFoot: Record<string, StationId> = { district: "przymorze" };
+    const at = counterpart ? byFoot[counterpart] : undefined;
+    if (at) {
+      updateWorld(
+        (w) =>
+          ({
+            ...w,
+            station: { ...((w as unknown as { station?: object }).station ?? {}), at },
+          }) as typeof w,
+      );
+    }
+  },
+  describe: (w) => stationSpecOf(w).describe,
   /**
    * Every world read the artwork performs, and nothing else. The timetable is
    * deliberately absent: the trains are animated in SMIL off the document clock,
@@ -2657,7 +3608,7 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
      * Effects and the actor list, outside the memoised art, and keying on them
      * remounted the art (and restarted every SMIL clock) for no repainted
      * pixel. */
-    return [ph, s.weather, s.season, s.lamps, s.board ? 1 : 0, s.litter].join("|");
+    return [ph, s.at, s.weather, s.season, s.lamps, s.board ? 1 : 0, s.litter].join("|");
   },
   /**
    * The one person who moves. A platform where nobody walks is a photograph, and
@@ -2671,6 +3622,9 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
       visible: (world) => whoIsWaiting(stationState(world), phNow()).pacer,
       z: 6,
     }),
+    /* --- the band furniture, depth-sorted against everyone above --------- */
+    propActor("station-trolley-prop", 1520, 160, trolleyMap(), TROLLEY_PALETTE),
+    propActor("station-case-prop", 866, 163, suitcaseMap(), SUITCASE_PALETTE),
   ],
   objects: STATION_OBJECTS,
   Component: ({ world, phase }) => <StationScene world={world} phase={phase} />,
