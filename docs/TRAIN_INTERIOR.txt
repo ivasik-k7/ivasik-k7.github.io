@@ -1,0 +1,206 @@
+I want to substantially rework `trainScene` and `trainLandscape` into one cohesive, immersive experience that feels unmistakably like travelling on a real **Gdańsk SKM train**.
+
+This should not be treated as a simple visual upgrade. I want you to rethink the presentation, density, atmosphere, environmental composition, spatial depth, and overall feeling of these scenes while preserving the existing architecture and deciding the practical implementation yourself.
+
+The target feeling is:
+
+**You are sitting inside an SKM train travelling through the Tricity, looking through the window at Gdańsk passing by.**
+
+It should feel lived-in, dense, atmospheric, slightly melancholic, and authentic.
+
+### Authenticity
+
+The environment should strongly communicate **Gdańsk / Tricity suburban railway**, rather than looking like a generic European train or generic pixel-art railway.
+
+Study the visual language of the real environment and reproduce its important characteristics through the existing game's artistic style.
+
+The train itself should feel like an actual Gdańsk SKM carriage: believable proportions, interior structure, windows, seats, doors, handles, lighting, materials, signage, small imperfections, and the general visual character of a commuter train.
+
+The landscape should likewise feel recognizably local.
+
+Do not make it an empty railway corridor. Think about the density and visual complexity of the real Tricity railway environment.
+
+### Dense environmental composition
+
+I want to use the available visual space much more effectively.
+
+Avoid large areas that feel empty, unfinished, or procedurally generic.
+
+Populate the environment with an appropriate mixture of:
+
+* railway infrastructure;
+* overhead systems;
+* poles and electrical equipment;
+* platforms and station elements;
+* fences and barriers;
+* buildings;
+* apartment blocks;
+* industrial structures;
+* warehouses;
+* vegetation;
+* trees and bushes;
+* roads;
+* cars;
+* signs;
+* advertisements;
+* utility infrastructure;
+* distant city elements;
+* railway details;
+* foreground elements;
+* atmospheric layers;
+* and small environmental details that make the world feel inhabited.
+
+The exact implementation and asset strategy are up to you.
+
+The important principle is **visual density without visual chaos**.
+
+Every layer should contribute to the perception of a real place.
+
+### The view from the train
+
+One of the most important goals is making the train window a genuinely enjoyable place to look through.
+
+The player should be able to simply sit there and watch Gdańsk move past.
+
+Create a strong sense of:
+
+**foreground → railway infrastructure → nearby buildings → distant city → sky**
+
+with appropriate depth and movement between layers.
+
+The landscape should not simply scroll as one flat background.
+
+Create convincing spatial separation and parallax where appropriate. Nearby objects should communicate speed and proximity differently from distant objects.
+
+The passing scenery should feel like a continuous journey rather than a repeating game background.
+
+### Visual depth and volume
+
+The current presentation should be pushed substantially beyond flat graphics.
+
+Use the existing rendering capabilities to create:
+
+* convincing depth;
+* layered composition;
+* volumetric-looking forms;
+* ambient shading;
+* natural shadows;
+* occlusion;
+* atmospheric perspective;
+* reflections;
+* silhouettes;
+* subtle lighting variation;
+* foreground/background separation;
+* and visual transitions between environmental layers.
+
+Graphics are one of the primary building blocks of this game, so visual quality should be treated as a core gameplay and storytelling system.
+
+### Train interior
+
+The interior should feel like a real place where someone could spend time.
+
+Do not stop at the major objects.
+
+Look for opportunities to communicate the smaller details that make a commuter train believable: surfaces, seats, windows, frames, lighting, handles, doors, signage, reflections, wear, shadows, and subtle irregularities.
+
+The player should feel surrounded by the environment rather than sitting inside an empty rectangular container.
+
+### Melancholy and atmosphere
+
+This is particularly important.
+
+The train sequence should carry a **melancholic visual-novel atmosphere**.
+
+Think about the emotional feeling of travelling alone by train while looking outside at the city.
+
+The scene should support feelings such as:
+
+* solitude;
+* nostalgia;
+* quietness;
+* evening travel;
+* homesickness;
+* passing time;
+* watching unfamiliar people and places through a window;
+* and the strange calm of being temporarily disconnected from the world.
+
+Do not achieve this primarily through explicit UI or text.
+
+The **environment itself should create the emotion**.
+
+Lighting, weather, sky, reflections, scenery, color relationships, movement, density, and pacing should collectively create the mood.
+
+### Natural movement
+
+The train journey should feel continuous and physical.
+
+Consider how the scenery behaves as the train moves, how close objects pass by, how distant objects remain relatively stable, and how the train's own interior responds to movement.
+
+The existing bidirectional train movement must remain supported.
+
+The experience should remain coherent whether the train travels left or right, including:
+
+* scenery;
+* parallax;
+* environmental layers;
+* lighting;
+* shadows;
+* animation;
+* foreground elements;
+* and the relationship between the train and landscape.
+
+Do not build the visual system around a single travel direction.
+
+### Avoid artificial repetition
+
+The landscape should not immediately reveal obvious repeating patterns.
+
+Where repetition is unavoidable, use composition, variation, layering, timing, and environmental differences to make the journey feel natural.
+
+The player should feel that the train is moving through a continuous part of Gdańsk rather than watching the same set of assets endlessly cycle.
+
+### Visual-novel presentation
+
+Remember that this game is fundamentally driven by atmosphere and visual storytelling.
+
+The train journey should therefore be something the player can **look at and emotionally experience**, not merely a transportation mechanic.
+
+There should be moments where the player can simply observe the scenery and enjoy the composition.
+
+The scene should have intentional framing and visual hierarchy, almost like a sequence from a cinematic visual novel.
+
+### Implementation philosophy
+
+Do not prescribe a specific implementation.
+
+First inspect `trainScene`, `trainLandscape`, and the systems they depend on.
+
+Understand:
+
+* the current rendering architecture;
+* movement model;
+* camera model;
+* layering;
+* existing visual utilities;
+* asset conventions;
+* animation systems;
+* performance constraints;
+* and how the train currently interacts with the landscape.
+
+Then decide the best architecture and implementation yourself.
+
+Reuse existing systems where they are strong. Refactor or replace weak approaches where necessary.
+
+Do not add complexity merely for complexity's sake.
+
+The goal is not to make the code larger.
+
+The goal is to make the **experience dramatically richer**.
+
+The final result should feel like a polished, atmospheric, authentic Gdańsk SKM journey inside a melancholic visual novel — a place where the player can genuinely enjoy sitting by the window and watching the world pass by.
+
+Prioritize:
+
+**authenticity → atmosphere → visual density → depth → environmental storytelling → natural movement → polish.**
+
+Make the result feel **lived-in, emotionally evocative, and unmistakably Gdańsk**.

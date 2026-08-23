@@ -7,7 +7,7 @@ import { lofiPlayer } from "./lofi";
  * these 2% -volume layers you only notice when they're gone.
  */
 
-export type AmbienceName = "room" | "street" | "stairwell" | "shop" | "parking" | "none";
+export type AmbienceName = "room" | "street" | "stairwell" | "shop" | "parking" | "train" | "none";
 
 const FADE_S = 1.5;
 
@@ -98,6 +98,46 @@ function scheduleBirds(ctx: AudioContext, bus: GainNode): () => void {
 }
 
 /** A car passing somewhere beyond the yard: a slow filtered swell. */
+/**
+ * Rail joints, in pairs.
+ *
+ * The sound of continuous welded rail is nearly nothing, but Polish suburban
+ * track still has jointed sections and points, and what a bogie does over a
+ * joint is two knocks close together — the leading axle and the trailing one
+ * — not one. That da-dum, and the gap before the next one, is the whole
+ * signature of being on a train; a single evenly-spaced tick sounds like a
+ * clock and breaks the illusion instantly.
+ */
+function scheduleRailJoints(ctx: AudioContext, bus: GainNode): () => void {
+  let timer = 0;
+  const knock = (at: number, level: number) => {
+    const n = noiseSource(ctx, 1);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 90 + Math.random() * 40;
+    bp.Q.value = 1.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(level, at + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.19);
+    n.connect(bp);
+    bp.connect(g);
+    g.connect(bus);
+    n.start(at);
+    n.stop(at + 0.24);
+  };
+  const pair = () => {
+    const t = ctx.currentTime;
+    const level = 0.16 + Math.random() * 0.07;
+    knock(t, level);
+    /* the second axle, a bogie-length behind */
+    knock(t + 0.13 + Math.random() * 0.03, level * 0.82);
+    timer = window.setTimeout(pair, 1500 + Math.random() * 900);
+  };
+  timer = window.setTimeout(pair, 700);
+  return () => window.clearTimeout(timer);
+}
+
 function scheduleCarPasses(ctx: AudioContext, bus: GainNode): () => void {
   let timer = 0;
   const pass = () => {
@@ -234,6 +274,43 @@ function buildBed(ctx: AudioContext, name: AmbienceName, out: AudioNode): Bed | 
       lfo.stop();
       stopBirds();
       stopCars();
+    });
+  }
+
+  if (name === "train") {
+    /**
+     * Inside a moving EMU: a broad low roar off the wheels, a slow swell as
+     * the bogies work, the traction inverter whining somewhere under the
+     * floor, and the joints.
+     */
+    const roar = noiseSource(ctx, 4);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 300;
+    const rg = ctx.createGain();
+    rg.gain.value = 0.6;
+    roar.connect(lp);
+    lp.connect(rg);
+    rg.connect(bus);
+    roar.start();
+    /* the body working on its springs — a slow breath over the roar */
+    const sway = ctx.createOscillator();
+    sway.frequency.value = 0.19;
+    const swayG = ctx.createGain();
+    swayG.gain.value = 0.12;
+    sway.connect(swayG);
+    swayG.connect(rg.gain);
+    sway.start();
+    /* traction: a thin steady note under everything, the way inverters are */
+    const whine = tone(ctx, 214, 0.018, bus);
+    const hum = tone(ctx, 62, 0.05, bus);
+    const stopJoints = scheduleRailJoints(ctx, bus);
+    stops.push(() => {
+      roar.stop();
+      sway.stop();
+      whine.stop();
+      hum.stop();
+      stopJoints();
     });
   }
 

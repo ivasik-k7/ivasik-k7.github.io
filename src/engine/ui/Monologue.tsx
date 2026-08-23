@@ -3,10 +3,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { mumble, voiceFor } from "../audio/voice";
 import { acquireVoice, dwellMs, type MonologueKind, releaseVoice } from "../core/monologue";
+import { useIsVisible } from "../core/runtime-cull";
 import { useAnimationGate, useReducedMotion } from "./animationGate";
-import { PixelFrame } from "./PixelFrame";
+import { PixelFrame, PixelLabel } from "./PixelFrame";
 import { PixelProse } from "./PixelProse";
-import { PARCHMENT } from "./uiLook";
+import { PARCHMENT, SIGNAL } from "./uiLook";
 
 /**
  * Monologue — every short line anybody says outside a dialogue tree.
@@ -162,10 +163,12 @@ function WorldLine(props: MonologueProps & { kind: "speech" | "ambient" }) {
     muted = false,
     x = 0,
     headY = 78,
-    /* tuned for a plate the HUD's size — the old -30/-20 was for a bubble
-       twice as wide, and skewed the small one clean off its speaker */
-    offsetX = -8,
-    offsetY = -4,
+    /* Centred on the speaker and lifted clear of the hair. The old -30/-20
+       was tuned for bare floating text twice this wide; on a compact plate it
+       parked the words beside the person rather than over them, which is what
+       made three of them collide with the shelter signage instead. */
+    offsetX = 0,
+    offsetY = -6,
     sceneWidth,
     showSpeaker = true,
     priority = kind === "speech" ? 1 : 0,
@@ -175,9 +178,22 @@ function WorldLine(props: MonologueProps & { kind: "speech" | "ambient" }) {
   } = props;
   const running = useAnimationGate();
   const still = useReducedMotion();
-  const hushed = muted || !running;
+  /**
+   * Nobody speaks off camera.
+   *
+   * The floor is one voice for the whole world, so a mutterer the player has
+   * walked away from used to take it, say their line to an empty viewport and
+   * hold it for the full dwell — the visible people standing next to the
+   * player stayed silent for nine seconds at a time, for no reason the player
+   * could see. Somebody off camera simply does not compete.
+   */
+  /* no padding: the generous default let somebody a step past the frame edge
+     take the floor and speak into the margin */
+  const onCamera = useIsVisible(Math.round(x - 40), 80, 0);
+  const hushed = muted || !running || !onCamera;
 
   const [line, setLine] = useState<string | null>(null);
+  /** half the plate, in logical px — only used when a caller sets sceneWidth */
   const [halfWidth, setHalfWidth] = useState(0);
   const lastIndex = useRef(-1);
   const token = useRef({});
@@ -264,14 +280,26 @@ function WorldLine(props: MonologueProps & { kind: "speech" | "ambient" }) {
   // in the git history of NpcMonologue: reading offsetWidth per typed char
   // forced layout of the whole scene under it.
   useLayoutEffect(() => {
-    if (!line || !boxRef.current) return;
-    setHalfWidth(boxRef.current.offsetWidth / 2 / scale);
+    const el = boxRef.current;
+    if (!line || !el) return;
+    setHalfWidth(el.offsetWidth / 2 / scale);
   }, [line, scale]);
 
   if (!line) return <AnimatePresence />;
 
   const u = UI_U;
   const px = UI_PX;
+  /**
+   * Centred on the speaker, in world coordinates.
+   *
+   * There was briefly an automatic clamp here that measured `offsetParent` to
+   * keep the plate inside the scene. It measured the wrong box — the scene
+   * layer is 5120 px wide but its positioned ancestor is the 1280 px viewport
+   * — so every plate was dragged into the leftmost quarter of the street and
+   * spoke from nowhere near its speaker. Clamping stays opt-in through
+   * `sceneWidth`, in the scene's own units, where a caller can be right about
+   * it; the anchor itself is simply the head.
+   */
   const pad = 4;
   let cx = x + offsetX;
   if (sceneWidth && halfWidth > 0) {
@@ -305,14 +333,25 @@ function WorldLine(props: MonologueProps & { kind: "speech" | "ambient" }) {
             tone="plate"
             rivets={false}
             scan={false}
-            title={showSpeaker && speaker ? speaker.toUpperCase() : undefined}
-            /* the title tab straddles the top edge and reaches u*3 into the
-               frame — the body pads past it or the name sits on the words */
-            bodyStyle={{
-              padding: `${showSpeaker && speaker ? u * 4 : u * 2}px ${u * 3}px ${u * 2}px`,
-            }}
+            bodyStyle={{ padding: `${u * 2}px ${u * 3}px` }}
             style={{ width: "max-content", maxWidth: props.maxWidth ?? 208 }}
           >
+            {/* The name sits INSIDE the plate, not on a title tab. A tab
+                straddles the top edge and hangs ~u*5 into the body, which at
+                this size lands squarely on the first line of what was said —
+                the overlap that made these read as two stacked things rather
+                than one label. Inline, it is the HUD's own signal yellow over
+                the HUD's own dark, and the plate stays two rows shorter. */}
+            {showSpeaker && speaker ? (
+              <span className="mb-px block">
+                <PixelLabel
+                  text={speaker.toUpperCase()}
+                  px={Math.max(1, px - 1)}
+                  fill={SIGNAL}
+                  opacity={0.9}
+                />
+              </span>
+            ) : null}
             <PixelProse
               key={`${props.contentKey ?? ""}:${line}`}
               text={line}

@@ -172,6 +172,8 @@ const AMBIENCE: Record<string, AmbienceName> = {
   parking: "parking",
   gym: "stairwell",
   district: "street",
+  /* the carriage had no bed at all and rode in silence */
+  train: "train",
   elektrykow: "street",
   /* the club: the parking bed's low concrete rumble is the closest thing this
      game has to bass through a wall, which is exactly what it is */

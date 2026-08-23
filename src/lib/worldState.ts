@@ -76,6 +76,27 @@ export interface WorldState {
     fridgeOpen: boolean;
     freezerOpen: boolean;
   };
+
+  /**
+   * The SKM unit you are riding in.
+   *
+   * `trainScene` has read this slice defensively since it was written and
+   * nothing has ever written it, so the train ran toward Gdynia at crowd 2
+   * with the lights on and clear weather for every journey the player ever
+   * took, whichever stop they picked on the route map. The scene sets it on
+   * arrival now (see TRAIN_SCENE.enter).
+   *
+   * Optional, and read through `trainState(world)` with defaults — the same
+   * shape `studio` uses. A required field plus an `initialWorld` entry would
+   * work for a new game and break every save written before it existed.
+   */
+  train?: {
+    toward: "gdansk" | "gdynia";
+    crowd: number;
+    seated: boolean;
+    lights: boolean;
+    weather: "clear" | "rain";
+  };
 }
 
 /** What the things in the pocket call themselves (HUD, status menu). */

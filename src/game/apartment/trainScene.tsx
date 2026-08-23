@@ -11,6 +11,9 @@ import {
   LayeredScene,
   M,
   type Mat,
+  Monologue,
+  NpcActor,
+  npcToActor,
   type Ph,
   pxPath,
   type Rect,
@@ -22,79 +25,10 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
-import type { WorldState } from "@/lib/worldState";
+import { dayPhase, type WorldState } from "@/lib/worldState";
 import { LINE } from "./stationTimetable";
 import { SHADE_CYCLE, TrainWindowView, VIEW } from "./trainLandscape";
-
-// --- inside the SKM, somewhere between Przymorze and Oliwa -------------------
-
-/**
- * The saloon of a moving SKM unit.
- *
- * ==================================================================
- * THE SCALE, WHICH WAS WRONG
- *
- * This scene used to stretch its interior to 58 px per metre vertically while
- * the player stayed at the game's key of 38, on the argument that a 2.30 m
- * carriage only fills 87 px of a 150 px frame and the rest would be roof void.
- *
- * What that produced:
- *
- *     seat back  1.15 m  at 58 px/m =  67 px  = 1.00 × the player
- *     seat back  1.15 m  at 38 px/m =  44 px  = 0.66 × the player
- *     real:      1.15 m / 1.76 m person       = 0.65
- *
- * The seat backs were exactly as tall as the person walking past them, and
- * every object in the room was 53% too big. No amount of detail fixes a room
- * whose furniture is the size of its people; it only gives you more oversized
- * things to look at.
- *
- * The stretch is gone. One key, 38 px per metre, both axes, same as the player
- * and same as every exterior in the game. And the 63 px the stretch existed to
- * hide turns out not to be roof void at all — from inside a carriage you see the
- * *ceiling*, foreshortened, above your head, with its coves and vents and the
- * handrail and the straps hanging off it. That band is now the nearest surface
- * in the picture instead of the emptiest.
- *
- *   y   0– 63  ceiling from below: near cove, panels, vents, domes, far cove
- *   y  63      the cant rail, where ceiling meets far wall
- *   y  64– 72  luggage rack, its handrail, and the straps hanging off it
- *   y  72–112  the glazing (VIEW's band — see below)
- *   y 112–150  sill shelf, heater grilles, seats, skirting
- *   y 150–180  the floor from above, receding to the near edge
- *
- * A standing figure is now 66 px against the player's 67, so the scene can
- * finally have people standing in the aisle — which the old key made impossible,
- * and which is most of what was missing from a supposedly crowded commuter
- * train that read as an empty room with hats on the seats.
- *
- * WHERE THE KEY COMES FROM. The window band belongs to trainLandscape and this
- * file cannot see the numbers in it, so rather than assert a vertical key and
- * hope the two agree, the scene derives one: an EMU's window sill is 1.00 m
- * above the floor, VIEW.bottom is that sill, so FLOOR − VIEW.bottom is one metre
- * in pixels. Everything else is laid out in metres from there, and the guard on
- * VPM catches a landscape module authored against some other layout.
- * ==================================================================
- *
- * SIX PLANES:
- *   farBackground   — the view through the glass, and what the glass reflects.
- *   middleBackground— the ceiling and the far wall: openings, piers, heaters,
- *                     signage, the route map, the ends of the carriage.
- *   ground          — the floor, its wear, markings, litter, and the pools of
- *                     daylight the windows throw across it.
- *   staticObjects   — seats, tables, poles, doors, kasowniki, bins, bike, bags.
- *   gameplayObjects — the other passengers, seated and standing.
- *   Foreground      — the near side of the aisle, everything cut off by an edge
- *                     of the frame and everything *larger* than its opposite
- *                     number across the carriage.
- *
- * LIGHTING PREMISE. Two sources and they fight: cold white LED in the ceiling
- * coves, on all day, and whatever the hour is coming through the glass. Every
- * nineteen seconds a bridge takes the daylight for six tenths of a second and
- * the LED wins — on the wall, the seats and the floor at once.
- */
-
-/* ------------------------------------------------------------- the keys --- */
+import { PASSENGERS } from "./trainPassengers";
 
 const PPM = 38;
 const m = (metres: number) => Math.round(metres * PPM);
@@ -106,24 +40,18 @@ const FRAME_H = 180;
 const VPM_RAW = FLOOR - VIEW.bottom;
 const VPM = VPM_RAW >= 26 && VPM_RAW <= 52 ? VPM_RAW : PPM;
 const vm = (metres: number) => Math.round(metres * VPM);
-/** Height above the floor, in metres, to scene y. */
 const y = (metres: number) => FLOOR - vm(metres);
 
-/** The cant rail: 2.30 m up, or high enough to clear the glazing, whichever. */
 const CANT = Math.min(y(2.3), VIEW.top - 12);
 const RACK_Y = CANT + 1;
 const RACK_H = 4;
 const GLASS_TOP = VIEW.top - 3;
 const GLASS_BOTTOM = VIEW.bottom + 3;
 const SEAT_BACK = y(1.15);
-const SEAT_HEAD = y(0.95);
 const SEAT_TOP = y(0.45);
 const ARM_TOP = y(0.6);
 const TABLE_TOP = y(0.72);
-const HEAD_SEATED = y(1.32);
-const HEAD_STANDING = y(1.75);
 
-/** Where things are along the carriage. Unchanged: gameplay hangs off these. */
 const Z = {
   wc: 46,
   doorL: 120,
@@ -142,6 +70,9 @@ const K = {
   moquetteHi: "#54718f",
   insert: "#2f4763",
   fleck: "#7d94ac",
+  shell: "#5a6068",
+  shellHi: "#79808a",
+  shellLo: "#3d4249",
   priority: "#6b4a72",
   priorityHi: "#87608f",
   pole: "#e8c445",
@@ -156,23 +87,15 @@ const K = {
   access: "#1b4b96",
   red: "#c94040",
   green: "#3f9f5c",
-  /** the kasownik: the orange of every ticket punch in Poland */
   kasownik: "#e2701f",
   case: "#4a3f38",
   skin: "#a98d78",
   skinNight: "#8a7566",
+  shade: "#151a20",
+  mist: "#cfd8dc",
+  wet: "#1b2430",
 } as const;
 
-/**
- * The bridge cadence, imported rather than declared.
- *
- * This used to be a 19-second guess typed here and a separate set of numbers
- * typed in trainLandscape's TunnelShade, and they never agreed: the carriage
- * went dark on its own schedule while the bridge went past on another. The
- * landscape owns the timetable now — it is the thing that knows where the
- * bridges are — and everything in here that has to respond to one reads its
- * keyTimes off SHADE_CYCLE.
- */
 const BRIDGE = {
   dur: SHADE_CYCLE.dur,
   keyTimes: SHADE_CYCLE.keyTimes,
@@ -213,29 +136,41 @@ const WASH: Record<Ph, string> = {
   night: "#2a3350",
 };
 
-/* ================================================================== *
- * state
- * ================================================================== */
-
 export interface TrainState {
   toward: "gdansk" | "gdynia";
   crowd: number;
   seated: boolean;
   lights: boolean;
+  weather: "clear" | "rain";
 }
 
-const DEFAULTS: TrainState = { toward: "gdynia", crowd: 2, seated: false, lights: true };
+const DEFAULTS: TrainState = {
+  toward: "gdynia",
+  crowd: 2,
+  seated: false,
+  lights: true,
+  weather: "clear",
+};
 
 export function trainState(world: WorldState): TrainState {
-  const raw = (world as { train?: Partial<TrainState> }).train;
+  const raw = world.train as Partial<TrainState> | undefined;
   return raw ? { ...DEFAULTS, ...raw } : DEFAULTS;
 }
 
-const hash = (n: number) => {
-  const x = Math.sin(n * 127.1) * 43758.5453;
-  return x - Math.floor(x);
-};
-/** A woven fleck on a lattice — moquette is a textile, not noise. */
+function boardingState(counterpart: string | undefined, hour: number): TrainState["toward"] {
+  if (counterpart === "elektrykow" || counterpart === "raveclub") return "gdynia";
+  if (counterpart === "district") return "gdansk";
+  return hour >= 15 ? "gdynia" : "gdansk";
+}
+
+function crowdFor(hour: number): number {
+  if (hour >= 6 && hour < 9) return 4;
+  if (hour >= 15 && hour < 18) return 4;
+  if (hour >= 9 && hour < 15) return 2;
+  if (hour >= 18 && hour < 21) return 2;
+  return 1;
+}
+
 const weave = (r: Rect, step = 4): Rect[] => {
   const [rx, ry, rw, rh] = r;
   const out: Rect[] = [];
@@ -245,21 +180,6 @@ const weave = (r: Rect, step = 4): Rect[] => {
   return out;
 };
 
-/* ================================================================== *
- * the ceiling, seen from below
- * ================================================================== */
-
-/**
- * Sixty-three pixels of it, and it is the nearest surface in the picture.
- *
- * From the top of the frame down: the near cove, directly over the player's
- * head and cut off by the frame; the near slope; the flat centre panel with the
- * vents, speakers and camera domes; the far slope; then the far cove, the bright
- * line running the length of the carriage just above the wall. Two coves,
- * because a carriage has two sides and from inside it you see both — the single
- * cove the old version drew was the tell that the ceiling was a backdrop rather
- * than a surface you are standing under.
- */
 const CEIL_NEAR = Math.round(CANT * 0.11);
 const CEIL_MID_TOP = Math.round(CANT * 0.3);
 const CEIL_MID_BOT = Math.round(CANT * 0.72);
@@ -273,8 +193,15 @@ const CEIL_SLOPES = pxPath([
   [0, CEIL_MID_BOT, W, 2],
   [0, CEIL_FAR - 2, W, 2],
 ]);
+const CEIL_SLOPE_HI = pxPath([
+  [0, CEIL_MID_TOP, W, 1],
+  [0, CEIL_MID_BOT + 2, W, 1],
+]);
 const CEIL_JOINTS = pxPath(
   repeat(Math.ceil(W / 110), 110, [54, CEIL_NEAR, 1, CEIL_FAR - CEIL_NEAR] as Rect),
+);
+const CEIL_JOINT_HI = pxPath(
+  repeat(Math.ceil(W / 110), 110, [55, CEIL_NEAR, 1, CEIL_FAR - CEIL_NEAR] as Rect),
 );
 const COVE_NEAR = pxPath([
   [0, 0, W, CEIL_NEAR],
@@ -288,34 +215,105 @@ const COVE_WASH = pxPath([
   [0, CEIL_NEAR + 1, W, 5],
   [0, CEIL_FAR - 6, W, 5],
 ]);
+const LIGHT_STRIP = pxPath([[0, CEIL_MID_TOP + 1, W, 2]]);
+const LIGHT_STRIP_GLOW = pxPath([
+  [0, CEIL_MID_TOP, W, 1],
+  [0, CEIL_MID_TOP + 3, W, 2],
+]);
+const LIGHT_JOINTS = pxPath(repeat(Math.ceil(W / 88), 88, [40, CEIL_MID_TOP + 1, 1, 2] as Rect));
+const LIGHT_DEAD: Rect = [Z.bay[2] + 40, CEIL_MID_TOP + 1, 88, 2];
+
+const AD_SPANS = [
+  [170, 132],
+  [330, 96],
+  [470, 150],
+  [660, 132],
+  [830, 168],
+  [1040, 120],
+  [1194, 96],
+] as const;
+const AD_FRAMES = pxPath(AD_SPANS.map(([x, w]) => [x, CEIL_MID_TOP + 7, w, 15] as Rect));
+const AD_MOUNTS = pxPath(AD_SPANS.map(([x, w]) => [x, CEIL_MID_TOP + 6, w, 1] as Rect));
+const AD_SHADOW = pxPath(AD_SPANS.map(([x, w]) => [x, CEIL_MID_TOP + 22, w, 2] as Rect));
+const AD_GLARE = pxPath(
+  AD_SPANS.map(([x, w]) => [x + 3, CEIL_MID_TOP + 8, Math.round(w * 0.3), 2] as Rect),
+);
+const AD_ART = AD_SPANS.map(([x, w], i) => ({
+  key: `ad${x}`,
+  band: pxPath([[x + 2, CEIL_MID_TOP + 9, w - 4, 6] as Rect]),
+  lines: pxPath([
+    [x + 5, CEIL_MID_TOP + 16, Math.round((w - 10) * 0.7), 1] as Rect,
+    [x + 5, CEIL_MID_TOP + 18, Math.round((w - 10) * 0.45), 1] as Rect,
+  ]),
+  tone: i % 4,
+}));
+
+const CEIL_DUCT = pxPath([
+  [0, CEIL_MID_TOP + 24, W, 3],
+  [0, CEIL_MID_TOP + 24, W, 1],
+]);
+const CEIL_GRABS = pxPath(
+  [214, 386, 558, 730, 902, 1074, 1246].flatMap((x) => [
+    [x, CEIL_MID_BOT - 4, 2, 6] as Rect,
+    [x - 3, CEIL_MID_BOT + 2, 8, 2] as Rect,
+  ]),
+);
+const CEIL_GRAB_HI = pxPath(
+  [214, 386, 558, 730, 902, 1074, 1246].map((x) => [x - 3, CEIL_MID_BOT + 2, 8, 1] as Rect),
+);
+
 const CEIL_VENTS = pxPath(repeat(Math.ceil(W / 150), 150, [70, CEIL_MID_TOP + 5, 34, 4] as Rect));
 const CEIL_VENT_SLATS = pxPath(
   repeat(Math.ceil(W / 150), 150, [72, CEIL_MID_TOP + 6, 30, 1] as Rect),
 );
+const VENT_DUST = pxPath(repeat(Math.ceil(W / 150), 150, [70, CEIL_MID_TOP + 9, 34, 3] as Rect));
 const SPEAKERS = pxPath([
   [Z.map + 40, CEIL_MID_BOT - 8, 12, 5],
   [Z.bay[2] + 40, CEIL_MID_BOT - 8, 12, 5],
+]);
+const SPEAKER_MESH = pxPath([
+  ...repeat(3, 2, [Z.map + 42, CEIL_MID_BOT - 7, 8, 1] as Rect, "y"),
+  ...repeat(3, 2, [Z.bay[2] + 42, CEIL_MID_BOT - 7, 8, 1] as Rect, "y"),
 ]);
 const DOMES = pxPath([
   [Z.bay[1] - 30, CEIL_MID_BOT - 9, 10, 6],
   [Z.bay[3] + 20, CEIL_MID_BOT - 9, 10, 6],
 ]);
+const DOME_GLINT = pxPath([
+  [Z.bay[1] - 28, CEIL_MID_BOT - 8, 3, 1],
+  [Z.bay[3] + 22, CEIL_MID_BOT - 8, 3, 1],
+]);
+const EXIT_SIGNS = pxPath([
+  [Z.doorL - 26, CEIL_MID_BOT + 2, 18, 8],
+  [Z.doorR - 26, CEIL_MID_BOT + 2, 18, 8],
+]);
+const EXIT_MARKS = pxPath([
+  [Z.doorL - 22, CEIL_MID_BOT + 4, 3, 4],
+  [Z.doorL - 18, CEIL_MID_BOT + 5, 6, 1],
+  [Z.doorR - 22, CEIL_MID_BOT + 4, 3, 4],
+  [Z.doorR - 18, CEIL_MID_BOT + 5, 6, 1],
+]);
+const NO_SMOKING = pxPath([
+  [Z.map + 180, CEIL_MID_BOT - 6, 7, 7],
+  [Z.bay[2] + 120, CEIL_MID_BOT - 6, 7, 7],
+]);
+const NO_SMOKING_BAR = pxPath([
+  [Z.map + 181, CEIL_MID_BOT - 3, 5, 1],
+  [Z.bay[2] + 121, CEIL_MID_BOT - 3, 5, 1],
+]);
+const CCTV_NOTICE = pxPath([[Z.bay[1] - 44, CEIL_MID_BOT - 7, 10, 7]]);
 const CANT_RAIL = pxPath([
   [0, CANT, W, 3],
   [0, CANT + 3, W, 1],
 ]);
+const CANT_RAIL_HI = pxPath([[0, CANT, W, 1]]);
 
-/**
- * The luggage rack: a shelf tucked under the cant rail on brackets, with the far
- * handrail on its underside and the far straps hanging off that. There is not
- * much room between ceiling and window head on a modern EMU — nine pixels here —
- * and the rack, the rail and the straps all have to live in it, which is exactly
- * the crush it is in life.
- */
 const RACK = pxPath([
   [0, RACK_Y, W, RACK_H],
   ...repeat(Math.ceil(W / 110), 110, [20, RACK_Y + RACK_H, 4, GLASS_TOP - RACK_Y - RACK_H] as Rect),
 ]);
+const RACK_HI = pxPath([[0, RACK_Y, W, 1]]);
+const RACK_UNDER = pxPath([[0, RACK_Y + RACK_H, W, 1]]);
 const RACK_RAIL = pxPath([[0, RACK_Y + RACK_H, W, 2]]);
 const RACK_BAGS = pxPath([
   [Z.bay[0] + 24, RACK_Y - 9, 46, 9],
@@ -324,22 +322,41 @@ const RACK_BAGS = pxPath([
   [Z.bay[3] + 40, RACK_Y - 7, 26, 7],
   [Z.map + 96, RACK_Y - 8, 30, 8],
 ]);
+const RACK_BAG_TRIM = pxPath([
+  [Z.bay[0] + 24, RACK_Y - 4, 46, 2],
+  [Z.bay[2] + 10, RACK_Y - 4, 34, 2],
+  [Z.bay[3] + 40, RACK_Y - 3, 26, 2],
+  [Z.map + 96, RACK_Y - 4, 30, 2],
+]);
+const RACK_BAG_HI = pxPath([
+  [Z.bay[0] + 24, RACK_Y - 9, 46, 1],
+  [Z.bay[2] + 10, RACK_Y - 8, 34, 1],
+  [Z.bay[3] + 40, RACK_Y - 7, 26, 1],
+  [Z.map + 96, RACK_Y - 8, 30, 1],
+]);
 const FAR_STRAP_X = [Z.map + 120, Z.bay[1] - 60, Z.bay[2] + 20, Z.bay[3] + 30] as const;
 
-/* ================================================================== *
- * the window wall
- * ================================================================== */
+const SEAT_D = 26;
+const KNEE = 46;
+const BAY_W = SEAT_D * 2 + KNEE;
+const SEAT_FIRST = 200;
+const SEAT_BAYS = 10;
+const SEAT_X = Array.from({ length: SEAT_BAYS }, (_, i) => SEAT_FIRST + i * BAY_W);
 
-const WINDOWS: Rect[] = [
-  [Z.map + 60, VIEW.top, 150, VIEW.bottom - VIEW.top],
-  [Z.bay[1] - 40, VIEW.top, 150, VIEW.bottom - VIEW.top],
-  [Z.bay[2] - 40, VIEW.top, 150, VIEW.bottom - VIEW.top],
-  [Z.bay[3] - 40, VIEW.top, 130, VIEW.bottom - VIEW.top],
-];
-const DOOR_LIGHTS: Rect[] = [
-  [Z.doorL - 18, VIEW.top + 4, 40, VIEW.bottom - VIEW.top - 8],
-  [Z.doorR - 20, VIEW.top + 4, 40, VIEW.bottom - VIEW.top - 8],
-];
+const BACK_T = 6;
+const PAN_D = 20;
+const PAN_H = 6;
+const ARM_H = 3;
+const BACK_SEGS = 4;
+
+const WIN_W = 78;
+const WINDOWS: Rect[] = SEAT_X.map(
+  (x) => [x + Math.round((BAY_W - WIN_W) / 2), VIEW.top, WIN_W, VIEW.bottom - VIEW.top] as Rect,
+);
+const DOOR_LIGHTS: Rect[] = [Z.doorL, Z.doorR].map((x) => {
+  const g = DOOR_GLASS_AT(x);
+  return [g.x, g.y, g.w, g.h] as Rect;
+});
 const ALL_GLASS = [...WINDOWS, ...DOOR_LIGHTS];
 
 const WINDOW_FRAMES = pxPath(
@@ -350,6 +367,24 @@ const WINDOW_FRAMES = pxPath(
         [x - 3, gy + h, w + 6, 3],
         [x - 3, gy - 3, 3, h + 6],
         [x + w, gy - 3, 3, h + 6],
+      ] as Rect[],
+  ),
+);
+const WINDOW_FRAME_HI = pxPath(
+  ALL_GLASS.flatMap(
+    ([x, gy, w, h]) =>
+      [
+        [x - 3, gy - 3, w + 6, 1],
+        [x - 3, gy - 3, 1, h + 6],
+      ] as Rect[],
+  ),
+);
+const WINDOW_FRAME_LO = pxPath(
+  ALL_GLASS.flatMap(
+    ([x, gy, w, h]) =>
+      [
+        [x + w + 2, gy - 3, 1, h + 6],
+        [x - 3, gy + h + 2, w + 6, 1],
       ] as Rect[],
   ),
 );
@@ -364,18 +399,33 @@ const WINDOW_SEAL = pxPath(
       ] as Rect[],
   ),
 );
-/** The mullion in the big panes: they are two lights each, not one. */
 const MULLIONS = pxPath(
   WINDOWS.filter(([, , w]) => w > 140).map(
     ([x, gy, w, h]) => [x + Math.round(w / 2) - 2, gy, 4, h] as Rect,
   ),
 );
 const SILLS = pxPath(WINDOWS.map(([x, , w]) => [x - 5, GLASS_BOTTOM, w + 10, 4] as Rect));
+const SILL_NOSE = pxPath(WINDOWS.map(([x, , w]) => [x - 5, GLASS_BOTTOM, w + 10, 1] as Rect));
+const SILL_SHADOW = pxPath(WINDOWS.map(([x, , w]) => [x - 5, GLASS_BOTTOM + 4, w + 10, 2] as Rect));
+const SILL_ITEMS = pxPath([
+  [WINDOWS[1][0] + 12, GLASS_BOTTOM - 9, 4, 9],
+  [WINDOWS[1][0] + 11, GLASS_BOTTOM - 11, 6, 2],
+  [WINDOWS[4][0] + 40, GLASS_BOTTOM - 7, 6, 7],
+  [WINDOWS[8][0] + 22, GLASS_BOTTOM - 3, 9, 3],
+]);
+const SILL_ITEM_LIDS = pxPath([[WINDOWS[4][0] + 39, GLASS_BOTTOM - 8, 8, 2]]);
+const SILL_RINGS = pxPath([
+  [WINDOWS[1][0] + 30, GLASS_BOTTOM + 1, 6, 1],
+  [WINDOWS[6][0] + 18, GLASS_BOTTOM + 1, 5, 1],
+]);
 const HOPPERS = pxPath(
   WINDOWS.flatMap(
     ([x, gy, w]) =>
       [[x + 26, gy + 3, w - 52, 6], ...repeat(3, 3, [x + 30, gy + 5, w - 60, 1] as Rect)] as Rect[],
   ),
+);
+const HOPPER_CATCH = pxPath(
+  WINDOWS.map(([x, gy, w]) => [x + Math.round(w / 2) - 3, gy + 9, 6, 2] as Rect),
 );
 const BLINDS = pxPath(
   WINDOWS.flatMap(
@@ -401,6 +451,41 @@ const GLASS_SHEEN_2 = pxPath(
     ).filter((r) => r[1] > gy + 2 && r[1] < gy + h - 5),
   ),
 );
+const GLASS_SMUDGE = pxPath(
+  WINDOWS.flatMap(([x, gy, w, h], i) =>
+    i % 2 === 0
+      ? ([
+          [x + 18, gy + Math.round(h * 0.42), 14, 9],
+          [x + 21, gy + Math.round(h * 0.42) - 3, 7, 3],
+        ] as Rect[])
+      : ([[x + w - 34, gy + Math.round(h * 0.46), 12, 8]] as Rect[]),
+  ),
+);
+const GLASS_SCRATCH = pxPath([
+  [WINDOWS[5][0] + 24, VIEW.top + 22, 1, 12],
+  [WINDOWS[5][0] + 25, VIEW.top + 22, 10, 1],
+  [WINDOWS[5][0] + 34, VIEW.top + 22, 1, 12],
+  [WINDOWS[5][0] + 40, VIEW.top + 22, 1, 12],
+  [WINDOWS[5][0] + 40, VIEW.top + 27, 8, 1],
+]);
+const GLASS_MIST = pxPath(
+  WINDOWS.flatMap(
+    ([x, gy, w, h]) =>
+      [
+        [x + 2, gy + h - 18, w - 4, 16],
+        [x + 2, gy + 2, w - 4, 6],
+      ] as Rect[],
+  ),
+);
+const GLASS_DRIPS = pxPath(
+  WINDOWS.flatMap(
+    ([x, gy, w, h], i) =>
+      [
+        [x + 14 + ((i * 7) % 20), gy + h - 24, 1, 10],
+        [x + w - 26 + ((i * 5) % 12), gy + h - 20, 1, 7],
+      ] as Rect[],
+  ),
+);
 const GLASS_DECAL = pxPath(
   WINDOWS.flatMap(([x, , w], i) =>
     i % 2 === 0 ? ([[x + w - 22, VIEW.bottom - 15, 16, 11]] as Rect[]) : [],
@@ -416,7 +501,6 @@ const GLASS_DECAL_MARK = pxPath(
       : [],
   ),
 );
-/** What the glass gives back: the cove line and the pale seat tops. */
 const REFLECT_COVE = pxPath(
   ALL_GLASS.map(([x, gy, w, h]) => [x + 2, gy + Math.round(h * 0.24), w - 4, 2] as Rect),
 );
@@ -427,10 +511,11 @@ const REFLECT_SEATS = pxPath(
     return out.filter((r) => r[0] + r[2] < x + w);
   }),
 );
+const REFLECT_ADS = pxPath(
+  WINDOWS.map(([x, gy, w, h]) => [x + 6, gy + Math.round(h * 0.12), w - 12, 3] as Rect),
+);
 
-/* --------------------------------------------------------------- walls ---- */
-
-const WALL_UPPER = pxPath([[0, CANT, W, GLASS_TOP - CANT]]);
+const WALL_UPPER = pxPath([[0, CANT + 4, W, GLASS_TOP - CANT - 4]]);
 const WALL_LOWER = pxPath([[0, GLASS_BOTTOM, W, FLOOR - GLASS_BOTTOM]]);
 const PIER_RECTS: Rect[] = (() => {
   const openings = [...ALL_GLASS].sort((a, b) => a[0] - b[0]);
@@ -446,13 +531,17 @@ const PIER_RECTS: Rect[] = (() => {
   return out;
 })();
 const PIERS = pxPath(PIER_RECTS);
+const PIER_HI = pxPath(PIER_RECTS.map(([x, gy, , h]) => [x, gy, 1, h] as Rect));
+const PIER_LO = pxPath(PIER_RECTS.map(([x, gy, w, h]) => [x + w - 1, gy, 1, h] as Rect));
 const WALL_JOINTS = pxPath([
   ...PIER_RECTS.filter((r) => r[2] > 44).map(
     ([x, gy, w, h]) => [x + Math.round(w / 2), gy, 1, h] as Rect,
   ),
   ...repeat(Math.ceil(W / 220), 220, [40, GLASS_BOTTOM, 1, FLOOR - GLASS_BOTTOM] as Rect),
 ]);
-/** Heater grilles under the windows, in the gaps between bays where they show. */
+const WALL_JOINT_HI = pxPath(
+  repeat(Math.ceil(W / 220), 220, [41, GLASS_BOTTOM, 1, FLOOR - GLASS_BOTTOM] as Rect),
+);
 const HEATER_SPANS: Rect[] = [
   [Z.mpb - 4, GLASS_BOTTOM + 6, 78, 14],
   ...Z.bay.slice(0, 3).map((x) => [x + 128, GLASS_BOTTOM + 6, 88, 14] as Rect),
@@ -461,11 +550,23 @@ const HEATER = pxPath(HEATER_SPANS);
 const HEATER_SLATS = pxPath(
   HEATER_SPANS.flatMap(([x, gy, w]) => repeat(Math.floor(w / 5), 5, [x + 2, gy + 3, 3, 9] as Rect)),
 );
+const HEATER_TOP = pxPath(HEATER_SPANS.map(([x, gy, w]) => [x, gy, w, 1] as Rect));
 const SKIRT = pxPath([
   [0, FLOOR - 6, W, 6],
   [0, FLOOR - 7, W, 1],
 ]);
+const SKIRT_HI = pxPath([[0, FLOOR - 7, W, 1]]);
+const SKIRT_SCUFF = pxPath(
+  [Z.doorL, Z.doorR, Z.mpb + 40, Z.bay[2]].flatMap(
+    (x) =>
+      [
+        [x - 30, FLOOR - 5, 60, 3],
+        [x - 44, FLOOR - 4, 18, 2],
+      ] as Rect[],
+  ),
+);
 const SOCKETS = pxPath(Z.bay.map((x) => [x + 116, GLASS_BOTTOM + 8, 8, 6] as Rect));
+const SOCKET_LED = pxPath(Z.bay.map((x) => [x + 122, GLASS_BOTTOM + 10, 2, 2] as Rect));
 const HOOKS = pxPath(
   PIER_RECTS.filter((r) => r[2] > 60).flatMap(
     ([x, , w]) =>
@@ -476,79 +577,125 @@ const HOOKS = pxPath(
   ),
 );
 
-/* ================================================================== *
- * seats — at the character's key, so a seat back is chest height
- * ================================================================== */
-
 type BayParts = {
   headrest: Rect[];
   head_hi: Rect[];
   back: Rect[];
+  back_shade: Rect[];
   insert: Rect[];
   arms: Rect[];
+  arm_hi: Rect[];
+  arm_bracket: Rect[];
   cushion: Rect[];
+  cushion_hi: Rect[];
   lip: Rect[];
+  shell: Rect[];
+  shell_hi: Rect[];
   grab: Rect[];
   far: Rect[];
   far_hi: Rect[];
-  table: Rect[];
   legs: Rect[];
+  feet: Rect[];
 };
 
-/**
- * A bay: two facing pairs across a table, seen from the aisle, so the far pair
- * shows only as headrests over the near backs.
- *
- * Seven parts to a seat, not two. A back slab and a cushion is a bench and
- * nothing in it says anyone sat down; what says it is the headrest being its own
- * piece, the insert being a different weave from the surround, the armrest
- * standing proud on the aisle side, the cushion oversailing with a lip of shadow
- * under its nose, and the yellow grab handle on the top corner that everybody
- * walking the aisle puts a hand on.
- */
 function seatBay(x: number): BayParts {
   const p: BayParts = {
     headrest: [],
     head_hi: [],
     back: [],
+    back_shade: [],
     insert: [],
     arms: [],
+    arm_hi: [],
+    arm_bracket: [],
     cushion: [],
+    cushion_hi: [],
     lip: [],
+    shell: [],
+    shell_hi: [],
     grab: [],
     far: [],
     far_hi: [],
-    table: [],
     legs: [],
+    feet: [],
   };
-  for (const sx of [x, x + 72]) {
-    p.headrest.push([sx + 5, SEAT_BACK, 40, SEAT_HEAD - SEAT_BACK]);
-    p.head_hi.push([sx + 7, SEAT_BACK + 1, 36, 1]);
-    p.back.push([sx, SEAT_HEAD - 1, 50, SEAT_TOP - SEAT_HEAD + 1]);
-    p.insert.push([sx + 9, SEAT_HEAD + 3, 32, SEAT_TOP - SEAT_HEAD - 7]);
-    p.arms.push(
-      [sx - 4, ARM_TOP, 6, SEAT_TOP - ARM_TOP + 3],
-      [sx + 48, ARM_TOP, 6, SEAT_TOP - ARM_TOP + 3],
-    );
-    p.cushion.push([sx - 3, SEAT_TOP, 56, 7]);
-    p.lip.push([sx - 3, SEAT_TOP + 5, 56, 2]);
-    p.grab.push([sx + 39, SEAT_BACK - 3, 11, 4]);
-    p.legs.push(
-      [sx + 8, SEAT_TOP + 7, 8, FLOOR - SEAT_TOP - 7],
-      [sx + 34, SEAT_TOP + 7, 8, FLOOR - SEAT_TOP - 7],
-    );
+  const seats: { sx: number; face: 1 | -1 }[] = [
+    { sx: x, face: 1 },
+    { sx: x + SEAT_D + KNEE, face: -1 },
+  ];
+  const backH = SEAT_TOP - SEAT_BACK;
+  const seg = Math.ceil(backH / BACK_SEGS);
+  for (const { sx, face } of seats) {
+    const put = (lx: number, ly: number, lw: number, lh: number): Rect =>
+      face === 1 ? [sx + lx, ly, lw, lh] : [sx + SEAT_D - lx - lw, ly, lw, lh];
+
+    for (let j = 0; j < BACK_SEGS; j++) {
+      const ly = SEAT_BACK + j * seg;
+      const lh = Math.min(seg, SEAT_TOP - ly);
+      if (lh <= 0) continue;
+      p.back.push(put(j, ly, BACK_T, lh));
+      if (j >= 2) p.back_shade.push(put(j + BACK_T - 2, ly, 2, lh));
+    }
+    p.headrest.push(put(0, SEAT_BACK - 5, BACK_T + 3, 6));
+    p.head_hi.push(put(1, SEAT_BACK - 5, BACK_T + 1, 1));
+    p.grab.push(put(0, SEAT_BACK - 7, BACK_T + 3, 2));
+    p.insert.push(put(2, SEAT_BACK + 8, BACK_T - 2, backH - 10));
+
+    p.cushion.push(put(BACK_T, SEAT_TOP, PAN_D, PAN_H));
+    p.cushion_hi.push(put(BACK_T, SEAT_TOP, PAN_D, 1));
+    p.lip.push(put(BACK_T + PAN_D - 3, SEAT_TOP + 1, 3, PAN_H - 1));
+
+    p.shell.push(put(BACK_T - 2, SEAT_TOP + PAN_H, PAN_D + 2, 4));
+    p.shell_hi.push(put(BACK_T - 2, SEAT_TOP + PAN_H, PAN_D + 2, 1));
+
+    p.arms.push(put(2, ARM_TOP, SEAT_D - 5, ARM_H));
+    p.arm_hi.push(put(2, ARM_TOP, SEAT_D - 5, 1));
+    p.arm_bracket.push(put(SEAT_D - 6, ARM_TOP + ARM_H, 3, SEAT_TOP - ARM_TOP - ARM_H));
+
+    p.legs.push(put(BACK_T + 6, SEAT_TOP + PAN_H + 4, 6, FLOOR - SEAT_TOP - PAN_H - 4));
+    p.feet.push(put(BACK_T + 3, FLOOR - 2, 12, 2));
   }
-  p.far.push([x + 8, SEAT_BACK - 6, 34, 8], [x + 80, SEAT_BACK - 6, 34, 8]);
-  p.far_hi.push([x + 10, SEAT_BACK - 5, 30, 1], [x + 82, SEAT_BACK - 5, 30, 1]);
-  p.table.push(
-    [x + 48, TABLE_TOP, 26, 3],
-    [x + 58, TABLE_TOP + 3, 6, FLOOR - TABLE_TOP - 6],
-    [x + 52, FLOOR - 4, 18, 3],
+  p.far.push(
+    [x + 2, SEAT_BACK - 10, BACK_T + 6, 6],
+    [x + SEAT_D + KNEE + SEAT_D - BACK_T - 8, SEAT_BACK - 10, BACK_T + 6, 6],
+  );
+  p.far_hi.push(
+    [x + 3, SEAT_BACK - 10, BACK_T + 4, 1],
+    [x + SEAT_D + KNEE + SEAT_D - BACK_T - 7, SEAT_BACK - 10, BACK_T + 4, 1],
   );
   return p;
 }
 
-const BAYS = Z.bay.map((x) => seatBay(x));
+const BAYS = SEAT_X.map((x) => seatBay(x));
+
+const SEATED_CAST = [
+  "zGazeta",
+  "spiacy",
+  "babciaSiatka",
+  "studentka",
+  "biurowy",
+  "zKwiatami",
+  "kapturek",
+  "zParasolem",
+  "spawacz",
+  "zKluczami",
+] as const;
+
+const SEATED = SEAT_X.map((x, i) => ({
+  id: `train-rider-${i}`,
+  npc: SEATED_CAST[i % SEATED_CAST.length],
+  x: x + SEAT_D + Math.round(KNEE / 2),
+  facing: (i % 2 === 0 ? 1 : -1) as 1 | -1,
+  from: [1, 3, 2, 4, 1, 3, 2, 4, 2, 3][i],
+}));
+
+const STANDING = [
+  { npc: "budowlaniec", x: Z.doorL + 74, y: 162, from: 2 },
+  { npc: "pielegniarka", x: 470, y: 168, from: 3 },
+  { npc: "jeanne", x: 742, y: 158, from: 3 },
+  { npc: "zParasolem", x: 1024, y: 166, from: 4 },
+  { npc: "kapturek", x: Z.doorR - 178, y: 160, from: 4 },
+] as const;
 const PRIORITY_BAY = 0;
 const pick = (f: (b: BayParts) => Rect[], priority: boolean) =>
   BAYS.flatMap((b, i) => ((i === PRIORITY_BAY) === priority ? f(b) : []));
@@ -556,6 +703,7 @@ const pick = (f: (b: BayParts) => Rect[], priority: boolean) =>
 const SEATS_NEAR = bevelPaths(pick((b) => b.back, false));
 const SEATS_NEAR_PRI = bevelPaths(pick((b) => b.back, true));
 const SEATS_FAR = bevelPaths(BAYS.flatMap((b) => b.far));
+const BACK_SHADE = pxPath(BAYS.flatMap((b) => b.back_shade));
 const HEADRESTS = pxPath(pick((b) => b.headrest, false));
 const HEADRESTS_PRI = pxPath(pick((b) => b.headrest, true));
 const HEAD_HI = pxPath(BAYS.flatMap((b) => b.head_hi));
@@ -563,39 +711,77 @@ const FAR_HI = pxPath(BAYS.flatMap((b) => b.far_hi));
 const INSERTS = pxPath(pick((b) => b.insert, false));
 const INSERTS_PRI = pxPath(pick((b) => b.insert, true));
 const CUSHIONS = pxPath(BAYS.flatMap((b) => b.cushion));
+const CUSHION_HI = pxPath(BAYS.flatMap((b) => b.cushion_hi));
 const CUSHION_LIP = pxPath(BAYS.flatMap((b) => b.lip));
+const SHELLS = pxPath(BAYS.flatMap((b) => b.shell));
+const SHELL_HI = pxPath(BAYS.flatMap((b) => b.shell_hi));
 const ARMRESTS = pxPath(BAYS.flatMap((b) => b.arms));
+const ARMREST_HI = pxPath(BAYS.flatMap((b) => b.arm_hi));
+const ARM_BRACKETS = pxPath(BAYS.flatMap((b) => b.arm_bracket));
 const SEAT_GRABS = pxPath(BAYS.flatMap((b) => b.grab));
-const TABLES = pxPath(BAYS.flatMap((b) => b.table));
 const SEAT_LEGS = pxPath(BAYS.flatMap((b) => b.legs));
+const SEAT_FEET = pxPath(BAYS.flatMap((b) => b.feet));
 const MOQUETTE_WEAVE = pxPath(
-  BAYS.flatMap((b) => [...b.back, ...b.cushion].flatMap((r) => weave(r, 4))),
+  BAYS.flatMap((b) => [...b.back, ...b.cushion].flatMap((r) => weave(r, 3))),
 );
 const INSERT_WEAVE = pxPath(BAYS.flatMap((b) => b.insert.flatMap((r) => weave(r, 3))));
-const PRIORITY_SIGN = pxPath([[Z.bay[PRIORITY_BAY] - 24, GLASS_BOTTOM + 7, 12, 12]]);
+
+const SEAT_SCUFF = pxPath(
+  BAYS.flatMap((b) => b.shell.map(([sx, sy, sw]) => [sx, sy + 2, sw, 2] as Rect)),
+);
+const SEAT_POLISH = pxPath(
+  BAYS.flatMap((b) => b.headrest.map(([hx, hy, hw]) => [hx + 1, hy, hw - 2, 1] as Rect)),
+);
+const SEAT_LEFTOVERS = pxPath([
+  [SEAT_X[4] + BACK_T + 4, SEAT_TOP - 3, 14, 3],
+  [SEAT_X[4] + BACK_T + 6, SEAT_TOP - 5, 9, 2],
+  [SEAT_X[7] + SEAT_D + KNEE + 6, SEAT_TOP - 9, 11, 9],
+  [SEAT_X[7] + SEAT_D + KNEE + 9, SEAT_TOP - 11, 5, 2],
+]);
+
+const TABLE_BAYS = SEAT_X.filter((_, i) => i % 3 === 1);
+const TABLES = pxPath(TABLE_BAYS.map((x) => [x + SEAT_D + 7, TABLE_TOP, KNEE - 14, 3] as Rect));
+const TABLE_EDGE = pxPath(TABLE_BAYS.map((x) => [x + SEAT_D + 7, TABLE_TOP, KNEE - 14, 1] as Rect));
+const TABLE_SHADOW = pxPath(
+  TABLE_BAYS.map((x) => [x + SEAT_D + 7, TABLE_TOP + 3, KNEE - 14, 2] as Rect),
+);
+const TABLE_TOPS = pxPath(
+  TABLE_BAYS.flatMap(
+    (x, i) =>
+      (i % 2 === 0
+        ? [
+            [x + SEAT_D + 11, TABLE_TOP - 7, 5, 7],
+            [x + SEAT_D + 19, TABLE_TOP - 2, 8, 2],
+          ]
+        : [
+            [x + SEAT_D + 12, TABLE_TOP - 3, 12, 3],
+            [x + SEAT_D + 26, TABLE_TOP - 9, 4, 9],
+          ]) as Rect[],
+  ),
+);
+const CUP_LID = pxPath(
+  TABLE_BAYS.filter((_, i) => i % 2 === 0).map(
+    (x) => [x + SEAT_D + 10, TABLE_TOP - 8, 7, 2] as Rect,
+  ),
+);
+
+const PRIORITY_X = SEAT_X[PRIORITY_BAY] + SEAT_D + 8;
+const PRIORITY_SIGN = pxPath([[PRIORITY_X, GLASS_BOTTOM + 7, 14, 14]]);
 const PRIORITY_MARK = pxPath([
-  [Z.bay[PRIORITY_BAY] - 21, GLASS_BOTTOM + 9, 3, 3],
-  [Z.bay[PRIORITY_BAY] - 22, GLASS_BOTTOM + 13, 6, 4],
-  [Z.bay[PRIORITY_BAY] - 19, GLASS_BOTTOM + 13, 4, 2],
+  [PRIORITY_X + 6, GLASS_BOTTOM + 9, 3, 3],
+  [PRIORITY_X + 4, GLASS_BOTTOM + 13, 6, 3],
+  [PRIORITY_X + 3, GLASS_BOTTOM + 16, 8, 3],
 ]);
-
-/** What is on the tables: a cup with a lid, a phone, a folded paper. */
-const TABLE_TOPS = pxPath([
-  [Z.bay[0] + 52, TABLE_TOP - 7, 6, 7],
-  [Z.bay[0] + 62, TABLE_TOP - 3, 8, 3],
-  [Z.bay[2] + 54, TABLE_TOP - 4, 13, 4],
-  [Z.bay[3] + 60, TABLE_TOP - 6, 5, 6],
-]);
-const CUP_LID = pxPath([
-  [Z.bay[0] + 51, TABLE_TOP - 8, 8, 2],
-  [Z.bay[3] + 59, TABLE_TOP - 7, 7, 2],
-]);
-
-/* --------------------------------------------------- poles, rails, stubs -- */
+const PRIORITY_STRIPE = pxPath(
+  BAYS[PRIORITY_BAY].headrest.map(([hx, hy, hw]) => [hx, hy + 2, hw, 2] as Rect),
+);
 
 const POLE_X = [Z.doorL + 40, Z.bay[1] - 16, Z.bay[2] - 16, Z.bay[3] - 16, Z.doorR - 46] as const;
 const POLES = pxPath(POLE_X.map((x) => [x, CANT + 2, 5, FLOOR - CANT - 2] as Rect));
 const POLE_HI = pxPath(POLE_X.map((x) => [x, CANT + 2, 1, FLOOR - CANT - 2] as Rect));
+const POLE_LO = pxPath(POLE_X.map((x) => [x + 4, CANT + 2, 1, FLOOR - CANT - 2] as Rect));
+const POLE_HANDS = pxPath(POLE_X.map((x) => [x, y(1.6), 5, y(0.9) - y(1.6)] as Rect));
+const POLE_JOINT = pxPath(POLE_X.map((x) => [x - 1, y(1.75), 7, 2] as Rect));
 const POLE_COLLAR = pxPath(
   POLE_X.flatMap(
     (x) =>
@@ -605,35 +791,68 @@ const POLE_COLLAR = pxPath(
       ] as Rect[],
   ),
 );
-/** Stub rails off the seat ends, which is what you actually hold on to. */
+const REFLECT_POLES = POLE_X.flatMap((p) =>
+  WINDOWS.filter(([x, , w]) => p > x + 8 && p < x + w - 8).map(
+    ([, gy, , h]) => [p - 26, gy + 4, 3, h - 8] as Rect,
+  ),
+);
+const REFLECT_POLES_PATH = pxPath(REFLECT_POLES);
+
 const STUB_RAILS = pxPath(
-  Z.bay.flatMap(
+  SEAT_X.flatMap(
     (x) =>
       [
-        [x - 8, SEAT_BACK - 2, 4, 22],
-        [x + 126, SEAT_BACK - 2, 4, 22],
+        [x - 3, SEAT_BACK - 4, 3, 18],
+        [x + BAY_W, SEAT_BACK - 4, 3, 18],
+      ] as Rect[],
+  ),
+);
+const STUB_RAIL_HI = pxPath(
+  SEAT_X.flatMap(
+    (x) =>
+      [
+        [x - 3, SEAT_BACK - 4, 1, 18],
+        [x + BAY_W, SEAT_BACK - 4, 1, 18],
       ] as Rect[],
   ),
 );
 
-/* --------------------------------------------------------------- doors ---- */
-
 const DOOR_H = FLOOR - (VIEW.top - 8);
 function doorLeaf(x: number): Rect[] {
   const half = Math.round(m(1.3) / 2);
-  return [
-    [x - half, VIEW.top - 8, half, DOOR_H],
-    [x, VIEW.top - 8, half, DOOR_H],
-  ];
+  const gl = DOOR_GLASS_AT(x);
+  const top = VIEW.top - 8;
+  const out: Rect[] = [];
+  for (const x0 of [x - half, x] as const) {
+    const w = half;
+    out.push([x0, top, w, gl.y - top]);
+    out.push([x0, gl.y + gl.h, w, DOOR_H - (gl.y + gl.h - top)]);
+    const l0 = Math.max(x0, gl.x);
+    const l1 = Math.min(x0 + w, gl.x + gl.w);
+    if (l0 > x0) out.push([x0, gl.y, l0 - x0, gl.h]);
+    if (l1 < x0 + w) out.push([l1, gl.y, x0 + w - l1, gl.h]);
+  }
+  return out;
+}
+function DOOR_GLASS_AT(x: number): { x: number; y: number; w: number; h: number } {
+  return { x: x - 18, y: VIEW.top + 4, w: 40, h: VIEW.bottom - VIEW.top - 8 };
 }
 const DOORS = bevelPaths([...doorLeaf(Z.doorL), ...doorLeaf(Z.doorR)]);
 const DOOR_SPLIT = pxPath([
   [Z.doorL - 1, VIEW.top - 8, 2, DOOR_H],
   [Z.doorR - 1, VIEW.top - 8, 2, DOOR_H],
 ]);
+const DOOR_RUBBER = pxPath([
+  [Z.doorL - 2, VIEW.top - 8, 4, DOOR_H],
+  [Z.doorR - 2, VIEW.top - 8, 4, DOOR_H],
+]);
 const DOOR_HEAD = pxPath([
   [Z.doorL - m(1.3) / 2 - 3, VIEW.top - 11, m(1.3) + 6, 3],
   [Z.doorR - m(1.3) / 2 - 3, VIEW.top - 11, m(1.3) + 6, 3],
+]);
+const DOOR_HEAD_SHADOW = pxPath([
+  [Z.doorL - m(1.3) / 2 - 3, VIEW.top - 8, m(1.3) + 6, 2],
+  [Z.doorR - m(1.3) / 2 - 3, VIEW.top - 8, m(1.3) + 6, 2],
 ]);
 const DOOR_NOSING = pxPath([
   [Z.doorL - m(1.3) / 2, FLOOR - 3, m(1.3), 3],
@@ -655,27 +874,54 @@ const DOOR_BUTTON_RING = pxPath([
   [Z.doorR - 42, GLASS_BOTTOM + 6, 12, 2],
   [Z.doorR - 42, GLASS_BOTTOM + 17, 12, 2],
 ]);
+const DOOR_BUTTON_LED = pxPath([
+  [Z.doorL + 32, GLASS_BOTTOM + 10, 4, 4],
+  [Z.doorR - 38, GLASS_BOTTOM + 10, 4, 4],
+]);
 const DOOR_RELEASE = pxPath([
   [Z.doorL + 26, VIEW.top - 4, 15, 9],
   [Z.doorR - 42, VIEW.top - 4, 15, 9],
 ]);
-/**
- * The kasownik by each door, orange, at hand height. There is no single object
- * that says "Polish local train" faster, and there was not one on board.
- */
+const DOOR_EMERGENCY = pxPath([
+  [Z.doorL + 44, VIEW.top - 4, 12, 9],
+  [Z.doorR - 56, VIEW.top - 4, 12, 9],
+]);
+const DOOR_STICKER = pxPath([
+  [Z.doorL - 14, VIEW.bottom - 22, 16, 10],
+  [Z.doorR - 14, VIEW.bottom - 22, 16, 10],
+]);
+const DOOR_STICKER_ROWS = pxPath([
+  [Z.doorL - 12, VIEW.bottom - 20, 12, 2],
+  [Z.doorL - 12, VIEW.bottom - 17, 9, 2],
+  [Z.doorR - 12, VIEW.bottom - 20, 12, 2],
+  [Z.doorR - 12, VIEW.bottom - 17, 9, 2],
+]);
 const KASOWNIK = pxPath([
   [Z.doorL + 52, GLASS_BOTTOM + 4, 14, 20],
   [Z.doorR - 66, GLASS_BOTTOM + 4, 14, 20],
 ]);
+const KASOWNIK_HI = pxPath([
+  [Z.doorL + 52, GLASS_BOTTOM + 4, 14, 1],
+  [Z.doorR - 66, GLASS_BOTTOM + 4, 14, 1],
+]);
+const KASOWNIK_SIDE = pxPath([
+  [Z.doorL + 64, GLASS_BOTTOM + 4, 2, 20],
+  [Z.doorR - 54, GLASS_BOTTOM + 4, 2, 20],
+]);
 const KASOWNIK_SLOT = pxPath([
   [Z.doorL + 55, GLASS_BOTTOM + 8, 8, 2],
   [Z.doorR - 63, GLASS_BOTTOM + 8, 8, 2],
+]);
+const KASOWNIK_RUB = pxPath([
+  [Z.doorL + 54, GLASS_BOTTOM + 11, 10, 2],
+  [Z.doorR - 64, GLASS_BOTTOM + 11, 10, 2],
 ]);
 const KASOWNIK_LED = pxPath([
   [Z.doorL + 55, GLASS_BOTTOM + 13, 3, 3],
   [Z.doorR - 63, GLASS_BOTTOM + 13, 3, 3],
 ]);
 const INTERCOM = pxPath([[Z.doorL + 72, GLASS_BOTTOM + 4, 10, 14]]);
+const INTERCOM_MESH = pxPath(repeat(3, 3, [Z.doorL + 74, GLASS_BOTTOM + 6, 6, 1] as Rect, "y"));
 const FIRST_AID = pxPath([[Z.doorR - 86, GLASS_TOP + 6, 16, 12]]);
 const FIRST_AID_MARK = pxPath([
   [Z.doorR - 80, GLASS_TOP + 8, 4, 8],
@@ -685,9 +931,11 @@ const EXTINGUISHER = pxPath([
   [Z.wc + 36, FLOOR - 26, 11, 22],
   [Z.wc + 38, FLOOR - 29, 7, 3],
 ]);
+const EXTINGUISHER_HI = pxPath([[Z.wc + 36, FLOOR - 26, 2, 22]]);
+const EXTINGUISHER_LABEL = pxPath([[Z.wc + 37, FLOOR - 18, 9, 5]]);
 
-/** The ends: the accessible toilet at one, the gangway door at the other. */
 const WC_DOOR = pxPath([[Z.wc - 32, VIEW.top - 12, 64, FLOOR - VIEW.top + 12]]);
+const WC_SEAM = pxPath([[Z.wc, VIEW.top - 12, 1, FLOOR - VIEW.top + 12]]);
 const WC_FRAME = pxPath([
   [Z.wc - 34, VIEW.top - 14, 68, 2],
   [Z.wc - 34, VIEW.top - 14, 2, FLOOR - VIEW.top + 14],
@@ -700,26 +948,35 @@ const WC_MARK = pxPath([
   [Z.wc - 6, VIEW.top + 16, 5, 2],
 ]);
 const WC_BUTTON = pxPath([[Z.wc + 20, GLASS_BOTTOM + 6, 8, 8]]);
+const WC_BUTTON_LED = pxPath([[Z.wc + 22, GLASS_BOTTOM + 8, 4, 4]]);
 const END_WALL = pxPath([[Z.end, CANT, W - Z.end, FLOOR - CANT]]);
 const END_DOOR = pxPath([[Z.end + 14, VIEW.top - 12, 54, FLOOR - VIEW.top + 12]]);
 const END_GLASS = pxPath([[Z.end + 24, VIEW.top - 2, 34, VIEW.bottom - VIEW.top]]);
+const GANGWAY_RIBS = pxPath(
+  repeat(5, 7, [Z.end + 26, VIEW.top + 2, 3, VIEW.bottom - VIEW.top - 4] as Rect),
+);
 const END_FRAME = pxPath([
   [Z.end + 12, VIEW.top - 14, 58, 2],
   [Z.end + 12, VIEW.top - 14, 2, FLOOR - VIEW.top + 14],
   [Z.end + 68, VIEW.top - 14, 2, FLOOR - VIEW.top + 14],
 ]);
-/** Luggage stacked against the end bulkhead, because there always is some. */
 const LUGGAGE = pxPath([
-  [Z.end + 76, FLOOR - 30, 22, 30],
-  [Z.end + 78, FLOOR - 33, 18, 3],
-  [Z.end + 100, FLOOR - 20, 16, 20],
+  [Z.end + 34, FLOOR - 30, 22, 30],
+  [Z.end + 36, FLOOR - 33, 18, 3],
+  [Z.end + 58, FLOOR - 20, 16, 20],
 ]);
 const LUGGAGE_TRIM = pxPath([
-  [Z.end + 76, FLOOR - 22, 22, 2],
-  [Z.end + 100, FLOOR - 14, 16, 2],
+  [Z.end + 34, FLOOR - 22, 22, 2],
+  [Z.end + 58, FLOOR - 14, 16, 2],
 ]);
-
-/* ------------------------------------------------------------ the map ----- */
+const LUGGAGE_HI = pxPath([
+  [Z.end + 34, FLOOR - 30, 22, 1],
+  [Z.end + 58, FLOOR - 20, 16, 1],
+]);
+const LUGGAGE_SIDE = pxPath([
+  [Z.end + 52, FLOOR - 30, 4, 30],
+  [Z.end + 70, FLOOR - 20, 4, 20],
+]);
 
 const MAP_BOX: Rect = [Z.map - 60, GLASS_TOP + 4, 116, 40];
 const MAP_SET = bevelPaths([MAP_BOX]);
@@ -727,11 +984,21 @@ const MAP_LINE = pxPath([[MAP_BOX[0] + 8, MAP_BOX[1] + 22, MAP_BOX[2] - 16, 2]])
 const MAP_TICKS = pxPath(
   LINE.map((_, i) => [MAP_BOX[0] + 10 + i * 13, MAP_BOX[1] + 18, 2, 10] as Rect),
 );
+const MAP_DOTS = pxPath(
+  LINE.map((_, i) => [MAP_BOX[0] + 10 + i * 13, MAP_BOX[1] + 21, 2, 4] as Rect),
+);
 const MAP_HERE = pxPath([
   [MAP_BOX[0] + 8 + 4 * 13, MAP_BOX[1] + 16, 6, 2],
   [MAP_BOX[0] + 8 + 4 * 13, MAP_BOX[1] + 26, 6, 2],
   [MAP_BOX[0] + 8 + 4 * 13, MAP_BOX[1] + 16, 2, 12],
   [MAP_BOX[0] + 12 + 4 * 13, MAP_BOX[1] + 16, 2, 12],
+]);
+const MAP_GLARE = pxPath([[MAP_BOX[0] + 4, MAP_BOX[1] + 14, 26, 24]]);
+const MAP_SCREWS = pxPath([
+  [MAP_BOX[0] + 2, MAP_BOX[1] + 2, 1, 1],
+  [MAP_BOX[0] + MAP_BOX[2] - 3, MAP_BOX[1] + 2, 1, 1],
+  [MAP_BOX[0] + 2, MAP_BOX[1] + MAP_BOX[3] - 3, 1, 1],
+  [MAP_BOX[0] + MAP_BOX[2] - 3, MAP_BOX[1] + MAP_BOX[3] - 3, 1, 1],
 ]);
 const MAP_AHEAD = (toward: TrainState["toward"]) =>
   pxPath([
@@ -741,14 +1008,19 @@ const MAP_AHEAD = (toward: TrainState["toward"]) =>
   ] as Rect[]);
 const TIMETABLE = pxPath([[Z.map + 62, GLASS_BOTTOM + 6, 34, 26]]);
 const TIMETABLE_ROWS = pxPath(repeat(6, 4, [Z.map + 65, GLASS_BOTTOM + 10, 28, 2] as Rect));
-const POSTER = pxPath([[Z.bin + 26, GLASS_BOTTOM + 4, 46, 30]]);
+const TIMETABLE_RED = pxPath([[Z.map + 65, GLASS_BOTTOM + 22, 28, 2]]);
+const TIMETABLE_GLARE = pxPath([[Z.map + 64, GLASS_BOTTOM + 7, 8, 24]]);
+const POSTER = pxPath([[Z.bin - 36, GLASS_BOTTOM + 4, 46, 30]]);
 const POSTER_ART = pxPath([
-  [Z.bin + 30, GLASS_BOTTOM + 8, 38, 14],
-  [Z.bin + 30, GLASS_BOTTOM + 24, 24, 3],
-  [Z.bin + 30, GLASS_BOTTOM + 28, 16, 2],
+  [Z.bin - 32, GLASS_BOTTOM + 8, 38, 14],
+  [Z.bin - 32, GLASS_BOTTOM + 24, 24, 3],
+  [Z.bin - 32, GLASS_BOTTOM + 28, 16, 2],
+]);
+const POSTER_CURL = pxPath([
+  [Z.bin - 36, GLASS_BOTTOM + 32, 46, 2],
+  [Z.bin + 6, GLASS_BOTTOM + 4, 4, 6],
 ]);
 
-/** The interior display, hung off the ceiling over the door. */
 const CIP_BOX: Rect = [Z.doorL + 70, CEIL_MID_BOT - 4, 130, 16];
 const CIP_SCREEN = pxPath([[CIP_BOX[0] + 3, CIP_BOX[1] + 3, CIP_BOX[2] - 6, CIP_BOX[3] - 6]]);
 const CIP_GRID = pxPath(repeat(31, 4, [CIP_BOX[0] + 5, CIP_BOX[1] + 5, 1, 7] as Rect));
@@ -756,30 +1028,42 @@ const CIP_MOUNT = pxPath([
   [CIP_BOX[0] + 20, CEIL_MID_BOT - 8, 3, 4],
   [CIP_BOX[0] + CIP_BOX[2] - 23, CEIL_MID_BOT - 8, 3, 4],
 ]);
-
-/* ------------------------------------------------------- loose furniture --- */
+const CIP_TOP_HI = pxPath([[CIP_BOX[0], CIP_BOX[1], CIP_BOX[2], 1]]);
+const CIP_UNDER = pxPath([[CIP_BOX[0], CIP_BOX[1] + CIP_BOX[3] - 1, CIP_BOX[2], 1]]);
+const CIP_GLARE = pxPath([[CIP_BOX[0] + 5, CIP_BOX[1] + 4, 28, 2]]);
 
 const BIN = pxPath([
   [Z.bin, FLOOR - 24, 22, 24],
   [Z.bin - 2, FLOOR - 27, 26, 3],
 ]);
+const BIN_HI = pxPath([[Z.bin - 2, FLOOR - 27, 26, 1]]);
+const BIN_SIDE = pxPath([[Z.bin + 18, FLOOR - 24, 4, 24]]);
 const BIN_SLOT = pxPath([[Z.bin + 4, FLOOR - 25, 14, 2]]);
+const BIN_FULL = pxPath([
+  [Z.bin + 5, FLOOR - 29, 6, 4],
+  [Z.bin + 13, FLOOR - 28, 4, 3],
+]);
 const HAMMER = pxPath([
   [Z.bay[3] + 130, GLASS_BOTTOM + 6, 11, 7],
   [Z.bay[3] + 133, GLASS_BOTTOM + 8, 5, 3],
 ]);
+const HAMMER_CASE = pxPath([[Z.bay[3] + 128, GLASS_BOTTOM + 4, 15, 11]]);
 const TIPUPS = pxPath([
   [Z.mpb, SEAT_TOP - 5, 34, 5],
   [Z.mpb + 40, SEAT_TOP - 5, 34, 5],
   [Z.mpb + 2, SEAT_TOP, 4, 14],
   [Z.mpb + 42, SEAT_TOP, 4, 14],
 ]);
+const TIPUP_HI = pxPath([
+  [Z.mpb, SEAT_TOP - 5, 34, 1],
+  [Z.mpb + 40, SEAT_TOP - 5, 34, 1],
+]);
 const MPB_RAIL = pxPath([
   [Z.mpb - 6, GLASS_BOTTOM + 4, 90, 4],
   [Z.mpb - 6, GLASS_BOTTOM + 4, 4, 20],
   [Z.mpb + 80, GLASS_BOTTOM + 4, 4, 20],
 ]);
-/** Somebody's bike, leaning on the rail. A 0.68 m wheel is 26 px now. */
+const MPB_RAIL_HI = pxPath([[Z.mpb - 6, GLASS_BOTTOM + 4, 90, 1]]);
 const BIKE_WHEELS = pxPath([
   ...[Z.mpb + 8, Z.mpb + 60].flatMap(
     (cx) =>
@@ -795,6 +1079,10 @@ const BIKE_WHEELS = pxPath([
       ] as Rect[],
   ),
 ]);
+const BIKE_HUBS = pxPath([
+  [Z.mpb + 6, FLOOR - 17, 4, 4],
+  [Z.mpb + 58, FLOOR - 17, 4, 4],
+]);
 const BIKE_FRAME = pxPath([
   [Z.mpb + 12, FLOOR - 23, 46, 3],
   [Z.mpb + 16, FLOOR - 20, 3, 14],
@@ -803,39 +1091,62 @@ const BIKE_FRAME = pxPath([
   [Z.mpb + 50, FLOOR - 33, 11, 3],
   [Z.mpb + 20, FLOOR - 28, 13, 3],
 ]);
+const BIKE_HI = pxPath([[Z.mpb + 12, FLOOR - 23, 46, 1]]);
 const FLOOR_BAG = pxPath([
   [Z.bay[1] + 130, FLOOR - 16, 16, 16],
   [Z.bay[1] + 133, FLOOR - 19, 10, 3],
 ]);
+const FLOOR_BAG_HI = pxPath([[Z.bay[1] + 130, FLOOR - 16, 16, 1]]);
 const FLOOR_LITTER = pxPath([
   [Z.bay[2] + 150, FLOOR + 6, 5, 4],
   [Z.map + 150, FLOOR + 14, 7, 2],
 ]);
 
-/* --------------------------------------------------------------- floor ---- */
-
-/**
- * Thirty pixels of it, seen from above and receding toward the player. The
- * bands do the perspective: the strip against the wall is darkest because it is
- * in the shadow of the seats, the aisle is worn pale down its centre where
- * everyone walks, and the near edge darkens again as it leaves the light.
- */
 const FLOOR_BAND = pxPath([[0, FLOOR, W, FRAME_H - FLOOR]]);
 const FLOOR_UNDERSEAT = pxPath([[0, FLOOR, W, 5]]);
 const AISLE_WEAR = pxPath([[0, FLOOR + 8, W, 11]]);
 const FLOOR_NEAR = pxPath([[0, FRAME_H - 5, W, 5]]);
 const FLOOR_JOINTS = pxPath(repeat(Math.ceil(W / 76), 76, [0, FLOOR, 1, FRAME_H - FLOOR] as Rect));
+const FLOOR_JOINT_HI = pxPath(
+  repeat(Math.ceil(W / 76), 76, [1, FLOOR, 1, FRAME_H - FLOOR] as Rect),
+);
 const FLOOR_MPB = pxPath([[Z.mpb - 8, FLOOR + 2, 96, 7]]);
 const FLOOR_DOORMAT = pxPath([
   [Z.doorL - m(1.3) / 2, FLOOR, m(1.3), 4],
   [Z.doorR - m(1.3) / 2, FLOOR, m(1.3), 4],
 ]);
+const FLOOR_KEEPCLEAR = pxPath(
+  [Z.doorL, Z.doorR].flatMap(
+    (x) =>
+      [
+        [x - m(1.3) / 2, FLOOR + 16, m(1.3), 2],
+        [x - m(1.3) / 2, FLOOR + 4, 2, 14],
+        [x + m(1.3) / 2 - 2, FLOOR + 4, 2, 14],
+      ] as Rect[],
+  ),
+);
 const FLOOR_SHEEN = pxPath([[0, FLOOR + 5, W, 2]]);
-/**
- * The pools of daylight the windows throw. Parallel, because four pools at one
- * angle say one sun a long way off and four at different angles say four lamps
- * in the ceiling. They go out together when a bridge goes over.
- */
+const FLOOR_GUM = pxPath(
+  Array.from({ length: 9 }, (_, i) => {
+    const x = (i * 173 + 90) % W;
+    return [x, FLOOR + 6 + ((i * 5) % 14), 2, 2] as Rect;
+  }),
+);
+const FLOOR_TICKET = pxPath([[Z.bay[1] + 60, FLOOR + 19, 6, 3]]);
+const FLOOR_SEEDS = pxPath([
+  [Z.bay[2] + 84, FLOOR + 15, 2, 1],
+  [Z.bay[2] + 90, FLOOR + 18, 2, 1],
+  [Z.bay[2] + 79, FLOOR + 20, 2, 1],
+]);
+const FLOOR_WET = pxPath([
+  [Z.doorL - m(1.3) / 2 - 8, FLOOR + 2, m(1.3) + 16, 14],
+  [Z.doorR - m(1.3) / 2 - 8, FLOOR + 2, m(1.3) + 16, 14],
+]);
+const FLOOR_PRINTS = pxPath(
+  [Z.doorL, Z.doorR].flatMap((x) =>
+    Array.from({ length: 5 }, (_, i) => [x + 26 + i * 17, FLOOR + 5 + (i % 2) * 7, 6, 3] as Rect),
+  ),
+);
 const LIGHT_POOLS = pxPath(
   WINDOWS.flatMap(([x, , w]) => {
     const out: Rect[] = [];
@@ -849,114 +1160,34 @@ const WALL_WASH = pxPath([
 ]);
 
 const RACK_AO = aoPaths([[0, RACK_Y + RACK_H, W]]);
-const SEAT_CONTACT = contactPaths(BAYS.map((_, i) => [Z.bay[i], 122, FLOOR] as const));
+const SEAT_CONTACT = contactPaths(
+  BAYS.flatMap((b) => b.feet.map(([fx, , fw]) => [fx, fw, FLOOR] as const)),
+);
+const SEAT_AO = aoPaths(SEAT_X.map((x) => [x, SEAT_TOP + PAN_H + 4, BAY_W] as const));
+const KNEE_SHADE = pxPath(
+  SEAT_X.flatMap((x) => [
+    [x + SEAT_D, SEAT_TOP - 2, KNEE, 8] as Rect,
+    [x + SEAT_D, FLOOR - 6, KNEE, 6] as Rect,
+  ]),
+);
+const KNEE_DEEP = pxPath(SEAT_X.map((x) => [x + SEAT_D, SEAT_TOP - 2, KNEE, 3] as Rect));
 const BIN_CONTACT = contactPaths([[Z.bin - 2, 26, FLOOR] as const]);
 const BIKE_CONTACT = contactPaths([[Z.mpb - 4, 84, FLOOR] as const]);
-const LUGGAGE_CONTACT = contactPaths([[Z.end + 76, 40, FLOOR] as const]);
+const LUGGAGE_CONTACT = contactPaths([[Z.end + 34, 40, FLOOR] as const]);
+const POLE_CONTACT = contactPaths(POLE_X.map((x) => [x - 2, 9, FLOOR] as const));
 const HEATER_AO = aoPaths(HEATER_SPANS.map(([x, gy, w]) => [x, gy + 14, w] as const));
 
-/* ================================================================== *
- * the other passengers
- * ================================================================== */
-
-/**
- * People, at last, at the same key as the player: a standing figure is 66 px
- * against the player's 67. Under the old stretch a standing passenger would
- * have been 102 px and the two side by side would have given the whole trick
- * away, so the scene had none — which is why an allegedly crowded commuter
- * train read as an empty room with hats on the seats.
- *
- * Four densities, precomputed, indexed by TrainState.crowd, which was carried in
- * the state and read by the artKey and used by absolutely nothing.
- */
-type Riders = {
-  heads: Rect[];
-  hair: Rect[];
-  bodies: Rect[];
-  coats: Rect[];
-  legs: Rect[];
-  arms: Rect[];
-  far: Rect[];
-  glow: Rect[];
-};
-
-const STAND_X = [
-  Z.doorL + 62,
-  Z.mpb + 96,
-  Z.bay[0] + 150,
-  Z.bay[1] + 152,
-  Z.bay[2] + 148,
-  Z.doorR - 92,
-] as const;
-
-function ridersAt(threshold: number): Riders {
-  const r: Riders = {
-    heads: [],
-    hair: [],
-    bodies: [],
-    coats: [],
-    legs: [],
-    arms: [],
-    far: [],
-    glow: [],
-  };
-
-  /* seated: heads over the near backs, backs of heads over the far ones */
-  BAYS.forEach((b, k) => {
-    b.headrest.forEach(([hx, , hw], j) => {
-      const seed = k * 7 + j * 31;
-      if (hash(seed) < threshold) return;
-      const cx = hx + Math.round(hw / 2) + (hash(seed + 3) > 0.5 ? 2 : -2);
-      const top = HEAD_SEATED + (hash(seed + 5) > 0.6 ? 1 : 0);
-      r.heads.push([cx - 4, top, 9, 9]);
-      r.hair.push([cx - 5, top - 1, 11, 4]);
-      if (hash(seed + 9) > 0.55) r.hair.push([cx - 6, top + 2, 3, 5], [cx + 4, top + 2, 3, 5]);
-      r.bodies.push([cx - 8, top + 9, 17, Math.max(2, SEAT_BACK - top - 8)]);
-      if (hash(seed + 11) > 0.55) r.glow.push([cx + 4, top + 8, 4, 4]);
-    });
-    b.far.forEach(([fx, fy, fw], j) => {
-      const seed = k * 13 + j * 47 + 5;
-      if (hash(seed) < threshold + 0.1) return;
-      r.far.push([fx + Math.round(fw / 2) - 4, fy - 6, 9, 7]);
-    });
-  });
-
-  /* standing: in the aisle, one hand up on a pole or a strap */
-  STAND_X.forEach((x, i) => {
-    if (hash(x + i * 17) < threshold + 0.18) return;
-    const top = HEAD_STANDING + (hash(x) > 0.5 ? 1 : 0);
-    const lean = hash(x + 5) > 0.5 ? 1 : -1;
-    r.heads.push([x - 4, top, 9, 9]);
-    r.hair.push([x - 5, top - 1, 11, 4], [x - 5, top + 3, 2, 4], [x + 4, top + 3, 2, 4]);
-    r.coats.push([x - 8, top + 9, 17, 24]);
-    r.bodies.push([x - 7, top + 33, 15, 6]);
-    r.legs.push([x - 6, top + 39, 5, FLOOR - top - 39], [x + 2, top + 39, 5, FLOOR - top - 39]);
-    /* the raised arm, which is the reason anyone believes they are standing */
-    r.arms.push([x + lean * 8, top + 10, 3, 14], [x + lean * 8, top + 8, 3, 4]);
-    if (hash(x + 9) > 0.6) r.glow.push([x - 9, top + 18, 5, 6]);
-  });
-  return r;
-}
-
-const RIDERS = [1.01, 0.7, 0.44, 0.22, 0.0].map((t) => {
-  const r = ridersAt(t);
-  return {
-    heads: pxPath(r.heads),
-    hair: pxPath(r.hair),
-    bodies: pxPath(r.bodies),
-    coats: pxPath(r.coats),
-    legs: pxPath(r.legs),
-    arms: pxPath(r.arms),
-    far: pxPath(r.far),
-    glow: pxPath(r.glow),
-  };
-});
-
-/* ================================================================== *
- * the planes
- * ================================================================== */
-
-function TheView({ ph, lit, dir }: { ph: Ph; lit: boolean; dir: 1 | -1 }) {
+function TheView({
+  ph,
+  lit,
+  dir,
+  weather,
+}: {
+  ph: Ph;
+  lit: boolean;
+  dir: 1 | -1;
+  weather: TrainState["weather"];
+}) {
   const mirror = ph === "night" ? 0.3 : ph === "dusk" ? 0.16 : 0.06;
   return (
     <g>
@@ -966,11 +1197,22 @@ function TheView({ ph, lit, dir }: { ph: Ph; lit: boolean; dir: 1 | -1 }) {
         </clipPath>
       </defs>
       <g clipPath="url(#train-glass)">
-        <TrainWindowView ph={ph} width={W} dir={dir} />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="0 0;0 1;0 0;0 1;0 0;0 0;0 0;0 0"
+          keyTimes="0;0.04;0.09;0.13;0.18;0.4;0.7;1"
+          dur="2.3s"
+          calcMode="discrete"
+          repeatCount="indefinite"
+        />
+        <TrainWindowView ph={ph} width={W} dir={dir} weather={weather} />
         {lit ? (
           <>
             <path d={REFLECT_SEATS} fill={K.moquetteHi} opacity={mirror * 0.7} />
             <path d={REFLECT_COVE} fill={K.led} opacity={mirror} />
+            <path d={REFLECT_ADS} fill={K.white} opacity={mirror * 0.5} />
+            <path d={REFLECT_POLES_PATH} fill={K.pole} opacity={mirror * 0.45} />
           </>
         ) : null}
       </g>
@@ -978,26 +1220,77 @@ function TheView({ ph, lit, dir }: { ph: Ph; lit: boolean; dir: 1 | -1 }) {
   );
 }
 
-/** The ceiling and the far wall. */
 function Saloon({ ph, s }: { ph: Ph; s: TrainState }) {
   const night = ph === "night";
   const panel = PANEL[ph];
   const frame = FRAME[ph];
   const lit = s.lights;
+  const rain = s.weather === "rain";
   return (
     <g>
       <SharedDefs />
 
-      {/* ---- the ceiling, seen from below --------------------------------- */}
       <path d={CEILING} fill={panel.mid} />
       <path d={CEIL_PANEL} fill={lit ? K.ceiling : panel.base} opacity={night && !lit ? 0.6 : 1} />
       {lit ? <path d={COVE_WASH} fill={K.led} opacity={0.16} /> : null}
       <path d={CEIL_SLOPES} fill={panel.lo} opacity={0.4} />
+      <path d={CEIL_SLOPE_HI} fill={panel.hi} opacity={0.35} />
       <path d={CEIL_JOINTS} fill={panel.lo} opacity={0.35} />
+      <path d={CEIL_JOINT_HI} fill={panel.hi} opacity={0.25} />
       <path d={CEIL_VENTS} fill={frame.lo} opacity={0.7} />
       <path d={CEIL_VENT_SLATS} fill={frame.deep} opacity={0.5} />
+      <path d={VENT_DUST} fill={panel.lo} opacity={0.18} />
+
+      <path d={CEIL_DUCT} fill={panel.lo} opacity={0.55} />
+      <path d={CEIL_GRABS} fill={frame.mid} opacity={0.8} />
+      <path d={CEIL_GRAB_HI} fill={frame.hi} opacity={0.5} />
+      <path d={LIGHT_STRIP} fill={lit ? K.led : panel.hi} opacity={lit ? 1 : 0.5} />
+      {lit ? <path d={LIGHT_STRIP_GLOW} fill={K.led} opacity={0.3} /> : null}
+      <path d={LIGHT_JOINTS} fill={panel.lo} opacity={0.5} />
+      {lit ? (
+        <path d={pxPath([LIGHT_DEAD])} fill={panel.mid} opacity={0.55}>
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="0.55;0.55;0.55;0.2;0.55;0.55"
+            dur="6.7s"
+            repeatCount="indefinite"
+          />
+        </path>
+      ) : null}
+      <path d={EXIT_SIGNS} fill={K.green} opacity={0.85} />
+      <path d={EXIT_MARKS} fill={K.white} opacity={0.9} />
+      <path d={NO_SMOKING} fill={K.white} opacity={0.7} />
+      <path d={NO_SMOKING_BAR} fill={K.red} opacity={0.8} />
+      <path d={CCTV_NOTICE} fill={K.access} opacity={0.6} />
+
+      <path d={AD_SHADOW} fill="#000" opacity={0.16} />
+      <path d={AD_MOUNTS} fill={frame.deep} opacity={0.5} />
+      <path d={AD_FRAMES} fill={night && !lit ? panel.lo : K.white} opacity={0.92} />
+      {AD_ART.map((ad) => (
+        <g key={ad.key}>
+          <path
+            d={ad.band}
+            fill={
+              ad.tone === 0
+                ? K.signBlue
+                : ad.tone === 1
+                  ? "#8a3a44"
+                  : ad.tone === 2
+                    ? "#2f6b4a"
+                    : "#b8862f"
+            }
+            opacity={night && !lit ? 0.3 : 0.55}
+          />
+          <path d={ad.lines} fill={panel.deep} opacity={0.45} />
+        </g>
+      ))}
+      <path d={AD_GLARE} fill="#ffffff" opacity={0.2} />
+
       <path d={SPEAKERS} fill={frame.mid} />
+      <path d={SPEAKER_MESH} fill={frame.deep} opacity={0.7} />
       <path d={DOMES} fill="#2b3138" />
+      <path d={DOME_GLINT} fill="#8a929c" opacity={0.6} />
       <path d={COVE_NEAR} fill={lit ? K.led : panel.lo} />
       <path d={COVE_FAR} fill={lit ? K.led : panel.lo} />
       {lit ? (
@@ -1007,10 +1300,12 @@ function Saloon({ ph, s }: { ph: Ph; s: TrainState }) {
         </>
       ) : null}
       <path d={CANT_RAIL} fill={panel.lo} />
+      <path d={CANT_RAIL_HI} fill={panel.hi} opacity={0.5} />
 
-      {/* the display, hung off the ceiling over the door */}
       <path d={CIP_MOUNT} fill={frame.lo} />
       <path d={pxPath([CIP_BOX])} fill="#23262b" />
+      <path d={CIP_TOP_HI} fill="#3a3e44" />
+      <path d={CIP_UNDER} fill="#000" opacity={0.4} />
       <path d={CIP_SCREEN} fill="#0d0f12" />
       <g transform={`translate(${CIP_BOX[0] + 7} ${CIP_BOX[1] + 6})`}>
         <path
@@ -1019,51 +1314,78 @@ function Saloon({ ph, s }: { ph: Ph; s: TrainState }) {
         />
       </g>
       <path d={CIP_GRID} fill="#0d0f12" opacity={0.4} />
+      <path d={CIP_GLARE} fill="#3a4048" opacity={0.35} />
 
-      {/* ---- the far wall -------------------------------------------------- */}
       <path d={WALL_UPPER} fill={panel.base} />
       <path d={PIERS} fill={panel.base} />
       <path d={PIERS} fill={dth("n", "06")} opacity={0.25} />
+      <path d={PIER_HI} fill={panel.hi} opacity={0.4} />
+      <path d={PIER_LO} fill={panel.lo} opacity={0.5} />
       <path d={WALL_LOWER} fill={panel.base} />
       <path d={WALL_LOWER} fill={dth("n", "06")} opacity={0.4} />
       <path d={WALL_JOINTS} fill={panel.lo} opacity={0.45} />
+      <path d={WALL_JOINT_HI} fill={panel.hi} opacity={0.3} />
       <path d={SKIRT} fill={panel.lo} />
+      <path d={SKIRT_HI} fill={panel.hi} opacity={0.4} />
+      <path d={SKIRT_SCUFF} fill="#000" opacity={0.14} />
       <path d={HOOKS} fill={frame.mid} />
       <path d={SOCKETS} fill={panel.hi} />
+      <path d={SOCKET_LED} fill={K.green} opacity={0.8} />
 
       <AOSet set={HEATER_AO} op={0.3} />
       <path d={HEATER} fill={K.grille} opacity={night ? 0.5 : 0.8} />
       <path d={HEATER_SLATS} fill={panel.deep} opacity={0.55} />
+      <path d={HEATER_TOP} fill={panel.hi} opacity={0.5} />
 
       <AOSet set={RACK_AO} op={0.4} />
       <path d={RACK_BAGS} fill={frame.lo} opacity={0.9} />
+      <path d={RACK_BAG_TRIM} fill={frame.deep} opacity={0.6} />
+      <path d={RACK_BAG_HI} fill={frame.hi} opacity={0.4} />
       <path d={RACK} fill={frame.base} />
+      <path d={RACK_HI} fill={frame.hi} opacity={0.5} />
+      <path d={RACK_UNDER} fill="#000" opacity={0.25} />
       <path d={RACK_RAIL} fill={K.pole} opacity={0.75} />
 
-      {/* the glazing */}
       <path d={BLINDS} fill={panel.hi} />
       <path d={WINDOW_FRAMES} fill={frame.base} />
+      <path d={WINDOW_FRAME_HI} fill={frame.hi} opacity={0.55} />
+      <path d={WINDOW_FRAME_LO} fill={frame.deep} opacity={0.6} />
       <path d={MULLIONS} fill={frame.base} />
       <path d={WINDOW_SEAL} fill={frame.deep} opacity={0.85} />
-      <path d={SILLS} fill={panel.hi} />
       <path d={HOPPERS} fill={frame.mid} opacity={0.8} />
+      <path d={HOPPER_CATCH} fill={frame.deep} opacity={0.7} />
       <path d={GLASS_SHEEN} fill="#ffffff" opacity={night ? 0.05 : 0.1} />
       <path d={GLASS_SHEEN_2} fill="#ffffff" opacity={night ? 0.03 : 0.07} />
       <path d={GLASS_DECAL} fill={K.white} opacity={0.75} />
       <path d={GLASS_DECAL_MARK} fill={K.red} />
+      {rain ? (
+        <>
+          <path d={GLASS_MIST} fill={K.mist} opacity={night ? 0.16 : 0.22} />
+          <path d={GLASS_DRIPS} fill="#e8eef0" opacity={0.3} />
+        </>
+      ) : null}
+      <path d={GLASS_SMUDGE} fill="#ffffff" opacity={night ? 0.05 : 0.08} />
+      <path d={GLASS_SCRATCH} fill="#ffffff" opacity={0.22} />
+      <path d={SILLS} fill={panel.hi} />
+      <path d={SILL_NOSE} fill={panel.hi} />
+      <path d={SILL_SHADOW} fill="#000" opacity={0.14} />
+      <path d={SILL_RINGS} fill={panel.lo} opacity={0.4} />
+      <path d={SILL_ITEMS} fill={frame.lo} opacity={0.9} />
+      <path d={SILL_ITEM_LIDS} fill="#5c4a3a" />
 
-      {/* the ends of the carriage */}
       <path d={WC_DOOR} fill={panel.mid} />
+      <path d={WC_SEAM} fill={panel.lo} opacity={0.6} />
       <path d={WC_FRAME} fill={frame.base} />
       <path d={WC_SIGN} fill={K.access} />
       <path d={WC_MARK} fill={K.white} />
       <path d={WC_BUTTON} fill={K.access} opacity={0.8} />
+      <path d={WC_BUTTON_LED} fill={K.green} opacity={0.7} />
       <path d={END_WALL} fill={panel.mid} />
       <path d={END_DOOR} fill={panel.base} />
       <path d={END_GLASS} fill={night ? "#14171d" : "#2a3038"} />
+      <path d={GANGWAY_RIBS} fill="#1b1f26" opacity={0.55} />
       <path d={END_FRAME} fill={frame.base} />
 
-      {/* the route map, the timetable, the poster */}
       <Bev set={MAP_SET} mat={panel} />
       <path d={pxPath([[MAP_BOX[0] + 4, MAP_BOX[1] + 4, MAP_BOX[2] - 8, 8]])} fill={K.signBlue} />
       <g transform={`translate(${MAP_BOX[0] + 7} ${MAP_BOX[1] + 6})`}>
@@ -1072,33 +1394,36 @@ function Saloon({ ph, s }: { ph: Ph; s: TrainState }) {
       <path d={MAP_LINE} fill={K.signBlue} opacity={0.35} />
       <path d={MAP_AHEAD(s.toward)} fill={K.signBlue} />
       <path d={MAP_TICKS} fill={K.signBlue} opacity={0.7} />
+      <path d={MAP_DOTS} fill={K.white} opacity={0.8} />
       <path d={MAP_HERE} fill={K.red} />
       <g transform={`translate(${MAP_BOX[0] + 8} ${MAP_BOX[1] + 32})`}>
         <path d={textPath("PRZYMORZE", 0, 0)} fill={panel.deep} opacity={0.8} />
       </g>
+      <path d={MAP_GLARE} fill="#ffffff" opacity={0.1} />
+      <path d={MAP_SCREWS} fill={frame.deep} opacity={0.7} />
       <path d={TIMETABLE} fill={K.white} opacity={0.85} />
       <path d={TIMETABLE_ROWS} fill={panel.deep} opacity={0.4} />
+      <path d={TIMETABLE_RED} fill={K.red} opacity={0.5} />
+      <path d={TIMETABLE_GLARE} fill="#ffffff" opacity={0.14} />
       <path d={POSTER} fill={K.white} opacity={0.9} />
       <path d={POSTER_ART} fill={K.signBlue} opacity={0.55} />
+      <path d={POSTER_CURL} fill="#000" opacity={0.12} />
 
-      {/* signage and safety kit */}
       <path d={PRIORITY_SIGN} fill={K.access} />
       <path d={PRIORITY_MARK} fill={K.white} />
       <path d={FIRST_AID} fill={K.green} opacity={0.9} />
       <path d={FIRST_AID_MARK} fill={K.white} />
+      <path d={HAMMER_CASE} fill={frame.lo} opacity={0.6} />
       <path d={HAMMER} fill={K.red} />
       <path d={EXTINGUISHER} fill={K.red} opacity={0.9} />
+      <path d={EXTINGUISHER_HI} fill="#e88a80" opacity={0.4} />
+      <path d={EXTINGUISHER_LABEL} fill={K.white} opacity={0.5} />
+      <path d={DOOR_STICKER} fill={K.white} opacity={0.8} />
+      <path d={DOOR_STICKER_ROWS} fill={K.red} opacity={0.7} />
     </g>
   );
 }
 
-/**
- * The two lights, fighting. The warm strip along the window wall and the cold
- * LED fill are on inverse animations that cross over in a tenth of a second,
- * which is what going under the Kołobrzeska bridge does to a carriage. Nothing
- * else moves during it: the room changes colour and every object in it holds
- * still, exactly as it does in life.
- */
 function DaylightWash({ ph, lit }: { ph: Ph; lit: boolean }) {
   if (ph === "night") return null;
   const peak = ph === "day" ? 0.22 : 0.3;
@@ -1141,104 +1466,162 @@ function Fittings({ ph, s }: { ph: Ph; s: TrainState }) {
   const panel = PANEL[ph];
   return (
     <g>
-      {/* seats: far backs, then tables, then the near pairs part by part */}
       <Bev set={SEATS_FAR} mat={{ ...SEAT, base: SEAT.mid }} />
       <path d={FAR_HI} fill={SEAT.hi} opacity={0.5} />
+
+      <path d={TABLE_SHADOW} fill="#000" opacity={0.22} />
       <path d={TABLES} fill={panel.base} />
+      <path d={TABLE_EDGE} fill={panel.hi} opacity={0.7} />
       <path d={TABLE_TOPS} fill={K.white} opacity={0.85} />
       <path d={CUP_LID} fill="#5c4a3a" />
+
+      <path d={KNEE_SHADE} fill={K.shade} opacity={0.28} />
+      <path d={KNEE_DEEP} fill={K.shade} opacity={0.22} />
+      <AOSet set={SEAT_AO} op={0.55} />
       <Contact set={SEAT_CONTACT} op={0.5} />
-      <path d={SEAT_LEGS} fill={frame.mid} />
+
+      <path d={SEAT_LEGS} fill={K.shellLo} />
+      <path d={SEAT_FEET} fill={K.shell} />
+
+      <path d={SHELLS} fill={K.shell} />
+      <path d={SHELL_HI} fill={K.shellHi} opacity={0.7} />
+      <path d={SEAT_SCUFF} fill="#000" opacity={0.18} />
+
       <Bev set={SEATS_NEAR} mat={SEAT} />
       <Bev set={SEATS_NEAR_PRI} mat={SEAT_PRIORITY} />
       <path d={INSERTS} fill={K.insert} />
       <path d={INSERTS_PRI} fill={SEAT_PRIORITY.lo} />
-      <path d={MOQUETTE_WEAVE} fill={K.fleck} opacity={0.35} />
+      <path d={MOQUETTE_WEAVE} fill={K.fleck} opacity={0.3} />
       <path d={INSERT_WEAVE} fill={K.fleck} opacity={0.22} />
+      <path d={BACK_SHADE} fill={SEAT.deep} opacity={0.5} />
+
+      <path d={CUSHIONS} fill={SEAT.base} />
+      <path d={CUSHION_HI} fill={K.moquetteHi} opacity={0.6} />
+      <path d={CUSHION_LIP} fill={SEAT.deep} opacity={0.7} />
+
       <path d={HEADRESTS} fill={SEAT.mid} />
       <path d={HEADRESTS_PRI} fill={SEAT_PRIORITY.mid} />
+      <path d={PRIORITY_STRIPE} fill={K.priorityHi} opacity={0.7} />
       <path d={HEAD_HI} fill={K.moquetteHi} opacity={0.6} />
-      <path d={CUSHIONS} fill={SEAT.base} />
-      <path d={CUSHION_LIP} fill={SEAT.deep} opacity={0.7} />
-      <path d={ARMRESTS} fill={frame.base} />
-      <path d={SEAT_GRABS} fill={K.pole} />
-      <path d={STUB_RAILS} fill={K.pole} opacity={0.85} />
+      <path d={SEAT_POLISH} fill={K.moquetteHi} opacity={0.4} />
+      <path d={SEAT_GRABS} fill={K.pole} opacity={0.9} />
 
-      {/* poles */}
+      <path d={ARM_BRACKETS} fill={K.shellLo} />
+      <path d={ARMRESTS} fill={K.shell} />
+      <path d={ARMREST_HI} fill={K.shellHi} opacity={0.8} />
+
+      <path d={SEAT_LEFTOVERS} fill={K.white} opacity={0.55} />
+      <path d={STUB_RAILS} fill={K.pole} opacity={0.85} />
+      <path d={STUB_RAIL_HI} fill={K.poleHi} opacity={0.7} />
+
+      <Contact set={POLE_CONTACT} op={0.4} />
       <path d={POLES} fill={K.pole} />
       <path d={POLE_HI} fill={K.poleHi} />
+      <path d={POLE_LO} fill="#000" opacity={0.18} />
       <path d={POLE_COLLAR} fill={frame.mid} />
+      <path d={POLE_HANDS} fill="#000" opacity={0.12} />
+      <path d={POLE_JOINT} fill={frame.mid} />
 
-      {/* the multipurpose bay */}
       <path d={MPB_RAIL} fill={K.pole} opacity={0.85} />
+      <path d={MPB_RAIL_HI} fill={K.poleHi} opacity={0.7} />
       <path d={TIPUPS} fill={SEAT.mid} />
+      <path d={TIPUP_HI} fill={K.moquetteHi} opacity={0.5} />
       <Contact set={BIKE_CONTACT} op={0.45} />
       <path d={BIKE_WHEELS} fill="#2a2d33" />
+      <path d={BIKE_HUBS} fill={frame.hi} opacity={0.7} />
       <path d={BIKE_FRAME} fill="#3f6f52" />
+      <path d={BIKE_HI} fill="#6fa882" opacity={0.5} />
 
-      {/* the doors and everything bolted around them */}
       <Bev set={DOORS} mat={panel} />
       <path d={DOOR_SPLIT} fill={frame.deep} />
+      <path d={DOOR_RUBBER} fill="#1b1f26" opacity={0.7} />
       <path d={DOOR_EDGE} fill={K.nosing} opacity={0.9} />
       <path d={DOOR_HEAD} fill={frame.lo} />
+      <path d={DOOR_HEAD_SHADOW} fill="#000" opacity={0.25} />
       <path d={DOOR_RELEASE} fill={K.red} opacity={0.85} />
+      <path d={DOOR_EMERGENCY} fill={K.white} opacity={0.75} />
       <path d={DOOR_BUTTON_RING} fill={frame.deep} />
       <path d={DOOR_BUTTON} fill="#4a5a4e" />
+      <path d={DOOR_BUTTON_LED} fill={K.green} opacity={0.65} />
       <path d={DOOR_NOSING} fill={K.nosing} />
       <path d={KASOWNIK} fill={K.kasownik} />
+      <path d={KASOWNIK_SIDE} fill="#000" opacity={0.2} />
+      <path d={KASOWNIK_HI} fill="#f2a05c" opacity={0.6} />
       <path d={KASOWNIK_SLOT} fill="#15171b" />
+      <path d={KASOWNIK_RUB} fill="#f2c9a0" opacity={0.35} />
       <path d={KASOWNIK_LED} fill={K.green} />
       <path d={INTERCOM} fill={frame.mid} />
+      <path d={INTERCOM_MESH} fill={frame.deep} opacity={0.7} />
 
-      {/* the bin, the bags, the luggage against the end wall */}
       <Contact set={BIN_CONTACT} op={0.4} />
       <path d={BIN} fill={frame.mid} />
+      <path d={BIN_SIDE} fill="#000" opacity={0.2} />
+      <path d={BIN_HI} fill={frame.hi} opacity={0.5} />
       <path d={BIN_SLOT} fill="#15171b" />
+      <path d={BIN_FULL} fill={K.white} opacity={0.7} />
       <path d={FLOOR_BAG} fill={K.case} />
+      <path d={FLOOR_BAG_HI} fill="#6d5c50" opacity={0.5} />
       <Contact set={LUGGAGE_CONTACT} op={0.4} />
       <path d={LUGGAGE} fill={K.case} />
+      <path d={LUGGAGE_SIDE} fill="#000" opacity={0.22} />
       <path d={LUGGAGE_TRIM} fill={frame.mid} opacity={0.7} />
+      <path d={LUGGAGE_HI} fill="#6d5c50" opacity={0.5} />
 
-      {/* the daylight lands here rather than in the wall plane, because what it
-          most has to fall on is the seats, and the seats are painted after */}
       <DaylightWash ph={ph} lit={s.lights} />
     </g>
   );
 }
 
-function Passengers({ ph, s }: { ph: Ph; s: TrainState }) {
-  const r = RIDERS[Math.max(0, Math.min(4, Math.round(s.crowd)))];
-  const night = ph === "night";
+function Passengers({ s }: { s: TrainState }) {
+  const shown = SEATED.filter((r) => s.crowd >= r.from);
   return (
     <g>
-      <path d={r.far} fill="#2f3740" opacity={0.75} />
-      <path d={r.legs} fill={night ? "#242a31" : "#2f3742"} />
-      <path d={r.bodies} fill={night ? "#2b323b" : "#3a434e"} />
-      <path d={r.coats} fill={night ? "#33404e" : "#455568"} />
-      <path d={r.arms} fill={night ? "#33404e" : "#455568"} />
-      <path d={r.heads} fill={night ? K.skinNight : K.skin} />
-      <path d={r.hair} fill="#2b2521" />
-      <path d={r.glow} fill={K.ledAmber} opacity={night ? 0.8 : 0.35} />
+      {shown.map((r) => {
+        const npc = PASSENGERS[r.npc as keyof typeof PASSENGERS];
+        if (!npc) return null;
+        return (
+          <NpcActor
+            key={r.id}
+            npc={npc}
+            objId={r.id}
+            x={r.x}
+            y={FLOOR}
+            facing={r.facing}
+            shadow={false}
+            action={npc.actions?.sit ? "sit" : undefined}
+          />
+        );
+      })}
     </g>
   );
 }
 
 function Floor({ ph, s }: { ph: Ph; s: TrainState }) {
   const night = ph === "night";
+  const rain = s.weather === "rain";
   return (
     <g>
-      {/* Grey speckled lino. The floor of a lit carriage is lighter than the
-          seats, not darker — it used to be #4a4d52 and read as a pit. */}
       <path d={FLOOR_BAND} fill={night ? "#4f4c48" : K.floorBase} />
       <path d={FLOOR_BAND} fill={dth("n", "12")} opacity={0.32} />
       <path d={FLOOR_UNDERSEAT} fill="#000" opacity={0.16} />
       <path d={FLOOR_JOINTS} fill="#000" opacity={0.07} />
+      <path d={FLOOR_JOINT_HI} fill="#ffffff" opacity={0.05} />
       <path d={AISLE_WEAR} fill={dth("n", "12")} opacity={0.3} />
       <path d={FLOOR_NEAR} fill="#000" opacity={0.12} />
       <path d={FLOOR_MPB} fill={K.access} opacity={0.4} />
       <path d={FLOOR_DOORMAT} fill={K.nosing} opacity={0.25} />
+      <path d={FLOOR_KEEPCLEAR} fill={K.nosing} opacity={0.3} />
       {s.lights ? <path d={FLOOR_SHEEN} fill={K.led} opacity={0.1} /> : null}
+      <path d={FLOOR_GUM} fill="#000" opacity={0.18} />
       <path d={FLOOR_LITTER} fill={K.white} opacity={0.5} />
+      <path d={FLOOR_TICKET} fill={K.white} opacity={0.45} />
+      <path d={FLOOR_SEEDS} fill="#3a3128" opacity={0.5} />
+      {rain ? (
+        <>
+          <path d={FLOOR_WET} fill={K.wet} opacity={0.28} />
+          <path d={FLOOR_PRINTS} fill={K.wet} opacity={0.22} />
+        </>
+      ) : null}
 
       {ph !== "night" ? (
         <path d={LIGHT_POOLS} fill={WASH[ph]} opacity={ph === "day" ? 0.26 : 0.19}>
@@ -1259,65 +1642,107 @@ function Floor({ ph, s }: { ph: Ph; s: TrainState }) {
   );
 }
 
-/* ================================================================== *
- * the scene
- * ================================================================== */
-
 function TrainInterior({ world, phase }: { world: WorldState; phase: string }) {
   const ph = toPhase(phase);
   const s = trainState(world);
   return (
     <LayeredScene
-      farBackground={<TheView ph={ph} lit={s.lights} dir={s.toward === "gdynia" ? 1 : -1} />}
+      farBackground={
+        <TheView ph={ph} lit={s.lights} dir={s.toward === "gdynia" ? 1 : -1} weather={s.weather} />
+      }
       middleBackground={<Saloon ph={ph} s={s} />}
       ground={<Floor ph={ph} s={s} />}
       staticObjects={<Fittings ph={ph} s={s} />}
-      gameplayObjects={<Passengers ph={ph} s={s} />}
+      gameplayObjects={<Passengers s={s} />}
       parallax={{ farBackground: 1, middleBackground: 1 }}
     />
   );
 }
 
-/* ================================================================== *
- * the near side of the carriage
- * ================================================================== */
-
-/**
- * What is in front of the player, and the whole reason the carriage reads as a
- * place you are standing in rather than a wall you are standing against.
- *
- * There were two objects here. There are six now, and they are on the near side
- * of the aisle, which means they are *bigger* than their opposite numbers
- * across the carriage rather than the same size drawn darker: the near seat back
- * is 1.35× the far one, the near pole is a pixel wider, and the near rack is a
- * band along the very top of the frame. Everything is cut off by an edge,
- * because nothing on the near side of a carriage fits in the view.
- */
 const NEAR_SCALE = 1.35;
-const NEAR_SEAT_TOP = FRAME_H - Math.round((FLOOR - SEAT_BACK) * NEAR_SCALE * 0.62);
+const AISLE = FLOOR + 12;
+
+const NEAR_SEAT_D = Math.round(SEAT_D * NEAR_SCALE);
+const NEAR_KNEE = Math.round(KNEE * NEAR_SCALE);
+const NEAR_BAY_W = NEAR_SEAT_D * 2 + NEAR_KNEE;
+const NEAR_BACK_T = Math.round(BACK_T * NEAR_SCALE);
+const NEAR_PAN_D = Math.round(PAN_D * NEAR_SCALE);
+
+const NEAR_SHOULDER = FRAME_H - 12;
+const NEAR_BAY_X = Array.from(
+  { length: Math.ceil(W / NEAR_BAY_W) + 2 },
+  (_, i) => -NEAR_BAY_W + Math.round(NEAR_BAY_W / 2) + i * NEAR_BAY_W,
+);
+const NEAR_SHOULDERS: Rect[] = NEAR_BAY_X.flatMap((x) => [
+  [x, NEAR_SHOULDER, NEAR_BACK_T + 4, FRAME_H - NEAR_SHOULDER] as Rect,
+  [
+    x + NEAR_BAY_W - NEAR_BACK_T - 4,
+    NEAR_SHOULDER,
+    NEAR_BACK_T + 4,
+    FRAME_H - NEAR_SHOULDER,
+  ] as Rect,
+]);
+const NEAR_SHOULDER_CAPS: Rect[] = NEAR_BAY_X.flatMap((x) => [
+  [x - 1, NEAR_SHOULDER - 5, NEAR_BACK_T + 6, 6] as Rect,
+  [x + NEAR_BAY_W - NEAR_BACK_T - 5, NEAR_SHOULDER - 5, NEAR_BACK_T + 6, 6] as Rect,
+]);
+const NEAR_SHOULDER_HI = pxPath(
+  NEAR_SHOULDER_CAPS.map(([x, sy, w]) => [x + 1, sy, w - 2, 1] as Rect),
+);
+const NEAR_SHOULDER_SET = bevelPaths(NEAR_SHOULDERS);
+
+const FRONT_BAY_X = Z.bay[1] + 27;
+const FRONT_SEAT_TOP = FRAME_H - 40;
 const FRONT_SEAT: Rect[] = [
-  [Z.bay[1] + 30, NEAR_SEAT_TOP + 8, 150, FRAME_H - NEAR_SEAT_TOP],
-  [Z.bay[1] + 27, NEAR_SEAT_TOP, 156, 9],
+  [FRONT_BAY_X, FRONT_SEAT_TOP, NEAR_BACK_T + 3, FRAME_H - FRONT_SEAT_TOP],
+  [FRONT_BAY_X + 2, FRONT_SEAT_TOP - 1, NEAR_BACK_T + 3, FRAME_H - FRONT_SEAT_TOP],
+  [
+    FRONT_BAY_X + NEAR_BAY_W - NEAR_BACK_T - 3,
+    FRONT_SEAT_TOP,
+    NEAR_BACK_T + 3,
+    FRAME_H - FRONT_SEAT_TOP,
+  ],
+  [
+    FRONT_BAY_X + NEAR_BAY_W - NEAR_BACK_T - 5,
+    FRONT_SEAT_TOP - 1,
+    NEAR_BACK_T + 3,
+    FRAME_H - FRONT_SEAT_TOP,
+  ],
 ];
-const FRONT_SEAT_GRAB: Rect[] = [[Z.bay[1] + 150, NEAR_SEAT_TOP - 5, 14, 6]];
+const FRONT_SEAT_CAPS: Rect[] = [
+  [FRONT_BAY_X - 2, FRONT_SEAT_TOP - 8, NEAR_BACK_T + 8, 9],
+  [FRONT_BAY_X + NEAR_BAY_W - NEAR_BACK_T - 6, FRONT_SEAT_TOP - 8, NEAR_BACK_T + 8, 9],
+];
+const FRONT_SEAT_CAP_HI = pxPath(
+  FRONT_SEAT_CAPS.map(([x, cy, w]) => [x + 2, cy, w - 4, 2] as Rect),
+);
+const FRONT_SEAT_PANS: Rect[] = [
+  [FRONT_BAY_X + NEAR_BACK_T + 3, FRAME_H - 20, NEAR_PAN_D, 6],
+  [FRONT_BAY_X + NEAR_BAY_W - NEAR_BACK_T - 3 - NEAR_PAN_D, FRAME_H - 20, NEAR_PAN_D, 6],
+];
+const FRONT_SEAT_ARMS: Rect[] = [
+  [FRONT_BAY_X + 2, FRAME_H - 30, NEAR_SEAT_D - 6, 4],
+  [FRONT_BAY_X + NEAR_BAY_W - NEAR_SEAT_D + 4, FRAME_H - 30, NEAR_SEAT_D - 6, 4],
+];
+const FRONT_SEAT_GRAB: Rect[] = [
+  [FRONT_BAY_X, FRONT_SEAT_TOP - 12, NEAR_BACK_T + 4, 4],
+  [FRONT_BAY_X + NEAR_BAY_W - NEAR_BACK_T - 4, FRONT_SEAT_TOP - 12, NEAR_BACK_T + 4, 4],
+];
+const FRONT_SET = bevelPaths(FRONT_SEAT);
+const FRONT_WEAVE = pxPath(FRONT_SEAT.flatMap((r) => weave(r, 4)));
+
 const FRONT_POLE: Rect[] = [[Z.bay[2] + 60, 0, 7, FRAME_H]];
-/** The near luggage rack along the top edge, and its underside in shadow. */
+const FRONT_POLE_HI: Rect[] = [[Z.bay[2] + 60, 0, 1, FRAME_H]];
+const FRONT_POLE_HAND: Rect[] = [[Z.bay[2] + 60, 60, 7, 46]];
 const FRONT_RACK: Rect[] = [
   [0, 0, W, 5],
   [0, 5, W, 2],
 ];
-/** The near handrail the straps hang from, just under it. */
+const FRONT_RACK_HI: Rect[] = [[0, 0, W, 1]];
 const FRONT_RAIL: Rect[] = [[0, 9, W, 4]];
-const FRONT_SET = bevelPaths(FRONT_SEAT);
-const FRONT_WEAVE = pxPath(FRONT_SEAT.flatMap((r) => weave(r, 5)));
+const FRONT_RAIL_HI: Rect[] = [[0, 9, W, 1]];
 const VIGNETTE = vignettePaths(W, FRAME_H);
-const NEAR_STRAP_X = [
-  Z.map + 40,
-  Z.bay[0] + 60,
-  Z.bay[1] + 200,
-  Z.bay[3] + 40,
-  Z.doorR - 120,
-] as const;
+const NEAR_STRAP_X = [Z.map + 40, Z.bay[1] + 200, Z.doorR - 120] as const;
 
 function TrainFront({ phase }: { phase: string }) {
   const ph = toPhase(phase);
@@ -1331,31 +1756,31 @@ function TrainFront({ phase }: { phase: string }) {
       shapeRendering="crispEdges"
     >
       <path d={pxPath(FRONT_RACK)} fill={frame.lo} />
+      <path d={pxPath(FRONT_RACK_HI)} fill={frame.hi} opacity={0.4} />
       <path d={pxPath(FRONT_RAIL)} fill={K.pole} opacity={0.7} />
+      <path d={pxPath(FRONT_RAIL_HI)} fill={K.poleHi} opacity={0.6} />
+
+      <path d={pxPath(NEAR_SHOULDER_CAPS)} fill={SEAT.mid} />
+      <path d={NEAR_SHOULDER_HI} fill={K.moquetteHi} opacity={0.5} />
+      <Bev set={NEAR_SHOULDER_SET} mat={{ ...SEAT, base: SEAT.lo, hi: SEAT.mid }} />
+
+      <path d={pxPath(FRONT_SEAT_ARMS)} fill={K.shellLo} />
+      <path d={pxPath(FRONT_SEAT_PANS)} fill={SEAT.lo} />
+      <path d={pxPath(FRONT_SEAT_CAPS)} fill={SEAT.mid} />
+      <path d={FRONT_SEAT_CAP_HI} fill={K.moquetteHi} opacity={0.45} />
       <Bev set={FRONT_SET} mat={{ ...SEAT, base: SEAT.lo, hi: SEAT.mid }} />
-      <path d={FRONT_WEAVE} fill={K.fleck} opacity={0.18} />
+      <path d={FRONT_WEAVE} fill={K.fleck} opacity={0.16} />
       <path d={pxPath(FRONT_SEAT_GRAB)} fill={K.pole} opacity={0.8} />
+
       <path d={pxPath(FRONT_POLE)} fill={K.pole} opacity={0.85} />
       <path d={pxPath(FRONT_POLE)} fill="#000" opacity={0.2} />
+      <path d={pxPath(FRONT_POLE_HI)} fill={K.poleHi} opacity={0.5} />
+      <path d={pxPath(FRONT_POLE_HAND)} fill="#000" opacity={0.14} />
       <Vignette set={VIGNETTE} strength={ph === "night" ? 1 : 0.6} />
     </svg>
   );
 }
 
-/**
- * The carriage's own movement.
- *
- * The rocking is applied to the straps and to nothing else. Rocking the whole
- * interior would look better for about two seconds and then break every hitbox
- * in the scene, because the runtime's collision is in scene coordinates and does
- * not know the artwork has moved. Straps are what a passenger actually watches
- * to know a train is moving, and they cost one animated group each.
- *
- * Two ranks of them now, which is the point of having a near side at all: the
- * near straps are twice the size of the far ones and swing on a longer period,
- * and two periods that do not divide into each other read as a carriage on
- * bogies rather than a room on a swing.
- */
 function TrainEffects({
   world,
   phase,
@@ -1373,8 +1798,33 @@ function TrainEffects({
   const s = trainState(world);
   const ph = toPhase(phase);
   const strapTop = RACK_Y + RACK_H + 1;
+  const CAST: Record<Ph, { fill: string; op: number } | null> = {
+    dawn: { fill: "#8d95c4", op: 0.16 },
+    day: null,
+    dusk: { fill: "#e0925e", op: 0.2 },
+    night: { fill: "#101828", op: 0.26 },
+  };
+  const cast = CAST[ph];
   return (
     <>
+      {cast ? (
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          viewBox={`0 0 ${W} ${FRAME_H}`}
+          preserveAspectRatio="none"
+          shapeRendering="crispEdges"
+        >
+          <rect x={0} y={0} width={W} height={FRAME_H} fill={cast.fill} opacity={cast.op} />
+          {ph === "dusk" ? (
+            <path
+              d={pxPath([[0, SEAT_BACK - 2, W, 3] as Rect, [0, GLASS_BOTTOM + 2, W, 2] as Rect])}
+              fill="#ffb877"
+              opacity={0.3}
+            />
+          ) : null}
+        </svg>
+      ) : null}
       <svg
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 h-full w-full"
@@ -1382,7 +1832,6 @@ function TrainEffects({
         preserveAspectRatio="none"
         shapeRendering="crispEdges"
       >
-        {/* far rank: off the rack rail, hanging in front of the glass */}
         {FAR_STRAP_X.map((x, i) => (
           <path
             key={`far${x}`}
@@ -1405,14 +1854,13 @@ function TrainEffects({
             />
           </path>
         ))}
-        {/* near rank: off the near rail at the top of the frame, twice the size */}
         {NEAR_STRAP_X.map((x, i) => (
           <path
             key={`near${x}`}
             d={pxPath([
-              [x, 13, 3, 22],
-              [x - 4, 35, 11, 11],
-              [x - 2, 38, 7, 5],
+              [x, 13, 3, 15],
+              [x - 3, 28, 9, 9],
+              [x - 1, 31, 5, 4],
             ])}
             fill={K.pole}
             opacity={0.9}
@@ -1428,7 +1876,6 @@ function TrainEffects({
             />
           </path>
         ))}
-        {/* the cup: one pixel, fast, out of phase with everything */}
         <g>
           <path d={CUP_LID} fill="#6d5847" opacity={0.9} />
           <animateTransform
@@ -1441,13 +1888,12 @@ function TrainEffects({
           />
         </g>
       </svg>
-      {!dialogueOpen ? <Announce scale={scale} toward={s.toward} ph={ph} /> : null}
+      {!dialogueOpen ? <Announce scale={scale} toward={s.toward} /> : null}
     </>
   );
 }
 
-/** The on-board announcement, in the display's amber, every so often. */
-function Announce({ scale, toward }: { scale: number; toward: TrainState["toward"]; ph: Ph }) {
+function Announce({ scale, toward }: { scale: number; toward: TrainState["toward"] }) {
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
     const lines =
@@ -1469,34 +1915,70 @@ function Announce({ scale, toward }: { scale: number; toward: TrainState["toward
     timer = window.setTimeout(cycle, 3400);
     return () => window.clearTimeout(timer);
   }, [toward]);
-  if (!text) return null;
-  return (
-    <div
-      className="pointer-events-none absolute right-0 left-0 flex justify-center"
-      style={{ top: Math.round(8 * scale) }}
-    >
-      <span
-        className="font-mono"
-        style={{
-          fontSize: Math.max(10, Math.round(2.6 * scale)),
-          letterSpacing: "0.06em",
-          color: "#ffb03a",
-          background: "rgba(6,8,13,0.8)",
-          padding: `${Math.round(scale)}px ${Math.round(3 * scale)}px`,
-        }}
-      >
-        {text}
-      </span>
-    </div>
-  );
+  return <Monologue kind="announce" scale={scale} text={text} />;
 }
 
 export const TRAIN_SCENE: RuntimeSceneDef<WorldState> = {
   id: "train",
   width: W,
+  ground: {
+    top: FLOOR,
+    bottom: FLOOR + 22,
+    profile: [
+      { x: 0, top: FLOOR - 4, bottom: FLOOR + 18 },
+      { x: Z.doorL - 40, top: FLOOR - 4, bottom: FLOOR + 18 },
+      { x: Z.doorL + 30, top: FLOOR, bottom: FLOOR + 22 },
+      { x: Z.doorR - 30, top: FLOOR, bottom: FLOOR + 22 },
+      { x: Z.doorR + 40, top: FLOOR - 4, bottom: FLOOR + 18 },
+      { x: W, top: FLOOR - 4, bottom: FLOOR + 18 },
+    ],
+    zones: [
+      { x0: Z.mpb - 10, x1: Z.mpb + 80, kind: "mpb" },
+      { x0: 0, x1: Z.doorL + 60, kind: "rubber", speed: 0.92 },
+      { x0: Z.doorR - 60, x1: W, kind: "rubber", speed: 0.92 },
+      { x0: 0, x1: W, kind: "lino" },
+    ],
+    blockers: [
+      { x0: Z.mpb - 6, y0: FLOOR, x1: Z.mpb + 70, y1: FLOOR + 12 },
+      { x0: FRONT_BAY_X, y0: FLOOR + 14, x1: FRONT_BAY_X + NEAR_BAY_W, y1: FLOOR + 22 },
+      { x0: Z.bay[2] + 58, y0: FLOOR + 8, x1: Z.bay[2] + 69, y1: FLOOR + 22 },
+      { x0: Z.bin - 4, y0: FLOOR, x1: Z.bin + 20, y1: FLOOR + 10 },
+      { x0: Z.end + 30, y0: FLOOR - 4, x1: Z.end + 78, y1: FLOOR + 12 },
+    ],
+  },
+  actors: [
+    npcToActor(PASSENGERS.konduktor, {
+      x: Z.doorR - 118,
+      y: AISLE,
+      facing: -1,
+      patrol: { from: Z.doorR - 138, to: Z.doorR - 98, speed: 9, pauseMs: 5200 },
+    }),
+    ...STANDING.map((p, i) =>
+      npcToActor(PASSENGERS[p.npc as keyof typeof PASSENGERS], {
+        x: p.x,
+        y: p.y,
+        facing: i % 2 === 0 ? 1 : -1,
+        visible: (w: WorldState) => trainState(w).crowd >= p.from,
+      }),
+    ),
+  ],
+  enter: ({ updateWorld, counterpart }) => {
+    const hour = new Date().getHours();
+    const ph = dayPhase(hour);
+    updateWorld((w) => ({
+      ...w,
+      train: {
+        toward: boardingState(counterpart, hour),
+        crowd: crowdFor(hour),
+        seated: false,
+        lights: ph === "night" || ph === "dusk" || ph === "morning",
+        weather: w.train?.weather ?? "clear",
+      },
+    }));
+  },
   artKey: (w, ph) => {
     const s = trainState(w);
-    return [ph, s.toward, s.crowd, s.lights ? 1 : 0, s.seated ? 1 : 0].join("|");
+    return [ph, s.toward, s.crowd, s.lights ? 1 : 0, s.seated ? 1 : 0, s.weather].join("|");
   },
   objects: [
     {
@@ -1505,30 +1987,61 @@ export const TRAIN_SCENE: RuntimeSceneDef<WorldState> = {
       priority: 2,
       x: Z.doorL,
       range: 30,
+      approachY: AISLE,
       to: { scene: "station", spawnX: 520 },
     },
-    { id: "train-map", kind: "routemap", priority: 2, x: Z.map - 2, range: 30 },
-    ...Z.bay.map((x, i) => ({
+    { id: "train-map", kind: "routemap", priority: 2, x: Z.map - 2, range: 30, approachY: AISLE },
+    ...SEAT_X.filter((_, i) => i % 2 === 0).map((x, i) => ({
       id: `train-seat-${i + 1}`,
       kind: "sport",
       action: "sit",
       face: 1 as const,
-      x: x + 60,
-      range: 54,
+      x: x + SEAT_D + Math.round(KNEE / 2),
+      range: 40,
+      approachY: FLOOR + 2,
     })),
-    { id: "train-window", kind: "flavor", x: Z.bay[2] + 40, range: 60, markerY: GLASS_TOP + 10 },
-    { id: "train-pole", kind: "flavor", x: Z.bay[3] - 16, range: 16 },
-    { id: "train-display", kind: "flavor", x: Z.doorL + 135, range: 40, markerY: CIP_BOX[1] + 8 },
-    { id: "train-bin", kind: "flavor", x: Z.bin + 11, range: 18 },
-    { id: "train-hammer", kind: "flavor", x: Z.bay[3] + 136, range: 14 },
-    { id: "train-kasownik", kind: "flavor", x: Z.doorL + 59, range: 20 },
-    { id: "train-bike", kind: "flavor", x: Z.mpb + 36, range: 44 },
-    { id: "train-timetable", kind: "flavor", x: Z.map + 79, range: 24 },
-    { id: "train-poster", kind: "flavor", x: Z.bin + 49, range: 26, markerY: GLASS_BOTTOM + 6 },
-    { id: "train-wc", kind: "flavor", x: Z.wc, range: 34 },
-    { id: "train-luggage", kind: "flavor", x: Z.end + 88, range: 26 },
-    { id: "train-gangway", kind: "flavor", x: Z.end + 41, range: 30 },
-    { id: "train-exit-r", kind: "flavor", x: Z.doorR, range: 28 },
+    {
+      id: "train-window",
+      kind: "flavor",
+      x: Z.bay[2] + 40,
+      range: 60,
+      markerY: GLASS_TOP + 10,
+      approachY: FLOOR,
+    },
+    { id: "train-pole", kind: "flavor", x: Z.bay[3] - 16, range: 16, approachY: AISLE },
+    {
+      id: "train-display",
+      kind: "flavor",
+      x: Z.doorL + 135,
+      range: 40,
+      markerY: CIP_BOX[1] + 8,
+      approachY: AISLE,
+    },
+    { id: "train-bin", kind: "flavor", x: Z.bin + 11, range: 18, approachY: FLOOR + 4 },
+    { id: "train-hammer", kind: "flavor", x: Z.bay[3] + 136, range: 14, approachY: FLOOR },
+    { id: "train-kasownik", kind: "flavor", x: Z.doorL + 59, range: 20, approachY: AISLE },
+    { id: "train-bike", kind: "flavor", x: Z.mpb + 36, range: 44, approachY: FLOOR + 16 },
+    { id: "train-timetable", kind: "flavor", x: Z.map + 79, range: 24, approachY: FLOOR },
+    {
+      id: "train-poster",
+      kind: "flavor",
+      x: Z.bin - 13,
+      range: 26,
+      markerY: GLASS_BOTTOM + 6,
+      approachY: FLOOR,
+    },
+    { id: "train-wc", kind: "flavor", x: Z.wc, range: 34, approachY: AISLE },
+    {
+      id: "train-konduktor",
+      kind: "konduktor",
+      priority: 2,
+      x: Z.doorR - 118,
+      range: 44,
+      approachY: AISLE,
+    },
+    { id: "train-luggage", kind: "flavor", x: Z.end + 46, range: 26, approachY: FLOOR + 14 },
+    { id: "train-gangway", kind: "flavor", x: Z.end + 41, range: 30, approachY: AISLE },
+    { id: "train-exit-r", kind: "flavor", x: Z.doorR, range: 28, approachY: AISLE },
   ],
   Component: ({ world, phase }) => <TrainInterior world={world} phase={phase} />,
   darkness: () => 0,

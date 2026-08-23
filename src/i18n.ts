@@ -132,6 +132,14 @@ export const resources = {
         "train-display": "NEXT STOP",
         "train-bin": "BIN",
         "train-hammer": "EMERGENCY HAMMER",
+        "train-kasownik": "KASOWNIK",
+        "train-bike": "THE BIKE",
+        "train-timetable": "TIMETABLE",
+        "train-poster": "POSTER",
+        "train-wc": "TOILET",
+        "train-luggage": "LUGGAGE",
+        "train-gangway": "GANGWAY",
+        "train-konduktor": "KONDUKTOR",
         "district-bikes": "BIKE RACK",
         "district-shelter": "TRAM SHELTER",
         "district-ticket": "TICKET MACHINE",
@@ -516,6 +524,20 @@ export const resources = {
         "train-pole": "Yellow, warm where a hundred hands have been.",
         "train-display": "NEXT: ZASPA. The dot matrix drops a pixel on the S and puts it back.",
         "train-bin": "Somebody's ticket, folded into a very small triangle.",
+        "train-kasownik":
+          "The validator by the door. Yours is already punched — the corner bitten out, the date going soft.",
+        "train-bike":
+          "Somebody's bike in the rack, back wheel off the ground. They are standing next to it pretending it is not theirs.",
+        "train-timetable":
+          "The timetable behind glass. Weekdays, Saturdays, holidays — three services, three different Sundays.",
+        "train-poster":
+          "An advert for a language school. The girl in it has been smiling at this doorway since before the last timetable change.",
+        "train-wc":
+          "The accessible toilet. Occupied since Wrzeszcz, which is either bad luck or a long story.",
+        "train-luggage":
+          "Two cases against the bulkhead, strapped together. Somebody is going further than Gdynia.",
+        "train-gangway":
+          "The gangway into the next unit — rubber bellows, a bit of daylight, and the floor moving in two directions at once.",
         "train-hammer":
           "Behind glass, red, never used. You have wondered your whole life whether it works.",
         "district-ticket": "The ticket machine takes exact change and personal grudges.",
@@ -830,6 +852,13 @@ export const resources = {
       },
       toast: {
         boarding: "You step up into the carriage.",
+        "train-seat-1":
+          "You sit by the window. The glass is cold against your shoulder and Gdańsk starts going past.",
+        "train-seat-2": "You sit down. The seat is warm from whoever had it before Wrzeszcz.",
+        "train-seat-3":
+          "You take the seat facing backwards, so the city arrives behind you and leaves in front.",
+        "train-seat-4":
+          "You sit at the table. Somebody has left a ring of coffee on it, and a very small pile of sugar.",
         ticketBought: "One SKM ticket, 4 zł. The machine prints it like it is doing you a favour.",
         ticketBroke:
           "4 zł for a ticket, and you don't have it. The conductor will understand. He will not.",

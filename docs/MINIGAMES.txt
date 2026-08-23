@@ -1,4 +1,40 @@
-bankomat
-dance
-guitar
-driving
+I want to significantly elevate the minigames across the game.
+
+The current implementation is functional, but the minigames still feel too simple, shallow, and mechanically limited. I want them to become fully integrated gameplay experiences that feel like a natural and meaningful part of the world rather than small isolated interactions.
+
+The goal is to make the minigames **deep, immersive, visually rich, responsive, and satisfying to play**, while remaining consistent with the overall identity of the game.
+
+Do not treat this as a request to simply add more buttons, effects, or complexity. Think about the minigames as complete gameplay systems. Explore how their mechanics, feedback, progression, presentation, atmosphere, interaction, difficulty, pacing, and visual language can work together to create something substantially more engaging.
+
+**Visual presentation is especially important.** This game is heavily influenced by the visual-novel genre, so graphical quality, composition, atmosphere, lighting, depth, shadows, animation, environmental detail, transitions, and visual feedback should be considered fundamental gameplay elements rather than decoration.
+
+I want the minigames to feel visually authored and intentional. They should have a convincing sense of space, depth, materiality, lighting, and atmosphere. Avoid flat or purely UI-driven presentation wherever the concept allows something more immersive.
+
+At the same time, preserve the existing game's artistic identity and technical architecture. The result should feel like an evolution of the current game, not a disconnected subsystem or a completely different visual style.
+
+Please first inspect the existing minigame implementation and understand how it currently works, including its architecture, rendering approach, interaction model, shared components, and limitations.
+
+Then independently determine the best practical direction for transforming it.
+
+I intentionally do **not** want to prescribe the implementation details. Decide yourself:
+
+* which mechanics should be expanded;
+* which interactions deserve more depth;
+* how progression and difficulty should work;
+* what visual elements should be introduced;
+* how lighting, shadows, depth, animation, and effects should be handled;
+* how feedback and responsiveness should work;
+* how the minigames can feel different from one another while remaining part of the same game;
+* what should be reusable at the engine/component level;
+* what should remain specific to individual minigames;
+* and how to achieve the strongest result without unnecessarily compromising performance or maintainability.
+
+Think beyond the obvious implementation.
+
+The desired outcome is not simply **"more features."** It is a transformation from basic minigames into **memorable, polished gameplay moments** that contribute to the atmosphere, world-building, character experience, and overall identity of the game.
+
+Use your own judgement to determine what would make each minigame genuinely enjoyable and immersive. If an existing approach is fundamentally limiting the quality of the experience, feel free to rethink or restructure it rather than building additional complexity on top of a weak foundation.
+
+Prioritize **depth, visual storytelling, atmosphere, tactile interaction, spatial presentation, feedback, and polish**.
+
+The final result should make the player feel that these minigames are an intentional part of a premium visual-novel/game experience rather than simple utility interactions.
