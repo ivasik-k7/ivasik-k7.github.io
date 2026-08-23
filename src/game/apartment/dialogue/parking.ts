@@ -180,6 +180,13 @@ export function buildGolfTree(locked: boolean) {
               },
             },
             {
+              label: "Take it out. The obwodnica is empty this late.",
+              effect: (ctx: Ctx) => {
+                playSfx("cardoor");
+                ctx.openOverlay({ type: "driving" });
+              },
+            },
+            {
               label: "Start it, just to hear it.",
               effect: (ctx: Ctx) => {
                 playSfx("engine");

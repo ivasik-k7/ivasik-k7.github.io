@@ -47,12 +47,14 @@ const PlayerStudio = lazy(() =>
 const Bankomat = lazy(() => import("../minigames/Bankomat").then((m) => ({ default: m.Bankomat })));
 const Guitar = lazy(() => import("../minigames/Guitar").then((m) => ({ default: m.Guitar })));
 const Dance = lazy(() => import("../minigames/Dance").then((m) => ({ default: m.Dance })));
+const Driving = lazy(() => import("../minigames/Driving").then((m) => ({ default: m.Driving })));
 
 type Overlay =
   | { type: "panel"; id: PanelId }
   | { type: "bankomat" }
   | { type: "guitar" }
   | { type: "dance" }
+  | { type: "driving" }
   | { type: "terminal" }
   | { type: "menu" }
   | { type: "wardrobe" }
@@ -294,6 +296,17 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     ),
     renderOverlay: (overlay, close, world, updateWorld) => {
       const o = overlay as Overlay;
+      if (o.type === "driving")
+        return (
+          <Suspense key="driving" fallback={<div className="absolute inset-0 bg-black/85" />}>
+            <Driving
+              onClose={close}
+              onVerdict={() => {
+                /* whether Marek notices lives in the paint, not the save */
+              }}
+            />
+          </Suspense>
+        );
       if (o.type === "dance")
         return (
           <Suspense key="dance" fallback={<div className="absolute inset-0 bg-black/85" />}>
