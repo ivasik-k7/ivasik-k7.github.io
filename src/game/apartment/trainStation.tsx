@@ -33,7 +33,7 @@ import {
 import { dayPhase, type WorldState } from "@/lib/worldState";
 import { propActor, SUITCASE_PALETTE, suitcaseMap, TROLLEY_PALETTE, trolleyMap } from "./bandProps";
 import { NPCS } from "./npcs";
-import { SkmUnit } from "./skmTrain";
+import { planMotion, SkmUnit } from "./skmTrain";
 import {
   armStation,
   boardingOpen,
@@ -255,6 +255,8 @@ const K = {
   led: "#ffb03a",
   ledDim: "#8a5f1e",
   ledGreen: "#7ee08c",
+  /** status-lamp red — punchier than signal red, same stop as elektrykow's */
+  ledRed: "#ff5050",
   red: "#c94040",
   rust: "#8a6a48",
   /** rail head, polished by traffic — the brightest thing in the scene by day */
@@ -433,7 +435,25 @@ function whoIsWaiting(s: StationState, ph: Ph) {
 }
 
 /* ================================================================== *
- * PLANE 1 — the far side of the cutting (parallax 0.15)
+ * PLANE 1 — the far side of the cutting (parallax 0.15), enriched pass
+ *
+ * The backdrop's job is to be two kilometres away, convincingly, all
+ * day. What it gained:
+ *   - a sky with weather in it: a sun that keeps the phase's hours
+ *     (low and molten at dawn and dusk, behind the roofline), a
+ *     crescent moon and deterministic stars at night, one contrail
+ *     on a clear day
+ *   - Oliwa's cathedral spires in the tree gap — the one landmark
+ *     Przymorze actually looks at — and a radio mast at the Sopot
+ *     end with its patient red light
+ *   - the falowiec becomes a lived thing: stairwell verticals give
+ *     it the wave rhythm, lift rooms bump its roofline, satellite
+ *     dishes, balconies repainted in residents' colours, and one
+ *     window flickering television-blue next to the insomniac
+ *   - Alchemia gets roof plant, obstruction lights, and a dusk glint
+ *   - the trees get lit crowns and a one-pixel wind sway
+ *   - Zaspa gets the same roof-and-stairwell truth, a fourth mural,
+ *     and a control tower with a lit cab and its own red light
  * ================================================================== */
 
 /**
@@ -483,6 +503,43 @@ for (const ph of ["dawn", "day", "dusk", "night"] as Ph[]) {
   );
 }
 
+/** A stepped disc, two-pixel rows — the only circle this renderer owns. */
+function discRects(cx: number, cy: number, r: number): Rect[] {
+  const out: Rect[] = [];
+  for (let dy = -r; dy <= r; dy += 2) {
+    const w = Math.max(2, Math.round(Math.sqrt(Math.max(0, r * r - dy * dy)) * 2));
+    out.push([cx - Math.round(w / 2), cy + dy, w, 2]);
+  }
+  return out;
+}
+/**
+ * Where the sun stands, per lit phase. Low at the day's two hinges — behind
+ * the roofline and the trees, which occlude it for free because they are
+ * painted later — and high and pale at noon. Night belongs to the moon.
+ */
+const SUN_AT: Record<string, { x: number; y: number; c: string } | undefined> = {
+  day: { x: 560, y: 20, c: "#f6f2e0" },
+  dawn: { x: 604, y: 64, c: "#f2a45c" },
+  dusk: { x: 62, y: 62, c: "#e8703e" },
+};
+/** Deterministic stars: primes, not randomness, so the sky never crawls. */
+const STARS = pxPath(
+  Array.from({ length: 16 }, (_, i) => {
+    const x = (i * 127 + 40) % W;
+    const y = ((i * 53) % 38) + 4;
+    return [x, y, 1, 1] as Rect;
+  }),
+);
+const STARS_BRIGHT = pxPath([
+  [236, 10, 2, 2],
+  [510, 16, 2, 2],
+  [1420, 8, 2, 2],
+]);
+/** One contrail, high and slow, on a clear day: two offset strokes fading. */
+const CONTRAIL_A = pxPath([[420, 10, 150, 1]]);
+const CONTRAIL_B = pxPath([[578, 9, 90, 1]]);
+const CONTRAIL_PLANE = pxPath([[674, 8, 3, 1]]);
+
 /**
  * Alchemia, two kilometres south over Oliwa.
  *
@@ -516,6 +573,15 @@ const ALCHEMIA_GRID = pxPath([
   ...repeat(12, 5, [342, 46, 17, 1] as Rect, "y"),
   ...repeat(9, 5, [370, 60, 10, 1] as Rect, "y"),
 ]);
+/** Roof plant on the two tallest, and the red lights aviation demands. */
+const ALCHEMIA_ROOF = pxPath([
+  [290, 38, 12, 2],
+  [344, 42, 10, 2],
+]);
+const ALCHEMIA_AVI = pxPath([
+  [295, 37, 2, 1],
+  [348, 41, 2, 1],
+]);
 /** Lit floors after dark, deterministic so nothing flickers between frames. */
 const ALCHEMIA_LIT = pxPath(
   ALCHEMIA.flatMap(([x, y, w, h], i) =>
@@ -545,6 +611,32 @@ const FALOWIEC_BANDS = pxPath(
     Array.from({ length: Math.floor((h - 4) / 4) }, (_, i) => [x, y + 3 + i * 4, w, 2] as Rect),
   ),
 );
+/** The stairwell towers, every ten flats — the verticals that give the wave
+ * its beat. Without them the block is a ruled page; with them it is housing. */
+const FALOWIEC_STAIRS = pxPath(
+  FALOWIEC.flatMap(([x, y, w, h]) =>
+    Array.from({ length: Math.floor((w - 20) / 34) }, (_, j) => [x + 17 + j * 34, y, 1, h] as Rect),
+  ),
+);
+/** Lift rooms and vent stacks bumping the roofline, one per bend or so. */
+const FALOWIEC_ROOFKIT = pxPath([
+  [66, 87, 6, 3],
+  [210, 84, 7, 3],
+  [380, 89, 6, 3],
+  [520, 85, 7, 3],
+  [600, 85, 6, 3],
+]);
+/** Satellite dishes: two pale pixels aimed at the same satellite. */
+const FALOWIEC_DISHES = pxPath([
+  [120, 93, 2, 2],
+  [470, 92, 2, 2],
+]);
+/** Balconies repainted in residents' colours — the block's only anarchy. */
+const BALCONY_PAINT: [Rect, string][] = [
+  [[38, 97, 4, 2], "#c98a8a"],
+  [[214, 94, 4, 2], "#8ac9a0"],
+  [[502, 95, 4, 2], "#c9c08a"],
+];
 /** Windows lit at night, in the gaps between the balcony bands. */
 const FALOWIEC_LIT = pxPath(
   FALOWIEC.flatMap(([x, y, w, h], b) =>
@@ -556,6 +648,27 @@ const FALOWIEC_LIT = pxPath(
     ).flat(),
   ),
 );
+
+/**
+ * Oliwa's cathedral spires, in the gap the trees leave before Alchemia — the
+ * one thing on this skyline older than everything else on it put together.
+ * Hazed hard, because they are further than the towers.
+ */
+const OLIWA_SPIRES = pxPath([
+  [252, 80, 3, 26],
+  [251, 78, 5, 2],
+  [253, 74, 1, 4],
+  [259, 84, 2, 22],
+  [258, 82, 4, 2],
+  [259, 79, 1, 3],
+]);
+/** The radio mast at the Sopot end: a line, three stay ticks, one red eye. */
+const RADIO_MAST = pxPath([
+  [652, 72, 2, 34],
+  [648, 82, 10, 1],
+  [649, 94, 8, 1],
+]);
+const RADIO_EYE: Rect = [652, 70, 2, 2];
 
 /**
  * The tree line along Obrońców Wybrzeża: poplars and limes, forty years old and
@@ -589,6 +702,8 @@ const TREES: Rect[] = [
   ...canopy(610, 92, 16),
 ];
 const TREES_PATH = pxPath(TREES);
+/** The crown row of every canopy — the row the sky actually lights. */
+const TREES_CROWNS = pxPath(TREES.filter((_, i) => i % CANOPY_ROWS.length === 0));
 /**
  * The two bottom rows of every canopy, for autumn: one flat brown over the
  * whole silhouette read as floating slabs, and the underside shadow is what
@@ -626,6 +741,19 @@ const ZASPA_BANDS = pxPath(
     Array.from({ length: Math.floor((h - 6) / 5) }, (_, i) => [x, y + 4 + i * 5, w, 2] as Rect),
   ),
 );
+/** Zaspa's blocks get the same truth as the falowiec: stairwell verticals
+ * and a roofline with lift rooms on it. */
+const ZASPA_STAIRS = pxPath(
+  ZASPA_BLOCKS.flatMap(([x, y, w, h]) =>
+    Array.from({ length: Math.floor((w - 24) / 40) }, (_, j) => [x + 20 + j * 40, y, 1, h] as Rect),
+  ),
+);
+const ZASPA_ROOFKIT = pxPath([
+  [96, 67, 7, 3],
+  [200, 67, 6, 3],
+  [420, 61, 7, 3],
+  [560, 61, 6, 3],
+]);
 const ZASPA_LIT = pxPath(
   ZASPA_BLOCKS.flatMap(([x, y, w, h], b) =>
     Array.from({ length: Math.floor((h - 6) / 5) }, (_, i) =>
@@ -649,6 +777,10 @@ const ZASPA_MURALS: [Rect, string][] = [
   /* a third piece mid-block, where a stairwell face takes paint */
   [[470, 66, 14, 42], "#2d5236"],
   [[473, 74, 8, 8], "#f2c218"],
+  /* and a fourth, newest, festival-fresh: a blue field with a white ring */
+  [[560, 66, 12, 42], "#1e4a6e"],
+  [[563, 76, 6, 6], "#e8e2d2"],
+  [[565, 78, 2, 2], "#1e4a6e"],
 ];
 /** The old airfield control tower, standing where the runway was. */
 const ZASPA_TOWER: Rect[] = [
@@ -657,11 +789,19 @@ const ZASPA_TOWER: Rect[] = [
   [304, 66, 14, 4],
 ];
 const ZASPA_TOWER_SET = bevelPaths(ZASPA_TOWER);
+/** The cab's glazing band, and the light that stays on in it — somebody
+ * keeps the tower, even now. Plus the red eye the airfield never gave up. */
+const ZASPA_TOWER_GLASS = pxPath([[304, 72, 14, 3]]);
+const ZASPA_TOWER_LIT = pxPath([[306, 72, 4, 3]]);
+const ZASPA_TOWER_EYE: Rect = [310, 64, 2, 2];
 
 function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
   const night = ph === "night";
   const bands = SKY_SIX[ph];
   const flat = s.weather === "overcast" || s.weather === "rain";
+  const sun = SUN_AT[ph];
+  /** aerial perspective, the same move the brief demands for Alchemia */
+  const haze = (c: string, k: number) => mixHex(c, K.sky[ph][3], k);
   return (
     <g>
       <SharedDefs />
@@ -688,14 +828,78 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
         opacity={flat ? 0.22 : 0.36}
       />
 
+      {/* the sun, when the phase has one and the weather lets it: a halo,
+          the disc, and a flare line when it stands low. The skyline and the
+          trees are painted later, so a low sun sets behind them for free. */}
+      {!night && sun && !flat ? (
+        <>
+          <path d={pxPath(discRects(sun.x, sun.y, 11))} fill={sun.c} opacity={0.2} />
+          <path d={pxPath(discRects(sun.x, sun.y, 6))} fill={sun.c} opacity={0.95} />
+          {ph !== "day" ? (
+            <path d={pxPath([[sun.x - 30, sun.y + 2, 60, 1]])} fill={sun.c} opacity={0.35} />
+          ) : null}
+        </>
+      ) : null}
+      {/* the moon and the stars, when the sky can hold them */}
+      {night && !flat ? (
+        <>
+          <path d={STARS} fill="#c9d2e8" opacity={0.7} />
+          <path d={STARS_BRIGHT} fill="#e8eefc" opacity={0.9}>
+            <animate
+              attributeName="opacity"
+              values="0.9;0.4;0.9"
+              dur="5s"
+              repeatCount="indefinite"
+            />
+          </path>
+          <path d={pxPath(discRects(588, 18, 6))} fill="#dfe3ee" opacity={0.9} />
+          <path d={pxPath(discRects(585, 16, 5))} fill={bands[0]} />
+        </>
+      ) : null}
+      {/* one contrail on a clear day, and the pixel writing it */}
+      {ph === "day" && !flat ? (
+        <>
+          <path d={CONTRAIL_A} fill={K.white} opacity={0.25} />
+          <path d={CONTRAIL_B} fill={K.white} opacity={0.15} />
+          <path d={CONTRAIL_PLANE} fill={K.white} opacity={0.6} />
+        </>
+      ) : null}
+
       {s.at === "zaspa" ? (
         <>
           {/* Zaspa: the wave blocks ARE the neighbourhood here — near, tall,
            * gable murals facing the line, the old airfield tower between them */}
           <Bev set={ZASPA_TOWER_SET} mat={CLAD[ph]} />
+          <path d={ZASPA_TOWER_GLASS} fill={night ? "#1a2230" : "#3a4a5a"} opacity={0.9} />
+          {night ? <path d={ZASPA_TOWER_LIT} fill="#ffd98a" opacity={0.85} /> : null}
+          {night ? (
+            <path d={pxPath([ZASPA_TOWER_EYE])} fill={K.red}>
+              <animate
+                attributeName="opacity"
+                calcMode="discrete"
+                values="1;0.15;1;1"
+                dur="3.1s"
+                repeatCount="indefinite"
+              />
+            </path>
+          ) : null}
           <Bev set={ZASPA_SET} mat={SLAB[ph]} />
           <path d={ZASPA_BANDS} fill={SLAB[ph].lo} opacity={0.55} />
+          <path d={ZASPA_STAIRS} fill={SLAB[ph].lo} opacity={0.45} />
+          <path d={ZASPA_ROOFKIT} fill={SLAB[ph].lo} />
           {night ? <path d={ZASPA_LIT} fill="#ffd98a" opacity={0.6} /> : null}
+          {/* one flat watches television with the lights off */}
+          {night ? (
+            <path d={pxPath([[420, 84, 5, 2]])} fill="#9ac4e8">
+              <animate
+                attributeName="opacity"
+                calcMode="discrete"
+                values="0.5;0.7;0.3;0.6;0.7;0.4;0.5"
+                dur="3.7s"
+                repeatCount="indefinite"
+              />
+            </path>
+          ) : null}
           {ZASPA_MURALS.map(([r, c]) => (
             <path
               key={`${r[0]}-${r[1]}`}
@@ -710,15 +914,46 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
         </>
       ) : (
         <>
+          {/* Oliwa's spires first — they are behind everything, and hazed
+           * hardest, because seven centuries is the furthest distance here */}
+          <path d={OLIWA_SPIRES} fill={haze(night ? "#262438" : "#4e5a68", 0.55)} />
           {/* Przymorze: Alchemia, small and hazed, standing over Oliwa */}
           <Bev set={ALCHEMIA_SET} mat={CLAD[ph]} />
           <path d={ALCHEMIA_GRID} fill={CLAD[ph].lo} opacity={0.7} />
+          <path d={ALCHEMIA_ROOF} fill={CLAD[ph].lo} />
           {night ? <path d={ALCHEMIA_LIT} fill="#ffd98a" opacity={0.7} /> : null}
           {!night ? <path d={ALCHEMIA_GRID} fill={K.glass[ph]} opacity={0.25} /> : null}
+          {/* dusk: the curtain wall catches fire for a quarter of an hour */}
+          {ph === "dusk" && !flat ? (
+            <path
+              d={pxPath(ALCHEMIA.map(([x, y, , h]) => [x, y, 3, h] as Rect))}
+              fill="#f2a65a"
+              opacity={0.4}
+            />
+          ) : null}
+          {night ? (
+            <path d={ALCHEMIA_AVI} fill={K.red}>
+              <animate
+                attributeName="opacity"
+                calcMode="discrete"
+                values="1;1;0.15;1"
+                dur="2.6s"
+                repeatCount="indefinite"
+              />
+            </path>
+          ) : null}
 
           {/* the falowiec */}
           <Bev set={FALOWIEC_SET} mat={SLAB[ph]} />
           <path d={FALOWIEC_BANDS} fill={SLAB[ph].lo} opacity={0.55} />
+          <path d={FALOWIEC_STAIRS} fill={SLAB[ph].lo} opacity={0.45} />
+          <path d={FALOWIEC_ROOFKIT} fill={SLAB[ph].lo} />
+          <path d={FALOWIEC_DISHES} fill={K.white} opacity={0.5} />
+          {ph === "day" && !flat
+            ? BALCONY_PAINT.map(([r, c]) => (
+                <path key={`bp${r[0]}`} d={pxPath([r])} fill={c} opacity={0.35} />
+              ))
+            : null}
           {night ? <path d={FALOWIEC_LIT} fill="#ffd98a" opacity={0.6} /> : null}
           {/* one flat on the third bend keeps odd hours — a window that goes
            * out, waits, and comes back. Somebody lives there. */}
@@ -729,6 +964,18 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
                 calcMode="discrete"
                 values="0.9;0.9;0;0;0;0.9;0.9;0.9"
                 dur="23s"
+                repeatCount="indefinite"
+              />
+            </path>
+          ) : null}
+          {/* and two doors down, somebody watches television in the dark */}
+          {night ? (
+            <path d={pxPath([[520, 94, 4, 2]])} fill="#9ac4e8">
+              <animate
+                attributeName="opacity"
+                calcMode="discrete"
+                values="0.5;0.7;0.3;0.6;0.7;0.4;0.5"
+                dur="3.7s"
                 repeatCount="indefinite"
               />
             </path>
@@ -752,15 +999,49 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
         </>
       )}
 
-      {/* the trees, in front of whichever skyline is standing today */}
-      <path d={TRUNKS} fill={LEAF[ph].deep} />
-      <path
-        d={TREES_PATH}
-        fill={s.season === "autumn" ? "#8a6a34" : s.season === "bare" ? "#6b5f52" : LEAF[ph].base}
-        opacity={s.season === "bare" ? 0.5 : 1}
-      />
-      {s.season === "autumn" ? <path d={TREES_UNDER} fill="#66491f" opacity={0.75} /> : null}
-      <path d={TREES_PATH} fill={dth("n", "12")} opacity={0.3} />
+      {/* the radio mast at the Sopot end, whichever skyline is up */}
+      <path d={RADIO_MAST} fill={haze(night ? "#262438" : "#4e5a68", 0.4)} />
+      {night ? (
+        <path d={pxPath([RADIO_EYE])} fill={K.red}>
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="0.15;1;0.15;0.15"
+            dur="2.6s"
+            repeatCount="indefinite"
+          />
+        </path>
+      ) : null}
+
+      {/* the trees, in front of whichever skyline is standing today — with
+          lit crowns, and a one-pixel sway that is all the wind this plane
+          can afford and all it needs */}
+      <g>
+        <path d={TRUNKS} fill={LEAF[ph].deep} />
+        <path
+          d={TREES_PATH}
+          fill={s.season === "autumn" ? "#8a6a34" : s.season === "bare" ? "#6b5f52" : LEAF[ph].base}
+          opacity={s.season === "bare" ? 0.5 : 1}
+        />
+        {s.season === "autumn" ? <path d={TREES_UNDER} fill="#66491f" opacity={0.75} /> : null}
+        <path
+          d={TREES_CROWNS}
+          fill={s.season === "autumn" ? "#b3934a" : s.season === "bare" ? "#7d7264" : LEAF[ph].hi}
+          opacity={s.season === "bare" ? 0.4 : 0.5}
+        />
+        <path d={TREES_PATH} fill={dth("n", "12")} opacity={0.3} />
+        {s.season !== "bare" ? (
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            calcMode="discrete"
+            values="0 0;1 0;0 0;-1 0;0 0"
+            keyTimes="0;0.22;0.5;0.74;1"
+            dur="11s"
+            repeatCount="indefinite"
+          />
+        ) : null}
+      </g>
 
       {/* gulls: this is the coast and they follow the line */}
       {!flat ? (
@@ -792,13 +1073,75 @@ function Backdrop({ ph, s }: { ph: Ph; s: StationState }) {
 
 /* ================================================================== *
  * PLANE 2 — the cutting, the fence, the road lamps (parallax 0.85; the
- * masts themselves are drawn at 1.0, in the ground plane, beside the track)
+ * masts themselves are drawn at 1.0, in the ground plane, beside the
+ * track) — enriched pass
+ *
+ * This is the plane the eye rests on between trains, so it carries the
+ * most history per pixel:
+ *   - the wall becomes a real precast structure: lit panel arrises,
+ *     formwork lift lines, weep holes with their stains, water streaks
+ *     off the coping, efflorescence, a splash zone, one renewed panel
+ *   - the graffiti war gets its full cast: the scrubbed ghost, LECHIA
+ *     with drips, a crossed-out ARKA beside it (this is Gdańsk), a
+ *     small M+K heart, and a silver throw-up on the bridge abutment
+ *   - the fence: bar shadows cast onto the coping, a lit top rail, a
+ *     ZAKAZ WSTĘPU plate zip-tied on, two bars pried apart where the
+ *     short-cut goes, and a plastic bag that flutters forever
+ *   - the catenary grows droppers, ceramic insulators, mast flank
+ *     shading and ID plates — the difference between wires and OLE
+ *   - the bridge gets its underworld: gloom under the deck, girder
+ *     ribs, a bearing shelf with two roosting pigeons and what
+ *     pigeons leave, a kerb line and an expansion tooth
+ *   - the sodium lamps throw halos and wash the wall warm at night,
+ *     and the third one is dying, which every sodium lamp is
+ *   - the bus finally has visible windows (they were body-coloured);
+ *     lit amber after dark. And a cat walks the coping at night.
  * ================================================================== */
 
 /** The far wall of the cutting: a concrete retaining wall in 4 m panels. */
 const CUT_WALL = pxPath([[0, 112, W, 24]]);
 const CUT_PANELS = pxPath(repeat(14, 152, [0, 112, 2, 24] as Rect));
+/** Every joint has a lit arris beside its shadow — panels are bodies. */
+const CUT_PANELS_LIT = pxPath(repeat(14, 152, [2, 112, 1, 24] as Rect));
 const CUT_COPING = pxPath([[0, 110, W, 3]]);
+/** The coping is precast too: its joints, and the shadow it drops. */
+const COPING_TICKS = pxPath(repeat(14, 152, [0, 110, 1, 3] as Rect));
+const COPING_SHADOW = pxPath([[0, 113, W, 1]]);
+/** Two formwork lift lines run the whole wall — the pour remembers. */
+const WALL_LIFTS = pxPath([
+  [0, 120, W, 1],
+  [0, 128, W, 1],
+]);
+/** Weep holes, one per panel, and the stain each one has written. */
+const WEEP_HOLES = pxPath(repeat(14, 152, [70, 124, 3, 3] as Rect));
+const WEEP_STAINS = pxPath(repeat(14, 152, [71, 127, 1, 8] as Rect));
+/** Water streaks off the coping, deterministic so they do not crawl. */
+const WALL_STREAKS = pxPath(
+  Array.from({ length: 18 }, (_, i) => {
+    const x = (i * 173 + 30) % W;
+    return [x, 114, 1, 4 + ((i * 3) % 6)] as Rect;
+  }),
+);
+/** Efflorescence: the salt the wall sweats, in three pale patches. */
+const WALL_SALT = pxPath([
+  [548, 118, 22, 6],
+  [1330, 121, 16, 5],
+  [1836, 117, 19, 6],
+]);
+/** The splash zone at the foot, and the moss that has claimed it. */
+const WALL_SPLASH = pxPath([[0, 131, W, 5]]);
+const WALL_MOSS = pxPath(
+  Array.from({ length: 12 }, (_, i) => {
+    const x = (i * 241 + 88) % W;
+    return [x, 133, 3, 2] as Rect;
+  }),
+);
+/** One panel was recast after a strike — younger concrete, harder joints. */
+const WALL_NEW_PANEL = pxPath([[458, 112, 148, 24]]);
+const WALL_NEW_JOINTS = pxPath([
+  [456, 112, 2, 24],
+  [606, 112, 2, 24],
+]);
 /**
  * The wall's history. A railway retaining wall is a canvas and the railway
  * knows it: one tag has been painted over — the pale square where the jet
@@ -806,7 +1149,33 @@ const CUT_COPING = pxPath([[0, 110, W, 3]]);
  * always wins. LECHIA, because this is Gdańsk and it is always LECHIA.
  */
 const WALL_GHOST = pxPath([[812, 116, 44, 14]]);
+/** The roller left edges, and the ghost still shows through at one corner. */
+const WALL_GHOST_EDGES = pxPath([
+  [812, 116, 44, 1],
+  [812, 129, 44, 1],
+]);
+const WALL_GHOST_BLEED = pxPath([[848, 124, 6, 4]]);
 const WALL_TAG_AT = { x: 1148, y: 118 } as const;
+/** Paint runs under the letters — sprayed fast, at night, over a shoulder. */
+const TAG_DRIPS = pxPath([
+  [1156, 130, 1, 4],
+  [1174, 130, 1, 3],
+  [1189, 130, 1, 5],
+]);
+/** The answer: ARKA, from over the water, struck through the same week. */
+const RIVAL_AT = { x: 1232, y: 121 } as const;
+const RIVAL_STRIKE = pxPath([[1230, 123, 22, 2]]);
+/** And lower down the wall, quieter than either: M+K, with a heart. */
+const HEART_AT = { x: 398, y: 122 } as const;
+const HEART = pxPath([
+  [416, 122, 2, 1],
+  [419, 122, 2, 1],
+  [416, 123, 5, 2],
+  [417, 125, 3, 1],
+  [418, 126, 1, 1],
+]);
+/** The kilometre plate on the wall: white enamel, black figures, exact. */
+const KM_PLATE = pxPath([[1520, 115, 10, 14]]);
 
 /** Weeds and buddleia out of the wall, which is what these walls grow. */
 const CUT_WEEDS = pxPath([
@@ -818,6 +1187,12 @@ const CUT_WEEDS = pxPath([
   [1180, 128, 2, 8],
   [1466, 124, 3, 12],
   [1700, 127, 2, 9],
+]);
+/** The buddleia flowers in green season, purple, out of a wall, absurdly. */
+const WEED_BLOOMS = pxPath([
+  [141, 124, 3, 2],
+  [701, 120, 3, 2],
+  [1466, 122, 3, 2],
 ]);
 
 /**
@@ -831,6 +1206,29 @@ const FENCE_RAILS = pxPath([
   [0, 96, W, 2],
   [0, 106, W, 2],
 ]);
+const FENCE_RAIL_HI = pxPath([[0, 96, W, 1]]);
+/** The plate zip-tied to the bars, saying what every fence says. */
+const FENCE_SIGN = pxPath([[878, 98, 28, 11]]);
+const FENCE_SIGN_ROWS = pxPath([
+  [881, 100, 22, 2],
+  [881, 104, 18, 2],
+]);
+const FENCE_SIGN_TIES = pxPath([
+  [880, 97, 1, 2],
+  [903, 97, 1, 2],
+]);
+/** Two bars pried apart where the short-cut goes — kinked, not missing,
+ * because palisade bends long before it breaks. */
+const FENCE_BENT = pxPath([
+  [1320, 96, 2, 5],
+  [1322, 101, 2, 5],
+  [1321, 106, 2, 5],
+  [1328, 96, 2, 5],
+  [1326, 101, 2, 5],
+  [1327, 106, 2, 5],
+]);
+/** The plastic bag the fence caught in 2019. */
+const BAG_AT = { x: 1510, y: 96 } as const;
 
 /**
  * Catenary masts. 5.2 m to the wire, which is above the frame, so what is in
@@ -847,12 +1245,31 @@ function mast(x: number): Rect[] {
   ];
 }
 const MASTS_PATH = pxPath(MASTS.flatMap((x) => mast(x)));
+/** The masts' shaded flanks — six pixels wide is a column, not a stripe. */
+const MAST_FLANKS = pxPath(MASTS.map((x) => [x + 4, 0, 2, 136] as Rect));
 const MAST_BASES = pxPath(MASTS.map((x) => [x - 4, 130, 14, 8] as Rect));
+/** ID plates at eye level, one per mast, because every mast is somebody's. */
+const MAST_PLATES = pxPath(MASTS.map((x) => [x + 1, 58, 4, 7] as Rect));
+const MAST_PLATE_TICKS = pxPath(MASTS.map((x) => [x + 2, 60, 2, 1] as Rect));
+/** Ceramic insulators where steel meets copper — the brown beads that make
+ * a drawing of wires into overhead line equipment. */
+const INSULATORS = pxPath(
+  MASTS.flatMap(
+    (x) =>
+      [
+        [x + 49, 12, 3, 3],
+        [x + 6, 13, 3, 4],
+        [x + 34, 22, 3, 3],
+      ] as Rect[],
+  ),
+);
 /** The contact wire and the catenary above it, in the only place they show. */
 const WIRES = pxPath([
   [0, 16, W, 1],
   [0, 25, W, 1],
 ]);
+/** Droppers every few metres, tying contact to catenary — the OLE rhythm. */
+const DROPPERS = pxPath(repeat(Math.floor(W / 85), 85, [40, 17, 1, 8] as Rect));
 
 /** The road bridge at the Gdańsk end, carrying Obrońców Wybrzeża over the line. */
 const BRIDGE = {
@@ -861,10 +1278,43 @@ const BRIDGE = {
   parapet: pxPath([[0, 56, 150, 4], ...repeat(8, 18, [4, 44, 3, 13] as Rect)]),
   abutment: pxPath([[104, 80, 46, 56]]),
 };
+/** The deck in the round: kerb line, expansion tooth, lit parapet rail. */
+const BRIDGE_KERB = pxPath([[0, 62, 150, 2]]);
+const BRIDGE_TOOTH = pxPath([[147, 62, 3, 14]]);
+const BRIDGE_PARAPET_HI = pxPath([[0, 56, 150, 1]]);
+/** Girder ribs along the soffit — a bridge has bones. */
+const BRIDGE_RIBS = pxPath(repeat(6, 24, [6, 76, 4, 4] as Rect));
+/** The bearing shelf the deck actually sits on, and its damp. */
+const BRIDGE_SHELF = pxPath([[104, 76, 46, 4]]);
+const BRIDGE_DAMP = pxPath([
+  [118, 84, 2, 22],
+  [134, 84, 1, 16],
+]);
+/** Two pigeons roost on the shelf, and the abutment below them knows it. */
+const BRIDGE_PIGEONS = pxPath([
+  [112, 72, 4, 3],
+  [115, 71, 2, 2],
+  [126, 72, 4, 3],
+  [129, 71, 2, 2],
+]);
+const PIGEON_STREAKS = pxPath([
+  [113, 80, 2, 9],
+  [127, 80, 2, 7],
+]);
+/** The silver throw-up on the abutment — the most reachable canvas here. */
+const ABUT_TAG = pxPath([
+  [108, 112, 14, 9],
+  [124, 113, 14, 8],
+]);
+const ABUT_TAG_LINE = pxPath([[108, 121, 30, 1]]);
+/** The gloom under the deck: two steps of it, and the cutting goes dark
+ * before the bridge does — which is what standing under a bridge is. */
+const UNDER_GLOOM_WIDE = pxPath([[0, 80, 104, 56]]);
+const UNDER_GLOOM_CORE = pxPath([[0, 80, 68, 56]]);
 
 /** Sodium street lamps on the road behind the fence — the warm half of the night. */
 const ROAD_LAMPS = [absLamp(180), absLamp(640), absLamp(1100), absLamp(1560)];
-function absLamp(x: number): { post: string; head: string; x: number } {
+function absLamp(x: number): { post: string; head: string; halo: string; wash: string; x: number } {
   return {
     x,
     post: pxPath([
@@ -872,49 +1322,67 @@ function absLamp(x: number): { post: string; head: string; x: number } {
       [x, 40, 16, 3],
     ]),
     head: pxPath([[x + 12, 40, 10, 5]]),
+    halo: pxPath([[x + 8, 37, 18, 10]]),
+    wash: pxPath([[x - 16, 110, 52, 26]]),
   };
 }
 
 function FarSide({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
   const night = ph === "night";
   const wall = CONC[ph];
+  const green = s.season === "green";
   return (
     <g>
       {/* the road bridge at the Gdańsk end */}
       <path d={BRIDGE.deck} fill={wall.base} />
+      <path d={BRIDGE_KERB} fill="#0d0f13" opacity={0.25} />
+      <path d={BRIDGE_TOOTH} fill="#0d0f13" opacity={0.4} />
       <path d={BRIDGE.soffit} fill={wall.deep} />
-      {/* a bus crosses it now and then — Obrońców Wybrzeża going about its day */}
-      <g>
+      <path d={BRIDGE_RIBS} fill={wall.deep} />
+      <path d={BRIDGE_RIBS} transform="translate(0,1)" fill="#0d0f13" opacity={0.3} />
+      {/* a bus crosses it now and then — Obrońców Wybrzeża going about its
+          day. The windows are their own path now (they used to be painted
+          body-colour, a bus full of bus), lit amber after dark. */}
+      <g opacity={0}>
+        <animate
+          attributeName="opacity"
+          calcMode="discrete"
+          values="0;1;1;0;0;0;0"
+          dur="41s"
+          repeatCount="indefinite"
+        />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="0 0;40 0;190 0;200 0;200 0;200 0;0 0"
+          keyTimes="0;0.06;0.3;0.32;0.5;0.9;1"
+          dur="41s"
+          repeatCount="indefinite"
+        />
+        <path d={pxPath([[-34, 47, 30, 9]])} fill={night ? "#4a3438" : "#c9463c"} />
         <path
           d={pxPath([
-            [-34, 47, 30, 9],
             [-31, 49, 7, 4],
             [-22, 49, 7, 4],
             [-13, 49, 7, 4],
           ])}
-          fill={night ? "#4a3438" : "#c9463c"}
-          opacity={0}
-        >
-          <animate
-            attributeName="opacity"
-            calcMode="discrete"
-            values="0;1;1;0;0;0;0"
-            dur="41s"
-            repeatCount="indefinite"
-          />
-          <animateTransform
-            attributeName="transform"
-            type="translate"
-            values="0 0;40 0;190 0;200 0;200 0;200 0;0 0"
-            keyTimes="0;0.06;0.3;0.32;0.5;0.9;1"
-            dur="41s"
-            repeatCount="indefinite"
-          />
-        </path>
+          fill={night ? "#ffd98a" : "#cfe0ea"}
+          opacity={0.9}
+        />
+        <path d={pxPath([[-34, 54, 30, 1]])} fill="#0d0f13" opacity={0.4} />
       </g>
+      <path d={BRIDGE_PARAPET_HI} fill={GALV[ph].hi} opacity={0.5} />
       <path d={BRIDGE.parapet} fill={GALV[ph].base} />
       <path d={BRIDGE.abutment} fill={wall.mid} />
       <path d={BRIDGE.abutment} fill={dth("n", "12")} opacity={0.4} />
+      <path d={BRIDGE_SHELF} fill={wall.deep} />
+      <path d={BRIDGE_DAMP} fill="#0d0f13" opacity={0.3} />
+      {/* the pigeons that live under every bridge, and their signature */}
+      <path d={BRIDGE_PIGEONS} fill={night ? "#2a2d34" : "#5d6068"} />
+      <path d={PIGEON_STREAKS} fill={K.white} opacity={0.3} />
+      {/* the silver throw-up, at the exact height a stretched arm reaches */}
+      <path d={ABUT_TAG} fill="#aab6be" opacity={night ? 0.3 : 0.45} />
+      <path d={ABUT_TAG_LINE} fill="#23262b" opacity={0.5} />
       {/* the crow that owns the fence rail: lands, hops twice, leaves */}
       <g fill={night ? "#1e222c" : "#23262b"}>
         <path
@@ -943,34 +1411,169 @@ function FarSide({ ph, s, lit }: { ph: Ph; s: StationState; lit: boolean }) {
         </path>
       </g>
 
-      {/* street lamps on the road, behind the fence */}
+      {/* street lamps on the road, behind the fence. Sodium: warm, patient,
+          and the third one is dying — every sodium lamp is dying, this one
+          has just got further along. */}
       {ROAD_LAMPS.map((l) => (
         <g key={`rl${l.x}`}>
           <path d={l.post} fill={GALV[ph].lo} />
           <path d={l.head} fill={lit ? "#ffb84a" : GALV[ph].mid} />
-          {lit ? <path d={l.head} fill="#ffd98a" opacity={0.5} /> : null}
+          {lit ? (
+            l.x === 1100 ? (
+              <g>
+                <path d={l.head} fill="#ffd98a" opacity={0.5}>
+                  <animate
+                    attributeName="opacity"
+                    calcMode="discrete"
+                    values="0.5;0.5;0.1;0.5;0.5;0.25;0.5"
+                    dur="7s"
+                    repeatCount="indefinite"
+                  />
+                </path>
+                <path d={l.halo} fill="#ffb84a" opacity={0.12}>
+                  <animate
+                    attributeName="opacity"
+                    calcMode="discrete"
+                    values="0.12;0.12;0.03;0.12;0.12;0.06;0.12"
+                    dur="7s"
+                    repeatCount="indefinite"
+                  />
+                </path>
+              </g>
+            ) : (
+              <g>
+                <path d={l.head} fill="#ffd98a" opacity={0.5} />
+                <path d={l.halo} fill="#ffb84a" opacity={0.12} />
+              </g>
+            )
+          ) : null}
         </g>
       ))}
 
-      {/* the fence along the boundary */}
+      {/* the fence along the boundary: bars, their shadows on the coping,
+          the lit top rail, the sign, the pried gap, the bag */}
+      <path d={FENCE_BARS} transform="translate(1,2)" fill="#0d0f13" opacity={0.15} />
       <path d={FENCE_BARS} fill={GALV[ph].mid} opacity={0.9} />
+      <path d={FENCE_BENT} fill={GALV[ph].lo} />
       <path d={FENCE_RAILS} fill={GALV[ph].lo} />
+      <path d={FENCE_RAIL_HI} fill={GALV[ph].hi} opacity={0.5} />
+      <path d={FENCE_SIGN} fill={K.white} opacity={0.85} />
+      <path d={FENCE_SIGN_ROWS} fill="#8a2424" opacity={0.8} />
+      <path d={FENCE_SIGN_TIES} fill={GALV[ph].hi} opacity={0.8} />
+      {/* the bag: caught in 2019, fluttering ever since */}
+      <path d={pxPath([[BAG_AT.x, BAG_AT.y, 4, 3]])} fill={K.white} opacity={0.6}>
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          calcMode="discrete"
+          values="0 0;1 0;0 1;1 1;0 0;1 0;0 0"
+          dur="1.9s"
+          repeatCount="indefinite"
+        />
+      </path>
 
       {/* the retaining wall */}
       <path d={CUT_WALL} fill={wall.base} />
       <path d={CUT_PANELS} fill={wall.deep} opacity={0.6} />
+      <path d={CUT_PANELS_LIT} fill={wall.hi} opacity={0.35} />
+      <path d={WALL_LIFTS} fill={wall.deep} opacity={0.25} />
       <path d={CUT_COPING} fill={wall.hi} />
+      <path d={COPING_TICKS} fill={wall.deep} opacity={0.5} />
+      <path d={COPING_SHADOW} fill="#0d0f13" opacity={0.3} />
       <path d={CUT_WALL} fill={dth("n", "06")} opacity={0.5} />
-      {/* the scrubbed tag, and the one that answered it */}
+      {/* the one recast panel: younger concrete between harder joints */}
+      <path d={WALL_NEW_PANEL} fill={wall.hi} opacity={0.15} />
+      <path d={WALL_NEW_JOINTS} fill={wall.deep} opacity={0.8} />
+      {/* what water does to concrete, given thirty years */}
+      <path d={WALL_STREAKS} fill="#0d0f13" opacity={0.22} />
+      <path d={WEEP_HOLES} fill="#0d0f13" opacity={0.6} />
+      <path d={WEEP_STAINS} fill="#0d0f13" opacity={0.3} />
+      <path d={WALL_SALT} fill={K.white} opacity={0.12} />
+      <path d={WALL_SPLASH} fill="#0d0f13" opacity={0.18} />
+      <path d={WALL_MOSS} fill={LEAF[ph].mid} opacity={night ? 0.4 : 0.7} />
+      {/* the graffiti war, in order of events: the scrubbed ghost (the jet
+          washer gave up before the paint did), LECHIA with its drips, the
+          ARKA that answered from over the water — struck through the same
+          week — and, lower and older than any of it, M+K in a heart */}
       <path d={WALL_GHOST} fill={wall.hi} opacity={0.4} />
+      <path d={WALL_GHOST_EDGES} fill={wall.hi} opacity={0.3} />
+      <path d={WALL_GHOST_BLEED} fill="#5a6a80" opacity={0.25} />
       <g transform={`translate(${WALL_TAG_AT.x} ${WALL_TAG_AT.y}) scale(2)`}>
         <path d={textPath("LECHIA", 0, 0)} fill={night ? "#5a6a80" : "#7ea0c0"} opacity={0.75} />
+      </g>
+      <path d={TAG_DRIPS} fill={night ? "#5a6a80" : "#7ea0c0"} opacity={0.55} />
+      <g transform={`translate(${RIVAL_AT.x} ${RIVAL_AT.y})`}>
+        <path d={textPath("ARKA", 0, 0)} fill={night ? "#8a7a3a" : "#c9b23c"} opacity={0.6} />
+      </g>
+      <path d={RIVAL_STRIKE} fill={night ? "#5a6a80" : "#7ea0c0"} opacity={0.8} />
+      <g transform={`translate(${HEART_AT.x} ${HEART_AT.y})`}>
+        <path d={textPath("M+K", 0, 0)} fill={night ? "#6a4a5a" : "#a86a86"} opacity={0.6} />
+      </g>
+      <path d={HEART} fill={night ? "#6a4a5a" : "#a86a86"} opacity={0.55} />
+      {/* the kilometre plate: the one mark on this wall the railway put here */}
+      <path d={KM_PLATE} fill={K.white} opacity={0.85} />
+      <g transform={`translate(1522 117)`}>
+        <path d={textPath("12", 0, 0)} fill="#23262b" opacity={0.9} />
+      </g>
+      <g transform={`translate(1523 124)`}>
+        <path d={textPath("4", 0, 0)} fill="#23262b" opacity={0.9} />
       </g>
       <path
         d={CUT_WEEDS}
         fill={s.season === "bare" ? "#6b5f4a" : LEAF[ph].mid}
         opacity={night ? 0.5 : 0.9}
       />
+      {green ? <path d={WEED_BLOOMS} fill="#8a6aa8" opacity={0.8} /> : null}
+      {/* the warm wash the sodium throws on the wall — the road's half of
+          the night arriving over the fence */}
+      {lit && night
+        ? ROAD_LAMPS.map((l) => (
+            <path
+              key={`wash${l.x}`}
+              d={l.wash}
+              fill="#ffb84a"
+              opacity={l.x === 1100 ? 0.04 : 0.07}
+            />
+          ))
+        : null}
+
+      {/* the gloom under the bridge deck: the cutting goes dark before the
+          bridge does, in two steps, over everything that stands in it */}
+      <path d={UNDER_GLOOM_WIDE} fill="#0d0f13" opacity={0.3} />
+      <path d={UNDER_GLOOM_CORE} fill="#0d0f13" opacity={0.15} />
+
+      {/* the cat that walks the coping after dark: appears, crosses at cat
+          pace, sits once mid-way because it owns the wall, and is gone */}
+      {night ? (
+        <g fill="#15171c">
+          <path
+            d={pxPath([
+              [300, 104, 8, 3],
+              [307, 102, 3, 3],
+              [309, 100, 1, 2],
+              [298, 101, 2, 4],
+            ])}
+            opacity={0}
+          >
+            <animate
+              attributeName="opacity"
+              calcMode="discrete"
+              values="0;1;1;1;1;0;0"
+              keyTimes="0;0.04;0.3;0.35;0.62;0.63;1"
+              dur="73s"
+              repeatCount="indefinite"
+            />
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              values="0 0;0 0;130 0;130 0;280 0;280 0;0 0"
+              keyTimes="0;0.04;0.3;0.35;0.62;0.63;1"
+              dur="73s"
+              repeatCount="indefinite"
+            />
+          </path>
+        </g>
+      ) : null}
     </g>
   );
 }
@@ -983,11 +1586,19 @@ function Catenary({ ph }: { ph: Ph }) {
   return (
     <g>
       <path d={WIRES} fill={night ? "#3a4048" : "#6d7278"} opacity={0.7} />
+      {/* the droppers: the rhythm that makes two lines into a system */}
+      <path d={DROPPERS} fill={night ? "#3a4048" : "#6d7278"} opacity={0.5} />
       <path d={MASTS_PATH} fill={GALV[ph].base} />
+      <path d={MAST_FLANKS} fill="#0d0f13" opacity={0.2} />
+      <path d={INSULATORS} fill="#5a3a2a" />
+      <path d={MAST_PLATES} fill={K.white} opacity={0.8} />
+      <path d={MAST_PLATE_TICKS} fill="#23262b" opacity={0.8} />
       <path d={MAST_BASES} fill={CONC[ph].mid} />
+      <path d={MAST_BASES} transform="translate(0,1)" fill="#0d0f13" opacity={0.2} />
     </g>
   );
 }
+
 /* ================================================================== *
  * PLANE 3 — the track and the platform (parallax 1.0), enriched pass
  *
@@ -2060,6 +2671,169 @@ const SPARROWS: readonly [number, number][] = [
   [Z.bin + 30, RAIL_Y - 2],
 ];
 
+/* ---- v4 additional furniture ------------------------------------------- *
+ * The rest of what a rebuilt SKM platform actually owns. Positions: the
+ * wayfinding totem and the bike rack live off the stair, because that is
+ * where feet arrive; the vending machine keeps the biletomat company; the
+ * CCTV pole, the leaning rail and the grit box fill the long emptiness
+ * between the SOS pillar and the relay cabinet. Anything that argues with
+ * a prop from another layer can shift along its own x. */
+
+/** The line-map totem by the stair: the first thing an arriving foot needs —
+ * the line, its stations, and the red block that says YOU ARE HERE. */
+const TOTEM_X = Z.stairs + 60;
+const TOTEM_BODY = pxPath([[TOTEM_X, RAIL_Y - 60, 16, 60]]);
+const TOTEM_HEAD = pxPath([[TOTEM_X - 2, RAIL_Y - 64, 20, 5]]);
+const TOTEM_SIDE = pxPath([[TOTEM_X + 13, RAIL_Y - 60, 3, 60]]);
+const TOTEM_MAP = pxPath([[TOTEM_X + 3, RAIL_Y - 54, 10, 34]]);
+const TOTEM_LINE = pxPath([[TOTEM_X + 7, RAIL_Y - 51, 2, 28]]);
+const TOTEM_STOPS = pxPath(repeat(6, 5, [TOTEM_X + 6, RAIL_Y - 50, 4, 2] as Rect, "y"));
+const TOTEM_YOU = pxPath([[TOTEM_X + 5, RAIL_Y - 35, 6, 3]]);
+
+/** Two hoops of bike rack past the totem: one bike locked properly, and one
+ * hoop holding only a front wheel, which is a complete short story. */
+/* at the very start of the platform, before the stair — you ride in, you
+ * lock up, you go down; 250 put both hoops inside the timetable case */
+const BIKE_X = 40;
+const RACK = pxPath([
+  [BIKE_X, RAIL_Y - 14, 3, 14],
+  [BIKE_X + 14, RAIL_Y - 14, 3, 14],
+  [BIKE_X, RAIL_Y - 16, 17, 3],
+  [BIKE_X + 30, RAIL_Y - 14, 3, 14],
+  [BIKE_X + 44, RAIL_Y - 14, 3, 14],
+  [BIKE_X + 30, RAIL_Y - 16, 17, 3],
+]);
+function wheelRects(x: number, y: number): Rect[] {
+  return [
+    [x + 1, y, 4, 1],
+    [x, y + 1, 6, 4],
+    [x + 1, y + 5, 4, 1],
+  ];
+}
+const BIKE_WHEELS = pxPath([
+  ...wheelRects(BIKE_X + 1, RAIL_Y - 7),
+  ...wheelRects(BIKE_X + 21, RAIL_Y - 7),
+]);
+const BIKE_HUBS = pxPath([
+  [BIKE_X + 3, RAIL_Y - 5, 2, 2],
+  [BIKE_X + 23, RAIL_Y - 5, 2, 2],
+]);
+const BIKE_FRAME = pxPath([
+  [BIKE_X + 5, RAIL_Y - 11, 18, 2],
+  [BIKE_X + 8, RAIL_Y - 14, 2, 3],
+  [BIKE_X + 19, RAIL_Y - 15, 2, 4],
+  [BIKE_X + 6, RAIL_Y - 15, 5, 2],
+  [BIKE_X + 18, RAIL_Y - 17, 5, 2],
+]);
+const BIKE_LOCK = pxPath([[BIKE_X + 12, RAIL_Y - 10, 4, 4]]);
+const LONE_WHEEL = pxPath([
+  ...wheelRects(BIKE_X + 32, RAIL_Y - 7),
+  [BIKE_X + 34, RAIL_Y - 9, 2, 2],
+]);
+
+/** The vending machine keeping the biletomat company — coffee and cans, the
+ * second-brightest thing on the platform after dark. */
+/* between the kasownik and the poster drum — 406 stood exactly where the
+ * pigeon lady works, and a machine wearing a babcia is not furniture */
+const VEND_X = 548;
+const VEND_BODY = pxPath([[VEND_X, RAIL_Y - 58, 30, 58]]);
+const VEND_SIDE = pxPath([[VEND_X + 26, RAIL_Y - 58, 4, 58]]);
+const VEND_WINDOW = pxPath([[VEND_X + 4, RAIL_Y - 52, 16, 32]]);
+const VEND_ROWS = pxPath(repeat(4, 8, [VEND_X + 6, RAIL_Y - 49, 12, 4] as Rect, "y"));
+const VEND_PAY = pxPath([
+  [VEND_X + 23, RAIL_Y - 48, 4, 8],
+  [VEND_X + 23, RAIL_Y - 36, 4, 3],
+]);
+const VEND_HATCH = pxPath([[VEND_X + 4, RAIL_Y - 14, 20, 6]]);
+const VEND_POOL = tiers(
+  (k) => [
+    [VEND_X + 15 - Math.round(26 * k), RAIL_Y + 2, Math.round(52 * k), 6],
+    [VEND_X + 15 - Math.round(18 * k), RAIL_Y + 8, Math.round(36 * k), 6],
+  ],
+  "c",
+  0.6,
+);
+
+/** The concrete planter mid-platform: municipal, immortal, mostly weeds. */
+/* in the open run between the mid bench and the bin — 1058 planted it on
+ * the phone man's toes under the departure display */
+const PLANTER_X = 1230;
+const PLANTER_BOX = pxPath([[PLANTER_X, RAIL_Y - 14, 30, 14]]);
+const PLANTER_LIP = pxPath([[PLANTER_X - 2, RAIL_Y - 16, 34, 3]]);
+const PLANTER_SIDE = pxPath([[PLANTER_X + 26, RAIL_Y - 14, 4, 14]]);
+const PLANTER_SOIL = pxPath([[PLANTER_X + 3, RAIL_Y - 13, 24, 3]]);
+const PLANTER_GREEN = pxPath([
+  [PLANTER_X + 5, RAIL_Y - 18, 3, 5],
+  [PLANTER_X + 11, RAIL_Y - 20, 2, 7],
+  [PLANTER_X + 16, RAIL_Y - 17, 3, 4],
+  [PLANTER_X + 22, RAIL_Y - 19, 2, 6],
+]);
+const PLANTER_BLOOMS = pxPath([
+  [PLANTER_X + 11, RAIL_Y - 21, 2, 1],
+  [PLANTER_X + 22, RAIL_Y - 20, 2, 1],
+]);
+
+/** The CCTV pole between the SOS pillar and nothing much: two cameras aimed
+ * both ways down the platform, and the red dot that admits it. */
+const CCTV_X = 1418;
+const CCTV_POLE = pxPath([[CCTV_X + 4, 58, 3, RAIL_Y - 58]]);
+const CCTV_ARM = pxPath([[CCTV_X - 5, 58, 21, 2]]);
+const CCTV_CAMS = pxPath([
+  [CCTV_X - 9, 60, 7, 4],
+  [CCTV_X + 13, 60, 7, 4],
+]);
+const CCTV_LENSES = pxPath([
+  [CCTV_X - 9, 61, 1, 2],
+  [CCTV_X + 19, 61, 1, 2],
+]);
+const CCTV_LED: Rect = [CCTV_X + 5, 62, 1, 1];
+
+/** The leaning rail — the bench for people who refuse benches. */
+const LEAN = { l: 1578, r: 1638 } as const;
+const LEAN_RAIL = pxPath([
+  [LEAN.l, RAIL_Y - 26, LEAN.r - LEAN.l, 4],
+  [LEAN.l + 6, RAIL_Y - 22, 3, 22],
+  [LEAN.r - 9, RAIL_Y - 22, 3, 22],
+]);
+const LEAN_HI = pxPath([[LEAN.l, RAIL_Y - 26, LEAN.r - LEAN.l, 1]]);
+const LEAN_SHINE = pxPath([[LEAN.l + 18, RAIL_Y - 26, 24, 1]]);
+
+/** The grit box by the relay cabinet: safety orange, stencilled PIASEK,
+ * hasped, and never once opened by anyone unofficial. */
+/* clear of the man at the end (1690) — he watches the line, not the grit */
+const GRIT_X = 1644;
+const GRIT_BOX = pxPath([[GRIT_X, RAIL_Y - 18, 34, 18]]);
+const GRIT_LID = pxPath([[GRIT_X - 2, RAIL_Y - 22, 38, 5]]);
+const GRIT_LID_HI = pxPath([[GRIT_X - 2, RAIL_Y - 22, 38, 1]]);
+const GRIT_SIDE = pxPath([[GRIT_X + 30, RAIL_Y - 18, 4, 18]]);
+const GRIT_HASP = pxPath([[GRIT_X + 15, RAIL_Y - 17, 4, 5]]);
+
+/** PA horns on the third mast, one aimed each way, sun-faded grey. */
+const PA_X = MASTS[2] ?? MASTS[0];
+const PA_HORNS = pxPath([
+  [PA_X - 9, 26, 7, 5],
+  [PA_X + 7, 26, 7, 5],
+  [PA_X - 2, 27, 9, 3],
+]);
+const PA_MOUTHS = pxPath([
+  [PA_X - 9, 27, 2, 3],
+  [PA_X + 12, 27, 2, 3],
+]);
+
+/** Deeper volume on things that already stood here: the drum's cylinder
+ * sheen, the stair's darkness gradient, the caps and flanks and undersides
+ * that make a box read as a body. */
+const DRUM_SPEC = pxPath([[Z.drum + 10, RAIL_Y - 74, 4, 74]]);
+const STAIR_DEPTH = pxPath([[Z.stairs - 38, RAIL_Y + 18, 76, 12]]);
+const BILETOMAT_CAP_SHADOW = pxPath([[Z.biletomat, RAIL_Y - 61, 34, 2]]);
+const CIP_UNDER = pxPath([[CIP.x, CIP.y + CIP.h - 1, CIP.w, 1]]);
+const SOS_SIDE = pxPath([[SOS.x + 10, 66, 2, RAIL_Y - 66]]);
+const ROOF_SEAMS = pxPath([
+  [SH.l + 40, SH.roof, 1, 4],
+  [SH.l + 150, SH.roof, 1, 4],
+  [SH.r - 60, SH.roof, 1, 4],
+]);
+
 /**
  * What the small screens spill after dark. The biletomat throws a cold blue
  * apron the size of one person; the departure display leaks amber onto the
@@ -2176,6 +2950,14 @@ const FURNITURE_CONTACT = contactPaths([
   [SIG.x + 3, 10, RAIL_Y],
   [1946, 10, RAIL_Y],
   [TT_X + 14, 12, RAIL_Y],
+  /* v4 furniture stands on the same platform */
+  [TOTEM_X + 1, 14, RAIL_Y],
+  [BIKE_X - 1, 49, RAIL_Y],
+  [VEND_X - 2, 34, RAIL_Y],
+  [PLANTER_X - 2, 34, RAIL_Y],
+  [CCTV_X + 3, 6, RAIL_Y],
+  [LEAN.l + 4, LEAN.r - LEAN.l - 8, RAIL_Y],
+  [GRIT_X - 2, 38, RAIL_Y],
 ]);
 /** Ambient occlusion where the shelter roof shades the platform behind it. */
 const SHELTER_AO = aoPaths([[SH.l - 10, SH.head + 4, SH.r - SH.l + 20]]);
@@ -2221,6 +3003,9 @@ function Furniture({
       <path d={MAST_DOORS} fill={galv.deep} opacity={0.6} />
       <path d={MAST_BOLTS} fill={galv.deep} opacity={0.7} />
       <path d={LUM_LENS} fill={lit ? "#f6f8ff" : galv.hi} />
+      {/* the PA horns on the third mast — silent in the art, loud in life */}
+      <path d={PA_HORNS} fill={galv.mid} />
+      <path d={PA_MOUTHS} fill="#101216" opacity={0.8} />
       {lit ? MASTS.map((x, i) => <Light key={`pool-${x}`} set={LAMP_POOLS[i]} op={0.9} />) : null}
       {lit ? (
         <g>
@@ -2280,6 +3065,8 @@ function Furniture({
 
       {/* the stair down to the underpass */}
       <path d={STAIR_OPENING} fill="#12141a" />
+      {/* the dark deepens with the flight: the bottom treads sink into it */}
+      <path d={STAIR_DEPTH} fill="#06070b" opacity={0.7} />
       <path d={STAIR_CHEEKS} fill="#000" opacity={0.4} />
       <path d={STAIR_TREADS} fill={conc.mid} opacity={0.75} />
       <path d={STAIR_NOSINGS} fill={conc.hi} opacity={0.5} />
@@ -2318,6 +3105,23 @@ function Furniture({
         </>
       )}
 
+      {/* the wayfinding totem: the line, its stations, YOU ARE HERE */}
+      <path d={TOTEM_BODY} fill={night ? "#2b2e32" : "#3a3d42"} />
+      <path d={TOTEM_SIDE} fill="#000" opacity={0.25} />
+      <path d={TOTEM_HEAD} fill={K.signBlue} />
+      <path d={TOTEM_MAP} fill={night ? "#c9c4b6" : K.white} />
+      <path d={TOTEM_LINE} fill={K.signBlue} />
+      <path d={TOTEM_STOPS} fill={K.signBlue} opacity={0.7} />
+      <path d={TOTEM_YOU} fill={K.red} />
+      {/* the bike rack: one bike locked properly, one hoop holding only a
+          front wheel — the rest of that bike is somebody's bad morning */}
+      <path d={RACK} fill={galv.base} />
+      <path d={BIKE_WHEELS} fill="#23262b" />
+      <path d={BIKE_HUBS} fill={galv.hi} opacity={0.7} />
+      <path d={BIKE_FRAME} fill="#7a2f3a" />
+      <path d={BIKE_LOCK} fill={galv.lo} />
+      <path d={LONE_WHEEL} fill="#23262b" opacity={0.9} />
+
       {/* the shelter */}
       <AOSet set={SHELTER_AO} op={0.5} />
       <path d={SHELTER_GLASS} fill={K.glass[ph]} opacity={night ? 0.5 : 0.42} />
@@ -2351,6 +3155,7 @@ function Furniture({
       <path d={SHELTER_ROOF_DIRT} fill={dth("n", "12")} opacity={0.3} />
       <path d={ROOF_DROPPINGS} fill={K.white} opacity={0.45} />
       <path d={pxPath([[SH.l - 14, SH.roof, SH.r - SH.l + 28, 1]])} fill={galv.hi} />
+      <path d={ROOF_SEAMS} fill={galv.lo} opacity={0.6} />
       {/* the strip light under the roof, and what it lands on */}
       <path d={SHELTER_STRIP} fill={lit ? "#f6f8ff" : galv.hi} opacity={lit ? 0.9 : 0.5} />
       {lit ? <Light set={SHELTER_POOL} op={0.9} /> : null}
@@ -2391,6 +3196,7 @@ function Furniture({
 
       {/* bins */}
       <path d={BINS} fill={galv.mid} />
+      <path d={BINS} fill={dth("c", "12")} opacity={0.2} />
       <path d={BIN_SIDE_SHADE} fill="#000" opacity={0.2} />
       <path d={BIN_MOUTHS} fill="#101215" opacity={0.8} />
       <path d={BIN_HOOP} fill={galv.hi} />
@@ -2452,6 +3258,7 @@ function Furniture({
       <path d={CIP_TOP_HI} fill="#3a3e44" />
       <path d={CIP_SPIKES} fill={galv.base} opacity={0.8} />
       <path d={CIP_DRAINS} fill="#101216" opacity={0.8} />
+      <path d={CIP_UNDER} fill="#000" opacity={0.35} />
       <path d={CIP_SCREEN} fill={boardLit ? "#0d0f12" : "#1a1d22"} />
       <path d={CIP_GLARE} fill="#3a4048" opacity={0.4} />
       {boardLit ? (
@@ -2480,8 +3287,19 @@ function Furniture({
         />
       </g>
 
+      {/* the vending machine, keeping the biletomat company */}
+      <path d={VEND_BODY} fill={night ? "#242e38" : "#31404e"} />
+      <path d={VEND_SIDE} fill="#000" opacity={0.25} />
+      <path d={VEND_WINDOW} fill={night ? "#16324e" : "#1e2a36"} />
+      <path d={VEND_ROWS} fill="#c8503a" opacity={0.8} />
+      <path d={VEND_WINDOW} fill={dth("c", "12")} opacity={0.3} />
+      <path d={VEND_PAY} fill={galv.lo} />
+      <path d={VEND_HATCH} fill="#101216" opacity={0.8} />
+      {night ? <Light set={VEND_POOL} op={0.8} /> : null}
+
       {/* the biletomat */}
       <path d={BILETOMAT} fill={night ? "#2b2e32" : "#3a3d42"} />
+      <path d={BILETOMAT_CAP_SHADOW} fill="#000" opacity={0.25} />
       <path d={BILETOMAT_SIDE} fill="#000" opacity={0.25} />
       <path d={BILETOMAT_KICK} fill="#000" opacity={0.2} />
       <path d={BILETOMAT_SCREEN} fill="#0f2a4a" />
@@ -2510,6 +3328,7 @@ function Furniture({
       <path d={DRUM} fill={s.season === "autumn" ? "#8a3a44" : "#3a5f8a"} />
       <path d={DRUM} fill={dth("c", "12")} opacity={0.2} />
       <path d={DRUM_SHADE} fill="#000" opacity={0.18} />
+      <path d={DRUM_SPEC} fill="#fff" opacity={0.08} />
       <path d={DRUM_CAP_SHADOW} fill="#000" opacity={0.3} />
       <path d={DRUM_SEAM} fill="#000" opacity={0.2} />
       <path d={DRUM_BASE_GRIME} fill={dth("n", "12")} opacity={0.35} />
@@ -2588,9 +3407,23 @@ function Furniture({
       <path d={MID_BENCH_BURN} fill="#2b2622" opacity={0.7} />
       <path d={MID_BENCH_GLOVE} fill="#8a3a44" opacity={0.9} />
 
+      {/* the municipal planter: concrete forever, flowers optional */}
+      <path d={PLANTER_BOX} fill={conc.mid} />
+      <path d={PLANTER_SIDE} fill="#000" opacity={0.2} />
+      <path d={PLANTER_BOX} fill={dth("n", "12")} opacity={0.3} />
+      <path d={PLANTER_LIP} fill={conc.hi} />
+      <path d={PLANTER_SOIL} fill="#2e2418" />
+      <path
+        d={PLANTER_GREEN}
+        fill={s.season === "bare" ? "#6b5f4a" : LEAF[ph].mid}
+        opacity={night ? 0.6 : 0.95}
+      />
+      {s.season === "green" ? <path d={PLANTER_BLOOMS} fill={K.red} opacity={0.85} /> : null}
+
       {/* the SOS pillar: blue, grille, button, and a beacon that never sleeps */}
       <path d={SOS_COL} fill={K.signBlue} />
       <path d={SOS_EDGE_HI} fill="#4d7ec4" opacity={0.6} />
+      <path d={SOS_SIDE} fill="#000" opacity={0.22} />
       <path d={SOS_CAP} fill={galv.mid} />
       <path d={SOS_CAM} fill="#0a0c10" />
       <path d={SOS_GRILLE} fill="#0a2548" />
@@ -2616,6 +3449,37 @@ function Furniture({
           />
         </path>
       ) : null}
+
+      {/* the CCTV pole: two cameras, both ways, and the honest red dot */}
+      <path d={CCTV_POLE} fill={galv.base} />
+      <path d={CCTV_ARM} fill={galv.base} />
+      <path d={CCTV_CAMS} fill="#23262b" />
+      <path d={CCTV_LENSES} fill="#0a0c10" />
+      {night ? (
+        <path d={pxPath([CCTV_LED])} fill={K.ledRed}>
+          <animate
+            attributeName="opacity"
+            calcMode="discrete"
+            values="1;1;0;1"
+            dur="2.2s"
+            repeatCount="indefinite"
+          />
+        </path>
+      ) : null}
+      {/* the leaning rail, polished in the middle by everyone in a hurry */}
+      <path d={LEAN_RAIL} fill={galv.lo} />
+      <path d={LEAN_HI} fill={galv.hi} opacity={0.35} />
+      <path d={LEAN_SHINE} fill={galv.hi} opacity={0.6} />
+      {/* the grit box: orange, stencilled, hasped, never once opened */}
+      <path d={GRIT_BOX} fill={night ? "#8a4a1e" : "#c8702a"} />
+      <path d={GRIT_SIDE} fill="#000" opacity={0.25} />
+      <path d={GRIT_BOX} fill={dth("n", "12")} opacity={0.25} />
+      <path d={GRIT_LID} fill={night ? "#9a561e" : "#d8813a"} />
+      <path d={GRIT_LID_HI} fill="#f2a45c" opacity={0.6} />
+      <path d={GRIT_HASP} fill={galv.lo} />
+      <g transform={`translate(${GRIT_X + 6} ${RAIL_Y - 13})`}>
+        <path d={textPath("PIASEK", 0, 0)} fill="#3a2a1a" opacity={0.8} />
+      </g>
 
       {/* the relay cabinet at the far end, tagged and half-wiped */}
       <path d={CAB_PLINTH} fill={conc.deep} />
@@ -2672,11 +3536,11 @@ function Furniture({
  * state: anything that re-renders the train every frame re-renders the scene
  * every frame.
  *
- * So the timetable is baked into the SMIL timeline. One `animateTransform` per
- * train carries the whole cycle — waiting off-stage, entering, braking to a
- * stand, waiting again, accelerating away — as a list of key times taken
- * straight from `stationTimetable`. Deceleration and acceleration are done with
- * unevenly spaced key frames rather than an easing function, because SMIL's
+ * So the timetable is baked into the SMIL timeline. One position track per train
+ * carries the whole cycle — waiting off-stage, entering, braking to a stand,
+ * waiting again, accelerating away — as a list of key times taken straight from
+ * `stationTimetable`. Deceleration and acceleration are done with unevenly
+ * spaced key frames rather than an easing function, because SMIL's
  * `calcMode="spline"` needs a control point per interval and four hand-placed
  * stops read better than any curve at this scale.
  *
@@ -2685,14 +3549,29 @@ function Furniture({
  * starting the timetable over every time the player walks onto the platform.
  * That is also what keeps it in step with `boardingOpen()`, which the door
  * objects use and which is computed from the same clock.
+ *
+ * The track is no longer applied by a group *around* the train: it is handed to
+ * the unit as a `MotionPlan` and the unit applies it itself. That is what lets
+ * a train know how fast it is going — the wheels turn at the speed the body is
+ * moving, the shell bobs over the joints while it rolls and stops bobbing when
+ * it stops, the glass smears, the bogies haze under braking and put sand down
+ * on the pull-away. One list of numbers, and everything physical about the
+ * movement comes off it instead of being hand-timed twice.
  */
 
 const T = TIMETABLE;
 
-/** The non-stop express: enters from Gdańsk, crosses, gone. */
+/**
+ * The non-stop express: enters from Gdańsk, crosses, gone.
+ *
+ * It is the three-car set, 2270 px long, so it has to start further back than
+ * the boardable two-car unit or its trailing cab is on screen while it is
+ * supposed to be off-stage — and it covers the extra ground in the same 7.5 s,
+ * which is exactly the point of an express.
+ */
 const EXPRESS = {
   keyTimes: [0, T.expressEnter, T.expressLeave, CYCLE_S].map(kt).join(";"),
-  values: "-1820 0;-1820 0;2140 0;2140 0",
+  values: "-2400 0;-2400 0;2140 0;2140 0",
 };
 
 /**
@@ -2742,50 +3621,51 @@ const DOORS = {
   values: "0;0;24.5;24.5;0;0",
 };
 
+/**
+ * Both position tracks, resolved into motion plans once at module scope.
+ *
+ * `planMotion` walks the key frames and precomputes everything derived from
+ * them — direction, peak speed, the wheel angle at each frame, the bob, and the
+ * speed gates for smear, wake, brake haze and sand. It is a few hundred
+ * multiplications and it happens once for the life of the tab, which is the
+ * whole reason the trains can be this alive without React seeing a frame of it.
+ */
+const EXPRESS_PLAN = planMotion(EXPRESS.keyTimes, EXPRESS.values, `${CYCLE_S}s`);
+const ARRIVAL_PLAN = planMotion(ARRIVAL.keyTimes, ARRIVAL.values, `${CYCLE_S}s`);
+
 function Trains({ ph, offsetS }: { ph: Ph; offsetS: number }) {
   const begin = `${(-offsetS).toFixed(2)}s`;
   return (
     <g>
-      {/* the express, which does not stop here */}
-      <g>
-        <SkmUnit ph={ph} destination="SOPOT" lit />
-        <animateTransform
-          attributeName="transform"
-          type="translate"
-          keyTimes={EXPRESS.keyTimes}
-          values={EXPRESS.values}
-          dur={`${CYCLE_S}s`}
-          begin={begin}
-          repeatCount="indefinite"
-          calcMode="linear"
-        />
-      </g>
+      {/* The express, which does not stop here. Three cars, because the ones
+          that run through are the full set — and because a longer train going
+          past faster is the cheapest way to say that this is a real railway
+          with somewhere else to be. */}
+      <SkmUnit
+        ph={ph}
+        destination="SOPOT"
+        via="GDYNIA"
+        cars={3}
+        lit
+        crowding="quiet"
+        motion={{ ...EXPRESS_PLAN, begin }}
+      />
 
       {/* the one you can get on */}
-      <g>
-        <SkmUnit
-          ph={ph}
-          destination="GDYNIA GL."
-          lit
-          doors={{
-            mode: "cycle",
-            keyTimes: DOORS.keyTimes,
-            values: DOORS.values,
-            dur: `${CYCLE_S}s`,
-            begin,
-          }}
-        />
-        <animateTransform
-          attributeName="transform"
-          type="translate"
-          keyTimes={ARRIVAL.keyTimes}
-          values={ARRIVAL.values}
-          dur={`${CYCLE_S}s`}
-          begin={begin}
-          repeatCount="indefinite"
-          calcMode="linear"
-        />
-      </g>
+      <SkmUnit
+        ph={ph}
+        destination="GDYNIA GL."
+        lit
+        crowding="normal"
+        motion={{ ...ARRIVAL_PLAN, begin }}
+        doors={{
+          mode: "cycle",
+          keyTimes: DOORS.keyTimes,
+          values: DOORS.values,
+          dur: `${CYCLE_S}s`,
+          begin,
+        }}
+      />
     </g>
   );
 }
@@ -2864,9 +3744,40 @@ const NEAR_SCALE = 1.28;
  */
 const NEAR_DROP = 42;
 
+/**
+ * The near train's path, in the train's OWN space rather than the scene's.
+ *
+ * The unit applies its own translate now, and it does so inside the 1.28×
+ * group, so the numbers here are scene pixels divided by NEAR_SCALE: it comes
+ * in from 2400 px right of the frame and leaves 2100 px left of it, which is
+ * 1875 and −1640 in its own units. Getting this wrong is silent — the train
+ * still crosses, it just starts and finishes on screen.
+ */
 const NEAR_TRAIN = {
   keyTimes: [0, T.nearEnter, T.nearLeave, CYCLE_S].map(kt).join(";"),
   /* right to left: in from beyond the Sopot end, out past the Gdańsk end */
+  values: "1876 0;1876 0;-1642 0;-1642 0",
+};
+const NEAR_PLAN = planMotion(NEAR_TRAIN.keyTimes, NEAR_TRAIN.values, `${CYCLE_S}s`);
+
+/**
+ * What a train passing a metre and a half away does to everything behind it.
+ *
+ * It is between the player and the camera, so for four seconds it is the only
+ * thing lighting the frame — which is to say it is the only thing *not*
+ * lighting the frame. Two slabs travelling with it, a core the width of the
+ * unit and a wider penumbra, drop the platform and the player into its shadow
+ * and let them back out. It is one rect each and it is the single largest thing
+ * the scene does with light.
+ *
+ * It rides the scene-space track, not the unit's, because it has to be square
+ * to the frame rather than scaled with the body.
+ */
+const NEAR_LEN = Math.round(1700 * NEAR_SCALE);
+const NEAR_SHADE_CORE = pxPath([[-40, 40, NEAR_LEN + 80, 140]]);
+const NEAR_SHADE_SOFT = pxPath([[-140, 24, NEAR_LEN + 280, 156]]);
+const NEAR_SHADE = {
+  keyTimes: NEAR_TRAIN.keyTimes,
   values: "2400 0;2400 0;-2100 0;-2100 0",
 };
 
@@ -2887,21 +3798,43 @@ function StationFront({ phase }: { phase: string }) {
     >
       <path d={FRONT_EDGE} fill={CONC[ph].deep} opacity={0.7} />
 
-      {/* the down train, on the near road, in front of everything */}
+      {/* its shadow arrives before it does and leaves after it */}
       <g>
-        <g transform={`translate(0 ${NEAR_DROP}) scale(${NEAR_SCALE})`}>
-          {/* `tail` because we see it going away from us to the left */}
-          <SkmUnit ph={ph} destination="GDANSK GL." lit tail />
-        </g>
+        <path d={NEAR_SHADE_SOFT} fill="#171009" opacity={ph === "night" ? 0.14 : 0.1} />
+        <path d={NEAR_SHADE_CORE} fill="#171009" opacity={ph === "night" ? 0.22 : 0.18} />
         <animateTransform
           attributeName="transform"
           type="translate"
-          keyTimes={NEAR_TRAIN.keyTimes}
-          values={NEAR_TRAIN.values}
+          keyTimes={NEAR_SHADE.keyTimes}
+          values={NEAR_SHADE.values}
           dur={`${CYCLE_S}s`}
           begin={begin}
           repeatCount="indefinite"
           calcMode="linear"
+        />
+      </g>
+
+      {/* The down train, on the near road, in front of everything.
+       *
+       * `dir={-1}` because it is running to the left, which now means the
+       * left-hand cab leads it: the unit is double-ended, so the thing at the
+       * front of a westbound train is a windscreen with a driver behind it and
+       * headlights under it, and the thing at the back is a pair of red
+       * markers. It used to be the same drawing shoved backwards.
+       *
+       * `ground` and `gear` are off because both are outside the crop — its own
+       * rail head is 60 px below the bottom of the frame, so a contact shadow
+       * and a set of bogies would be work done for nobody. */}
+      <g transform={`translate(0 ${NEAR_DROP}) scale(${NEAR_SCALE})`}>
+        <SkmUnit
+          ph={ph}
+          destination="GDANSK GL."
+          dir={-1}
+          lit
+          crowding="busy"
+          ground={false}
+          gear={false}
+          motion={{ ...NEAR_PLAN, begin }}
         />
       </g>
 
@@ -3571,6 +4504,13 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
       { x0: 678, y0: 152, x1: 712, y1: 158 },
       { x0: 1286, y0: 152, x1: 1320, y1: 158 },
       { x0: 1712, y0: 152, x1: 1758, y1: 158 },
+      /* the v4 furniture is as solid as the rest: back lane only, and every
+       * carriage-door approach point (DOOR_X at y=152) stays outside */
+      { x0: BIKE_X - 2, y0: 152, x1: BIKE_X + 49, y1: 158 },
+      { x0: TOTEM_X - 2, y0: 152, x1: TOTEM_X + 18, y1: 158 },
+      { x0: VEND_X - 2, y0: 152, x1: VEND_X + 32, y1: 158 },
+      { x0: PLANTER_X - 2, y0: 152, x1: PLANTER_X + 32, y1: 158 },
+      { x0: GRIT_X - 2, y0: 152, x1: GRIT_X + 36, y1: 158 },
       /* the band furniture: the trolley and the case are depth-sorted props */
       { x0: 1498, y0: 154, x1: 1542, y1: 161 },
       { x0: 858, y0: 158, x1: 876, y1: 164 },

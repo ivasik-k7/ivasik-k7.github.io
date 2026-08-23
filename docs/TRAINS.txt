@@ -1,0 +1,56 @@
+I want to significantly enrich this file and transform the current train implementation into a much more immersive, visually convincing gameplay element.
+
+Treat the existing file as the foundation, but do not limit yourself to superficial additions. First understand how the current scene, train, movement, rendering, interaction, and visual composition work, then determine the best way to substantially improve the experience while preserving the existing game architecture and visual identity.
+
+The **visual presentation is the primary requirement**.
+
+This game is heavily influenced by the visual-novel genre, so the train should feel like a carefully authored part of the world rather than a collection of flat shapes or functional UI elements. Increase the sense of **depth, volume, lighting, shadows, atmosphere, material definition, animation, spatial layering, and visual feedback** wherever appropriate.
+
+The train and its environment should communicate convincing physical presence. Think about how the player perceives the train as an object occupying space, how light interacts with it, how shadows establish depth, and how movement affects the surrounding environment.
+
+The train is also **fully bidirectional**: it can travel both **left and right**. This is an important part of the design and must be treated as a first-class requirement rather than an afterthought.
+
+The implementation should therefore remain visually and mechanically coherent regardless of the train's direction:
+
+* The train must be able to travel naturally in both directions.
+* Visual composition should remain convincing when moving left or right.
+* Direction-dependent elements should behave correctly.
+* Lighting, shadows, effects, animation, and environmental interaction should remain coherent in both directions.
+* Do not build assumptions into the visual system that only work for one travel direction.
+* Consider how the train enters, occupies, and leaves the scene from either side.
+* Movement should feel physical and intentional rather than simply translating a flat graphic across the screen.
+
+I want you to decide the practical implementation yourself.
+
+Do not follow a predetermined solution. Inspect the existing code and determine how best to achieve the desired result within the current architecture. Reuse existing systems, components, visual utilities, rendering patterns, and conventions where appropriate, but restructure parts of the file if the current approach prevents a high-quality result.
+
+Pay particular attention to:
+
+**Visual depth and volume**
+The train and environment should not feel flat. Establish convincing spatial separation, layering, perspective, silhouettes, highlights, ambient shading, and depth cues.
+
+**Lighting and shadows**
+Use lighting and shadow as major compositional tools. Shadows should help communicate the train's position and movement within the environment rather than being purely decorative.
+
+**Motion and animation**
+Movement should have weight and continuity. Consider how the train's speed, acceleration, deceleration, wheels, lights, windows, reflections, environmental elements, and surrounding atmosphere can contribute to the perception of motion.
+
+**Environmental interaction**
+The train should feel connected to its surroundings. Its presence and movement should influence the visual atmosphere of the scene where appropriate.
+
+**Bidirectional movement**
+Everything should remain coherent when the train travels left-to-right or right-to-left. The scene should not visually "break" when the direction changes.
+
+**Composition**
+The player should be able to understand where the train is spatially and how it relates to the environment. Use layering and composition to create a strong visual hierarchy.
+
+**Polish and feedback**
+Interactions and movement should feel responsive and intentional. Visual feedback should communicate state changes naturally without turning the scene into excessive UI.
+
+Most importantly, **do not simply add more graphical elements because they are available**. Every visual element should contribute to depth, atmosphere, readability, motion, or immersion.
+
+The goal is to make this file feel like a polished, visually authored part of the game.
+
+Before implementing anything, inspect the existing implementation carefully and identify the current limitations. Then make the improvements holistically rather than adding isolated effects one by one.
+
+Keep performance, maintainability, and consistency with the existing engine in mind, but prioritize achieving a substantially richer visual and gameplay experience.

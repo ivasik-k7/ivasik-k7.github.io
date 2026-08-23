@@ -352,9 +352,13 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     deadline: number;
     interactId: string | null;
     resolve?: (ok: boolean) => void;
-    /** Stall detection: the last gap and when it last shrank. */
+    /**
+     * Stall detection: the smallest gap seen, and how much SIMULATED time has
+     * passed without beating it. Simulated, not wall — see the note at the
+     * detector itself.
+     */
     lastGap: number;
-    progressAt: number;
+    stalledMs: number;
     /** Waypoints still to walk after (x, y) — a route around furniture. */
     rest: { x: number; y: number }[];
   } | null>(null);
@@ -794,7 +798,6 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           w.y,
           t + (o?.timeoutMs ?? 8000),
           null,
-          t,
           resolve,
           w.rest,
         );
@@ -1096,7 +1099,6 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         w.y,
         clockRef.current.t + 8000,
         obj.id,
-        clockRef.current.t,
         undefined,
         w.rest,
       );
@@ -1570,7 +1572,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       startWalk: (x, y, deadline) => {
         cancelAutoWalkStatic(autoWalkRef);
         const w = planWalkRef.current(x, y);
-        autoWalkRef.current = newAutoWalk(w.x, w.y, deadline, null, clock.t, undefined, w.rest);
+        autoWalkRef.current = newAutoWalk(w.x, w.y, deadline, null, undefined, w.rest);
       },
       walking: () => autoWalkRef.current !== null,
       setFacing: (facing) => {
@@ -1802,7 +1804,24 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             const gap = Math.abs(gapX) + Math.abs(gapY);
             if (gap < walk.lastGap - 0.05) {
               walk.lastGap = gap;
-              walk.progressAt = gameNow;
+              walk.stalledMs = 0;
+            } else {
+              /**
+               * Stall time is SIMULATED time, not wall time.
+               *
+               * This loop runs at most `maxSubsteps` of `1/simHz` per frame and
+               * then throws the backlog away, so on a frame that took 300 ms the
+               * player advanced 42 ms worth of ground. Measuring the stall
+               * against the wall clock therefore aborted walks that were not
+               * stalled at all, they were merely on a scene heavy enough to drop
+               * frames — and it did it non-deterministically, in the middle of
+               * open platform, which is the worst possible bug to read from a
+               * screenshot. Counting the substeps that failed to make progress
+               * measures what the detector is actually for: the player is
+               * pressed against something and the ground is not letting them
+               * through.
+               */
+              walk.stalledMs += stepMs;
             }
             if (Math.abs(gapX) <= ARRIVE_EPS && Math.abs(gapY) <= ARRIVE_EPS) {
               const next = walk.rest.shift();
@@ -1811,14 +1830,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                 walk.x = next.x;
                 walk.y = next.y;
                 walk.lastGap = Number.POSITIVE_INFINITY;
-                walk.progressAt = gameNow;
+                walk.stalledMs = 0;
               } else {
                 arrived = true;
               }
             } else if (gameNow > walk.deadline) {
               // the old contract: a timeout still counts as "close enough"
               arrived = true;
-            } else if (gameNow - walk.progressAt > WALK_STALL_MS) {
+            } else if (walk.stalledMs > WALK_STALL_MS) {
               // a blocker in the way: stop trying instead of moonwalking
               autoWalkRef.current = null;
               walk.resolve?.(false);
@@ -2944,7 +2963,6 @@ function newAutoWalk(
   y: number | undefined,
   deadline: number,
   interactId: string | null,
-  now: number,
   resolve?: (ok: boolean) => void,
   rest?: { x: number; y: number }[],
 ) {
@@ -2955,7 +2973,7 @@ function newAutoWalk(
     interactId,
     resolve,
     lastGap: Number.POSITIVE_INFINITY,
-    progressAt: now,
+    stalledMs: 0,
     /** waypoints still to walk after (x,y) — a route around furniture */
     rest: rest ?? [],
   };

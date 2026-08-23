@@ -28,6 +28,34 @@ const check = (label, cond) => {
   if (!cond) process.exitCode = 1;
 };
 
+/**
+ * Walk to x and make sure we get there, however slow the host is.
+ *
+ * Two things bite here and neither is the game's fault.
+ *
+ * `walkTo` carries an 8 s deadline and resolves `true` wherever the player has
+ * reached when it expires — that is the engine's documented contract, and in
+ * play it is right: a walk that has not landed in eight seconds should hand
+ * control back rather than march on. But this browser is headless and software
+ * rendered, so the loop drops its substep backlog and the player covers about
+ * a fifth of the ground per second that a real one would. The platform is 52
+ * metres long. One call is simply not enough to cross it here.
+ *
+ * So: re-issue until the feet stop moving near the target, and only then let
+ * the caller assert. A check that reads the player mid-stride is a check about
+ * this machine's frame rate, not about the scene.
+ */
+async function arrive(page, x, tries = 6) {
+  for (let i = 0; i < tries; i++) {
+    const l = await page.evaluate(() => window.__game.getLive());
+    if (!l.moving && Math.abs(l.x - x) < 24) return true;
+    await page.evaluate((tx) => window.__game.walkTo(tx), x);
+    await page.waitForTimeout(150);
+  }
+  const l = await page.evaluate(() => window.__game.getLive());
+  return Math.abs(l.x - x) < 24;
+}
+
 async function boot(nightShim) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   if (nightShim) {
@@ -64,14 +92,17 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png` });
 {
   const { ctx, page } = await boot(false);
   await page.evaluate(() => window.__game.travel("station", 520));
-  await page.waitForTimeout(1000);
+  /* the platform mounts a thousand paths and three trains; give the first
+     frames room to land before holding a key down and counting pixels */
+  await page.waitForTimeout(2400);
   const spawn = await liveOf(page);
   check(`station spawns inside the band (y=${spawn.y})`, spawn.y >= 152 && spawn.y <= 170);
   await shot(page, "day-spawn-520");
 
-  // band depth
+  // band depth. Held long enough that a slow host still crosses the 18 px of
+  // band — what is being checked is where the walk STOPS, not how fast it is.
   await page.keyboard.down("ArrowDown");
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(2200);
   await page.keyboard.up("ArrowDown");
   await page.waitForTimeout(200);
   const down = await liveOf(page);
@@ -107,6 +138,7 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png` });
 
   // kasownik prompt
   await page.evaluate(() => window.__game.walkTo(545, 160, { timeoutMs: 30000 }));
+  await arrive(page, 545);
   const kasPrompt = await page
     .waitForFunction(() => Boolean(document.querySelector('[aria-label*="KASOWNIK"]')), null, {
       timeout: 5000,
