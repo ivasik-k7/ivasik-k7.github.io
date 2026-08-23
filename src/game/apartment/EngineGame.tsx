@@ -302,10 +302,9 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
         return (
           <Suspense key="driving" fallback={<div className="absolute inset-0 bg-black/85" />}>
             <Driving
+              best={bestTier(world, "driving")}
               onClose={close}
-              onVerdict={() => {
-                /* whether Marek notices lives in the paint, not the save */
-              }}
+              onVerdict={(tier) => updateWorld((w) => recordTier(w, "driving", tier))}
             />
           </Suspense>
         );
