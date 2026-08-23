@@ -12,6 +12,8 @@ export type DayPhase = "morning" | "day" | "dusk" | "night";
 export interface WorldState {
   // Global progression
   money: number; // złoty — Żabka runs
+  /** what the bankomat on block 16 believes you are worth */
+  account: number;
   inventory: Array<{ itemId: string; quantity: number }>;
 
   // The flat
@@ -100,6 +102,7 @@ export function studioState(world: WorldState): NonNullable<WorldState["studio"]
 
 export const initialWorld: WorldState = {
   money: 50,
+  account: 1450,
   inventory: [],
   lights: { studio: true, hallway: true, kitchen: true, living: true, study: true, bath: true },
   windows: {

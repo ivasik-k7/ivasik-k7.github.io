@@ -7789,7 +7789,7 @@ export const STREET_SCENE: RuntimeSceneDef<WorldState> = {
     { id: "klatka-16", kind: "flavor", x: 1082, range: 14 },
     /* --- new: the hedge in front of block 16 --- */
     { id: "hedge-16", kind: "flavor", x: 1110, range: 12 },
-    { id: "bankomat-16", kind: "flavor", x: 1141, range: 14 },
+    { id: "bankomat-16", kind: "bankomat", x: 1141, range: 14, priority: 1 },
     { id: "parter-window", kind: "flavor", x: 1177, range: 12 },
     /* --- new: the RUCH kiosk --- */
     { id: "kiosk", kind: "flavor", x: 1206, range: 16 },
