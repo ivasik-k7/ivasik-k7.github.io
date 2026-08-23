@@ -22,6 +22,7 @@ import {
   ITEM_LABEL,
   initialWorld,
   recordTier,
+  studioState,
   type WorldState,
 } from "@/lib/worldState";
 import { PauseMenu } from "../menu/PauseMenu";
@@ -50,6 +51,7 @@ const Bankomat = lazy(() => import("../minigames/Bankomat").then((m) => ({ defau
 const Guitar = lazy(() => import("../minigames/Guitar").then((m) => ({ default: m.Guitar })));
 const Dance = lazy(() => import("../minigames/Dance").then((m) => ({ default: m.Dance })));
 const Driving = lazy(() => import("../minigames/Driving").then((m) => ({ default: m.Driving })));
+const BowlsGame = lazy(() => import("../minigames/Bowls").then((m) => ({ default: m.Bowls })));
 
 type Overlay =
   | { type: "panel"; id: PanelId }
@@ -57,6 +59,7 @@ type Overlay =
   | { type: "guitar" }
   | { type: "dance" }
   | { type: "driving" }
+  | { type: "bowls" }
   | { type: "terminal" }
   | { type: "menu" }
   | { type: "wardrobe" }
@@ -305,6 +308,22 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
               best={bestTier(world, "driving")}
               onClose={close}
               onVerdict={(tier) => updateWorld((w) => recordTier(w, "driving", tier))}
+            />
+          </Suspense>
+        );
+      if (o.type === "bowls")
+        return (
+          <Suspense key="bowls" fallback={<div className="absolute inset-0 bg-black/85" />}>
+            <BowlsGame
+              best={bestTier(world, "bowls")}
+              onClose={close}
+              onVerdict={(tier) =>
+                updateWorld((w) => ({
+                  ...recordTier(w, "bowls", tier),
+                  /* however it went, he has been fed: the chore is done */
+                  studio: { ...studioState(w), bowlsFilled: true },
+                }))
+              }
             />
           </Suspense>
         );

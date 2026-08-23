@@ -208,16 +208,26 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     showToast(t("toast.binOut"));
   },
 
-  bowls: ({ obj, world, updateWorld, showToast, startAction, spawnFx }) => {
+  /**
+   * Breakfast is a minigame now.
+   *
+   * It used to be one of the chore handlers: press E, the flag flips, a heart
+   * pops over the dog, done. Which is a fair way to model taking the bin out —
+   * but feeding an animal is not a chore you perform on a flat, it is something
+   * you do *with* somebody, and the somebody has opinions. So the bowls open a
+   * scene: you pour, he creeps, you tell him to wait, and how well it goes is
+   * between the two of you.
+   *
+   * The chore flag is still set, by the overlay's verdict rather than here —
+   * however badly it went, he has been fed.
+   */
+  bowls: ({ world, showToast, openOverlay }) => {
     if (studioState(world).bowlsFilled) {
       showToast(t("flavor.dogbowls"));
       return;
     }
-    startAction("use");
-    playSfx("pour");
-    updateWorld((w) => ({ ...w, studio: { ...studioState(w), bowlsFilled: true } }));
-    spawnFx("heart", obj.x + 46, 1300);
-    showToast(t("toast.bowls"));
+    playSfx("click");
+    openOverlay({ type: "bowls" });
   },
 
   // the guitar comes off the wall for one quiet loop of Am–F–C–G.
