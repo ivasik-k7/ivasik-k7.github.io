@@ -313,10 +313,9 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
         return (
           <Suspense key="dance" fallback={<div className="absolute inset-0 bg-black/85" />}>
             <Dance
+              best={bestTier(world, "dance")}
               onClose={close}
-              onVerdict={() => {
-                /* the floor keeps its own score */
-              }}
+              onVerdict={(tier) => updateWorld((w) => recordTier(w, "dance", tier))}
             />
           </Suspense>
         );
