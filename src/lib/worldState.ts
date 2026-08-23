@@ -43,6 +43,10 @@ export interface WorldState {
   // The Golf, level -1
   golfLocked: boolean;
 
+  // How well each minigame has ever gone: id -> best tier (0..2). Optional so
+  // saves that predate the minigames still load; read through bestTier().
+  minigames?: Record<string, number>;
+
   // The studio itself — chores and small habits. Optional so pre-existing
   // saves (which predate the field) still load; read through studioState().
   studio?: {
@@ -95,6 +99,18 @@ export const initialStudio: NonNullable<WorldState["studio"]> = {
   plantWatered: false,
 };
 
+/** The best tier ever reached in one minigame, 0 when never played well. */
+export function bestTier(world: WorldState, id: string): number {
+  return world.minigames?.[id] ?? 0;
+}
+
+/** Fold a fresh result into the record, keeping only the high-water mark. */
+export function recordTier(world: WorldState, id: string, tier: number): WorldState {
+  const prev = world.minigames?.[id] ?? -1;
+  if (tier <= prev) return world;
+  return { ...world, minigames: { ...world.minigames, [id]: tier } };
+}
+
 /** The studio chore bag with defaults for saves that predate it. */
 export function studioState(world: WorldState): NonNullable<WorldState["studio"]> {
   return { ...initialStudio, ...world.studio };
@@ -104,7 +120,14 @@ export const initialWorld: WorldState = {
   money: 50,
   account: 1450,
   inventory: [],
-  lights: { studio: true, hallway: true, kitchen: true, living: true, study: true, bath: true },
+  lights: {
+    studio: true,
+    hallway: true,
+    kitchen: true,
+    living: true,
+    study: true,
+    bath: true,
+  },
   windows: {
     "window-kitchen": { open: false, smoked: false },
     "window-yard": { open: false, smoked: false },
@@ -129,7 +152,12 @@ export const initialWorld: WorldState = {
   },
   golfLocked: true,
   studio: { ...initialStudio },
-  corridor: { parcelTaken: false, plantWatered: false, extOpen: false, liftOpen: false },
+  corridor: {
+    parcelTaken: false,
+    plantWatered: false,
+    extOpen: false,
+    liftOpen: false,
+  },
   street: { binOpen: false, paczkomatUsed: false },
   zabka: { fridgeOpen: false, freezerOpen: false },
 };

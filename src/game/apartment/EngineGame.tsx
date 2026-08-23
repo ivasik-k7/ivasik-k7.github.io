@@ -16,10 +16,12 @@ import {
   type RuntimeSceneDef,
 } from "@/engine";
 import {
+  bestTier,
   type DayPhase,
   dayPhase,
   ITEM_LABEL,
   initialWorld,
+  recordTier,
   type WorldState,
 } from "@/lib/worldState";
 import { PauseMenu } from "../menu/PauseMenu";
@@ -322,10 +324,9 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
         return (
           <Suspense key="guitar" fallback={<div className="absolute inset-0 bg-black/85" />}>
             <Guitar
+              best={bestTier(world, "guitar")}
               onClose={close}
-              onVerdict={() => {
-                /* the verdict line is the reward; nothing else to award */
-              }}
+              onVerdict={(tier) => updateWorld((w) => recordTier(w, "guitar", tier))}
             />
           </Suspense>
         );
