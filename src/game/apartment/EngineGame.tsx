@@ -46,11 +46,13 @@ const PlayerStudio = lazy(() =>
 /** Minigames ride their own chunks; nobody pays for the bankomat at boot. */
 const Bankomat = lazy(() => import("../minigames/Bankomat").then((m) => ({ default: m.Bankomat })));
 const Guitar = lazy(() => import("../minigames/Guitar").then((m) => ({ default: m.Guitar })));
+const Dance = lazy(() => import("../minigames/Dance").then((m) => ({ default: m.Dance })));
 
 type Overlay =
   | { type: "panel"; id: PanelId }
   | { type: "bankomat" }
   | { type: "guitar" }
+  | { type: "dance" }
   | { type: "terminal" }
   | { type: "menu" }
   | { type: "wardrobe" }
@@ -292,6 +294,17 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     ),
     renderOverlay: (overlay, close, world, updateWorld) => {
       const o = overlay as Overlay;
+      if (o.type === "dance")
+        return (
+          <Suspense key="dance" fallback={<div className="absolute inset-0 bg-black/85" />}>
+            <Dance
+              onClose={close}
+              onVerdict={() => {
+                /* the floor keeps its own score */
+              }}
+            />
+          </Suspense>
+        );
       if (o.type === "guitar")
         return (
           <Suspense key="guitar" fallback={<div className="absolute inset-0 bg-black/85" />}>

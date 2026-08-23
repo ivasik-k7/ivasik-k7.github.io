@@ -579,16 +579,14 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
   },
 
   /**
-   * The dance floor. There is no dance animation in the rig and there does not
-   * need to be: he dances the way he trains, which is footwork first, and the
-   * sambo drill at 126 bpm reads as exactly what a man who lifts does at a
-   * rave. The camera agrees with the bass.
+   * The dance floor is a minigame now: follow the crowd's lean at 126 bpm.
+   * The sambo drill stays as the walk-up — he approaches the floor the way
+   * he trains, footwork first, and then the floor takes over.
    */
-  dance: ({ startAction, showToast, queueToast, shakeCamera }) => {
+  dance: ({ startAction, shakeCamera, openOverlay }) => {
     startAction("sambo");
     shakeCamera(1.5, 600);
-    showToast(t("toast.dance"));
-    queueToast(t("toast.dance2"), 4200);
+    openOverlay({ type: "dance" });
   },
 
   /** Standing at the stack. You do not hear it so much as get leaned on. */

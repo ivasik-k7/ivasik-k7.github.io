@@ -32,6 +32,8 @@ export type SfxName =
   | "liftding" // arrival chime + doors rumbling open
   | "guitar" // one strum of an old acoustic — walks an Am–F–C–G loop
   | "guitarEnd" // the last chord, louder and left to ring
+  | "kick" // one club kick drum, felt in the sternum
+  | "hat" // a closed hi-hat tick riding the offbeat
   | "trickle" // a quiet, polite, unmistakable stream
   | "flush"; // the cistern lets go, then refills through the whole riser
 
@@ -192,6 +194,15 @@ export function playSfx(name: SfxName) {
 
     case "thud":
       blip(v, { from: 120, to: 45, len: 0.25, peak: 0.3, exp: true });
+      break;
+
+    case "kick":
+      blip(v, { type: "sine", from: 150, to: 38, len: 0.16, peak: 0.42, exp: true });
+      whoosh(v, { len: 0.02, type: "highpass", freq: 3000, peak: 0.06, attack: 0.001 });
+      break;
+
+    case "hat":
+      whoosh(v, { len: 0.045, type: "highpass", freq: 8200, peak: 0.045, attack: 0.001 });
       break;
 
     case "chime":
