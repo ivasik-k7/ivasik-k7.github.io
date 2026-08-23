@@ -10,13 +10,11 @@ import {
   PixelText,
   pxPath,
   type Rect,
-  SharedDefs,
   steppedEllipse,
   textWidth,
   tiers,
-  Vignette,
-  vignettePaths,
 } from "@/engine/scene/pixelKit";
+import { Juice, MinigameShell, makeParticlePool } from "./kit";
 
 /**
  * BANKOMAT — the cash machine on block 16, close up.
@@ -34,9 +32,10 @@ import {
  */
 
 /* logical canvas */
-const W = 240;
-const H = 170;
-const VIGNETTE = vignettePaths(W, H);
+const W = 300;
+const H = 190;
+/** the machine is bolted to the wall at block 16; the pavement runs beneath */
+const KERB_Y = 162;
 
 /* the machine face geometry, in logical px */
 const BODY: Rect = [52, 8, 136, 154];
@@ -85,6 +84,39 @@ export function Bankomat({
   const [note, setNote] = useState<string | null>(null);
   const [cash, setCash] = useState(0);
   const [pressedKey, setPressedKey] = useState<string | null>(null);
+  /** the closing line, spoken on the plate like every other minigame's */
+  const [verdict, setVerdict] = useState<string | null>(null);
+  const stageRef = useRef<SVGGElement | null>(null);
+  const queueRef = useRef<SVGGElement | null>(null);
+  const juice = useRef(new Juice()).current;
+  const bits = useRef(makeParticlePool(24)).current;
+  /* the man behind you arrives once you have been at this a while, and the
+     machine keeps its own slow clock so the pool has something to drive it */
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    let last = start;
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      const { dx, dy } = juice.sample(now, now - start);
+      if (stageRef.current) stageRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
+      bits.update(now, Math.min(64, now - last) / 1000);
+      last = now;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [juice, bits]);
+  /** He turns up while you are choosing, and stands a little closer as you dither. */
+  useEffect(() => {
+    if (phase !== "menu" && phase !== "amount" && phase !== "pin") return;
+    const t = window.setTimeout(() => {
+      if (queueRef.current) {
+        queueRef.current.style.display = "";
+        queueRef.current.style.transform = "translateX(-6px)";
+      }
+    }, 4200);
+    return () => window.clearTimeout(t);
+  }, [phase]);
   /** the fifties-only mood strikes on odd minutes, like everything municipal */
   const fiftiesOnly = useRef(new Date().getMinutes() % 2 === 1).current;
   const timers = useRef<number[]>([]);
@@ -201,6 +233,19 @@ export function Bankomat({
               setCash(want);
               setPhase("cash");
               playSfx("register");
+              juice.shake(1, 140);
+              for (let k = 0; k < 6; k++) {
+                bits.spawn({
+                  x: 106 + k * 3,
+                  y: 148,
+                  vx: -14 + k * 6,
+                  vy: -20 - k * 3,
+                  life: 520,
+                  color: k % 2 ? "#e8c445" : "#c9a24b",
+                  size: 1,
+                  gravity: 130,
+                });
+              }
             });
           }
         }
@@ -217,12 +262,30 @@ export function Bankomat({
     const eject = () => {
       setPhase("eject");
       setNote("KARTA. PARAGON W CENIE.");
+      setVerdict(
+        queueRef.current?.style.display === ""
+          ? "Karta w kieszeni. Pan za tobą nic nie powiedział, i to było najgorsze."
+          : "Karta w kieszeni. Nikt nie patrzył. Dobry wieczór.",
+      );
       after(500, () => playSfx("register"));
       after(2400, onClose);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [phase, pin, cursor, cash, account, fiftiesOnly, onWithdraw, onClose, press, after]);
+  }, [
+    phase,
+    pin,
+    cursor,
+    cash,
+    account,
+    fiftiesOnly,
+    onWithdraw,
+    onClose,
+    press,
+    after,
+    juice,
+    bits,
+  ]);
 
   /* ------------------------------------------------------------ screen --- */
   const screenLines = (): { text: string; dim?: boolean }[] => {
@@ -231,7 +294,7 @@ export function Bankomat({
         return [
           { text: "BANK SPOLDZIELCZY" },
           { text: "ODDZIAL 16", dim: true },
-          { text: "" },
+          { text: `W KIESZENI ${money} ZL`, dim: true },
           { text: "WLOZ KARTE  [E]" },
         ];
       case "connecting":
@@ -295,236 +358,249 @@ export function Bankomat({
   );
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/85">
-      <div className="relative w-full max-w-2xl px-[7%]">
-        <svg
-          aria-hidden="true"
-          width="100%"
-          viewBox={`0 0 ${W} ${H}`}
-          shapeRendering="crispEdges"
-          style={{ imageRendering: "pixelated" }}
-        >
-          <SharedDefs />
-          {/* the wall behind: night render, dithered */}
-          <rect width={W} height={H} fill={M.render.deep} />
-          <rect width={W} height={H} fill={dth("n", "25")} />
-          {/* the machine's stepped shadow onto the wall — depth before detail */}
-          <path
-            d={pxPath([
-              [BODY[0] + BODY[2], BODY[1] + 6, 5, BODY[3] - 6],
-              [BODY[0] + BODY[2] + 5, BODY[1] + 14, 3, BODY[3] - 22],
-              [BODY[0] + 4, BODY[1] + BODY[3], BODY[2] + 4, 4],
-            ])}
-            fill="#0a0c10"
-            opacity={0.5}
-          />
-          {/* body: municipal plaster-beige, bevel edge-light on every box */}
-          <rect x={BODY[0]} y={BODY[1]} width={BODY[2]} height={BODY[3]} fill={M.plaster.base} />
-          <Bev set={bevelPaths([BODY])} mat={M.plaster} />
-          <rect x={BODY[0]} y={BODY[1]} width={BODY[2]} height={BODY[3]} fill={dth("w", "06")} />
-          {/* side shading: the right face falls away */}
-          <rect
-            x={BODY[0] + BODY[2] - 6}
-            y={BODY[1]}
-            width={6}
-            height={BODY[3]}
-            fill={M.plaster.lo}
-          />
-          <rect
-            x={BODY[0] + BODY[2] - 2}
-            y={BODY[1]}
-            width={2}
-            height={BODY[3]}
-            fill={M.plaster.deep}
-          />
+    <MinigameShell
+      w={W}
+      h={H}
+      bg="#0a0c10"
+      stageRef={stageRef}
+      verdict={verdict}
+      hint={
+        phase === "eject"
+          ? ""
+          : phase === "idle"
+            ? "[e] вкласти картку · esc відійти"
+            : "цифри · w s вибір · e підтвердити · esc забрати картку"
+      }
+      maxWidth="max-w-2xl"
+    >
+      {/* the wall behind: night render, dithered */}
+      <rect width={W} height={KERB_Y} fill="#1c1a17" />
+      {/* the render's courses, and the damp rising up from the kerb */}
+      {[26, 58, 90, 122, 154].map((y) => (
+        <rect key={y} x={0} y={y} width={W} height={1} fill="#161410" opacity={0.8} />
+      ))}
+      <path d={pxPath([[0, 146, W, 16]])} fill="#141210" opacity={0.7} />
+      {/* the pavement, its kerb, and the puddle that never dries on this block */}
+      <rect x={0} y={KERB_Y} width={W} height={H - KERB_Y} fill="#1a1a1e" />
+      <rect x={0} y={KERB_Y} width={W} height={2} fill="#26262c" />
+      <rect x={0} y={KERB_Y + 2} width={W} height={1} fill="#0e0e12" />
+      {[46, 118, 196, 268].map((x) => (
+        <rect key={x} x={x} y={KERB_Y + 3} width={1} height={H - KERB_Y - 3} fill="#121216" />
+      ))}
+      <path d={pxPath(steppedEllipse(196, 180, 26, 6, 2))} fill="#0d1418" />
+      <path d={pxPath(steppedEllipse(196, 179, 20, 4, 2))} fill="#16242a" opacity={0.8} />
+      <rect width={W} height={H} fill={dth("n", "25")} />
+      {/* the machine's stepped shadow onto the wall — depth before detail */}
+      <path
+        d={pxPath([
+          [BODY[0] + BODY[2], BODY[1] + 6, 5, BODY[3] - 6],
+          [BODY[0] + BODY[2] + 5, BODY[1] + 14, 3, BODY[3] - 22],
+          [BODY[0] + 4, BODY[1] + BODY[3], BODY[2] + 4, 4],
+        ])}
+        fill="#0a0c10"
+        opacity={0.5}
+      />
+      {/* body: municipal plaster-beige, bevel edge-light on every box */}
+      <rect x={BODY[0]} y={BODY[1]} width={BODY[2]} height={BODY[3]} fill={M.plaster.lo} />
+      <Bev set={bevelPaths([BODY])} mat={M.plaster} />
+      {/* night takes most of the fascia back; only the screen keeps any of it */}
+      <rect
+        x={BODY[0]}
+        y={BODY[1]}
+        width={BODY[2]}
+        height={BODY[3]}
+        fill="#0a0b0f"
+        opacity={0.62}
+      />
+      <rect x={BODY[0]} y={BODY[1]} width={BODY[2]} height={BODY[3]} fill={dth("n", "25")} />
+      {/* side shading: the right face falls away */}
+      <rect x={BODY[0] + BODY[2] - 6} y={BODY[1]} width={6} height={BODY[3]} fill={M.plaster.lo} />
+      <rect
+        x={BODY[0] + BODY[2] - 2}
+        y={BODY[1]}
+        width={2}
+        height={BODY[3]}
+        fill={M.plaster.deep}
+      />
 
-          {/* bank strip */}
-          <rect x={BODY[0]} y={BODY[1] + 2} width={BODY[2]} height={9} fill={M.teal.base} />
-          <rect x={BODY[0]} y={BODY[1] + 2} width={BODY[2]} height={1} fill={M.teal.hi} />
-          <PixelText x={BODY[0] + 8} y={BODY[1] + 4} text="BANKOMAT" fill={M.linen.hi} />
+      {/* bank strip */}
+      <rect x={BODY[0]} y={BODY[1] + 2} width={BODY[2]} height={9} fill={M.teal.base} />
+      <rect x={BODY[0]} y={BODY[1] + 2} width={BODY[2]} height={1} fill={M.teal.hi} />
+      <PixelText x={BODY[0] + 8} y={BODY[1] + 4} text="BANKOMAT" fill={M.linen.hi} />
 
-          {/* screen: recessed graphite bezel, then the tube */}
-          <rect
-            x={SCREEN_BEZEL[0]}
-            y={SCREEN_BEZEL[1]}
-            width={SCREEN_BEZEL[2]}
-            height={SCREEN_BEZEL[3]}
-            fill={M.graphite.base}
+      {/* screen: recessed graphite bezel, then the tube */}
+      <rect
+        x={SCREEN_BEZEL[0]}
+        y={SCREEN_BEZEL[1]}
+        width={SCREEN_BEZEL[2]}
+        height={SCREEN_BEZEL[3]}
+        fill={M.graphite.base}
+      />
+      <Bev set={bevelPaths([SCREEN_BEZEL])} mat={M.graphite} />
+      {/* recess: dark on top/left inside the bezel — carved IN, not raised */}
+      <path
+        d={pxPath([
+          [SCREEN[0] - 1, SCREEN[1] - 1, SCREEN[2] + 2, 1],
+          [SCREEN[0] - 1, SCREEN[1], 1, SCREEN[3] + 1],
+        ])}
+        fill="#101215"
+      />
+      <rect x={SCREEN[0]} y={SCREEN[1]} width={SCREEN[2]} height={SCREEN[3]} fill={SCREEN_BG} />
+      {/* the green glow pooling out of the recess onto the fascia */}
+      <Light set={glow} op={phase === "idle" ? 0.5 : 0.8} />
+      {/* screen text */}
+      {screenLines().map((l, i) =>
+        l.text ? (
+          <PixelText
+            // biome-ignore lint/suspicious/noArrayIndexKey: screen rows are positional slots
+            key={`${phase}:${i}:${l.text}`}
+            x={SCREEN[0] + 4}
+            y={SCREEN[1] + 5 + i * 9}
+            text={l.text}
+            fill={l.dim ? GREEN_DIM : GREEN}
           />
-          <Bev set={bevelPaths([SCREEN_BEZEL])} mat={M.graphite} />
-          {/* recess: dark on top/left inside the bezel — carved IN, not raised */}
-          <path
-            d={pxPath([
-              [SCREEN[0] - 1, SCREEN[1] - 1, SCREEN[2] + 2, 1],
-              [SCREEN[0] - 1, SCREEN[1], 1, SCREEN[3] + 1],
-            ])}
-            fill="#101215"
-          />
-          <rect x={SCREEN[0]} y={SCREEN[1]} width={SCREEN[2]} height={SCREEN[3]} fill={SCREEN_BG} />
-          {/* the green glow pooling out of the recess onto the fascia */}
-          <Light set={glow} op={phase === "idle" ? 0.5 : 0.8} />
-          {/* screen text */}
-          {screenLines().map((l, i) =>
-            l.text ? (
-              <PixelText
-                // biome-ignore lint/suspicious/noArrayIndexKey: screen rows are positional slots
-                key={`${phase}:${i}:${l.text}`}
-                x={SCREEN[0] + 4}
-                y={SCREEN[1] + 5 + i * 9}
-                text={l.text}
-                fill={l.dim ? GREEN_DIM : GREEN}
-              />
-            ) : null,
-          )}
-          {err ? (
+        ) : null,
+      )}
+      {err ? (
+        <PixelText
+          x={SCREEN[0] + 4}
+          y={SCREEN[1] + SCREEN[3] - 9}
+          text={note ?? ""}
+          fill="#d88f5a"
+        />
+      ) : null}
+      {/* scanlines + tube vignette */}
+      <rect
+        x={SCREEN[0]}
+        y={SCREEN[1]}
+        width={SCREEN[2]}
+        height={SCREEN[3]}
+        fill={dth("n", "12")}
+      />
+
+      {/* keypad: every key its own raised box; the pressed one drops */}
+      {keyRects.map(({ key, r }) => {
+        const down = pressedKey === key;
+        const [x, y, w, h] = r;
+        return (
+          <g key={key} transform={down ? "translate(0 1)" : undefined}>
+            <rect x={x} y={y + h} width={w} height={down ? 1 : 2} fill={M.steel.deep} />
+            <rect x={x} y={y} width={w} height={h} fill={down ? M.steel.lo : M.steel.base} />
+            <rect x={x} y={y} width={w} height={1} fill={M.steel.hi} />
+            <rect x={x} y={y} width={1} height={h} fill={M.steel.hi} opacity={0.7} />
             <PixelText
-              x={SCREEN[0] + 4}
-              y={SCREEN[1] + SCREEN[3] - 9}
-              text={note ?? ""}
-              fill="#d88f5a"
+              x={x + Math.floor((w - textWidth(key === "ok" ? "OK" : key, 1)) / 2)}
+              y={y + 2}
+              text={key === "ok" ? "OK" : key === "<" ? "C" : key}
+              fill={M.graphite.deep}
             />
-          ) : null}
-          {/* scanlines + tube vignette */}
-          <rect
-            x={SCREEN[0]}
-            y={SCREEN[1]}
-            width={SCREEN[2]}
-            height={SCREEN[3]}
-            fill={dth("n", "12")}
-          />
+          </g>
+        );
+      })}
+      <AO x={KEYS_X - 2} y={KEYS_Y + 4 * (KEY_H + KEY_GAP)} w={3 * (KEY_W + KEY_GAP)} op={0.5} />
 
-          {/* keypad: every key its own raised box; the pressed one drops */}
-          {keyRects.map(({ key, r }) => {
-            const down = pressedKey === key;
-            const [x, y, w, h] = r;
-            return (
-              <g key={key} transform={down ? "translate(0 1)" : undefined}>
-                <rect x={x} y={y + h} width={w} height={down ? 1 : 2} fill={M.steel.deep} />
-                <rect x={x} y={y} width={w} height={h} fill={down ? M.steel.lo : M.steel.base} />
-                <rect x={x} y={y} width={w} height={1} fill={M.steel.hi} />
-                <rect x={x} y={y} width={1} height={h} fill={M.steel.hi} opacity={0.7} />
-                <PixelText
-                  x={x + Math.floor((w - textWidth(key === "ok" ? "OK" : key, 1)) / 2)}
-                  y={y + 2}
-                  text={key === "ok" ? "OK" : key === "<" ? "C" : key}
-                  fill={M.graphite.deep}
-                />
-              </g>
-            );
-          })}
-          <AO
-            x={KEYS_X - 2}
-            y={KEYS_Y + 4 * (KEY_H + KEY_GAP)}
-            w={3 * (KEY_W + KEY_GAP)}
-            op={0.5}
-          />
+      {/* card slot: lit green when waiting, amber while held */}
+      <rect
+        x={CARD_SLOT[0]}
+        y={CARD_SLOT[1]}
+        width={CARD_SLOT[2]}
+        height={CARD_SLOT[3]}
+        fill={M.graphite.base}
+      />
+      <Bev set={bevelPaths([CARD_SLOT])} mat={M.graphite} />
+      <rect
+        x={CARD_SLOT[0] + 4}
+        y={CARD_SLOT[1] + 3}
+        width={CARD_SLOT[2] - 8}
+        height={2}
+        fill="#08090b"
+      />
+      <rect
+        x={CARD_SLOT[0] + CARD_SLOT[2] - 7}
+        y={CARD_SLOT[1] - 4}
+        width={4}
+        height={3}
+        fill={phase === "idle" || phase === "eject" ? "#71d871" : "#d8a24a"}
+      >
+        <animate attributeName="opacity" values="1;0.35;1" dur="1.6s" repeatCount="indefinite" />
+      </rect>
+      <PixelText x={CARD_SLOT[0]} y={CARD_SLOT[1] + 11} text="KARTA" fill={M.plaster.deep} />
 
-          {/* card slot: lit green when waiting, amber while held */}
-          <rect
-            x={CARD_SLOT[0]}
-            y={CARD_SLOT[1]}
-            width={CARD_SLOT[2]}
-            height={CARD_SLOT[3]}
-            fill={M.graphite.base}
+      {/* cash slot with shutter; bills emerge in `cash` phase */}
+      <rect
+        x={CASH_SLOT[0]}
+        y={CASH_SLOT[1]}
+        width={CASH_SLOT[2]}
+        height={CASH_SLOT[3]}
+        fill={M.graphite.base}
+      />
+      <Bev set={bevelPaths([CASH_SLOT])} mat={M.graphite} />
+      <rect
+        x={CASH_SLOT[0] + 4}
+        y={CASH_SLOT[1] + 4}
+        width={CASH_SLOT[2] - 8}
+        height={3}
+        fill="#08090b"
+      />
+      {phase === "cash" ? (
+        <g>
+          {/* the note sticking out: enamel-green PLN with a lighter band */}
+          <rect x={CASH_SLOT[0] + 14} y={CASH_SLOT[1] - 6} width={60} height={8} fill="#7a9a62" />
+          <rect x={CASH_SLOT[0] + 14} y={CASH_SLOT[1] - 6} width={60} height={1} fill="#a4bd8c" />
+          <rect x={CASH_SLOT[0] + 38} y={CASH_SLOT[1] - 5} width={12} height={7} fill="#8fae76" />
+          <PixelText x={CASH_SLOT[0] + 18} y={CASH_SLOT[1] - 4} text={`${cash}`} fill="#2c3f2e" />
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 4; 0 0"
+            dur="0.4s"
+            fill="freeze"
           />
-          <Bev set={bevelPaths([CARD_SLOT])} mat={M.graphite} />
-          <rect
-            x={CARD_SLOT[0] + 4}
-            y={CARD_SLOT[1] + 3}
-            width={CARD_SLOT[2] - 8}
-            height={2}
-            fill="#08090b"
-          />
-          <rect
-            x={CARD_SLOT[0] + CARD_SLOT[2] - 7}
-            y={CARD_SLOT[1] - 4}
-            width={4}
-            height={3}
-            fill={phase === "idle" || phase === "eject" ? "#71d871" : "#d8a24a"}
-          >
-            <animate
-              attributeName="opacity"
-              values="1;0.35;1"
-              dur="1.6s"
-              repeatCount="indefinite"
-            />
-          </rect>
-          <PixelText x={CARD_SLOT[0]} y={CARD_SLOT[1] + 11} text="KARTA" fill={M.plaster.deep} />
+        </g>
+      ) : null}
+      <PixelText x={CASH_SLOT[0]} y={CASH_SLOT[1] + 12} text="WYPLATA" fill={M.plaster.deep} />
 
-          {/* cash slot with shutter; bills emerge in `cash` phase */}
-          <rect
-            x={CASH_SLOT[0]}
-            y={CASH_SLOT[1]}
-            width={CASH_SLOT[2]}
-            height={CASH_SLOT[3]}
-            fill={M.graphite.base}
-          />
-          <Bev set={bevelPaths([CASH_SLOT])} mat={M.graphite} />
-          <rect
-            x={CASH_SLOT[0] + 4}
-            y={CASH_SLOT[1] + 4}
-            width={CASH_SLOT[2] - 8}
-            height={3}
-            fill="#08090b"
-          />
-          {phase === "cash" ? (
-            <g>
-              {/* the note sticking out: enamel-green PLN with a lighter band */}
-              <rect
-                x={CASH_SLOT[0] + 14}
-                y={CASH_SLOT[1] - 6}
-                width={60}
-                height={8}
-                fill="#7a9a62"
-              />
-              <rect
-                x={CASH_SLOT[0] + 14}
-                y={CASH_SLOT[1] - 6}
-                width={60}
-                height={1}
-                fill="#a4bd8c"
-              />
-              <rect
-                x={CASH_SLOT[0] + 38}
-                y={CASH_SLOT[1] - 5}
-                width={12}
-                height={7}
-                fill="#8fae76"
-              />
-              <PixelText
-                x={CASH_SLOT[0] + 18}
-                y={CASH_SLOT[1] - 4}
-                text={`${cash}`}
-                fill="#2c3f2e"
-              />
-              <animateTransform
-                attributeName="transform"
-                type="translate"
-                values="0 4; 0 0"
-                dur="0.4s"
-                fill="freeze"
-              />
-            </g>
-          ) : null}
-          <PixelText x={CASH_SLOT[0]} y={CASH_SLOT[1] + 12} text="WYPLATA" fill={M.plaster.deep} />
+      {/* the queue: one man, behind you, who is not in a hurry but is waiting */}
+      <g ref={queueRef} style={{ display: "none", transition: "transform 300ms steps(3, end)" }}>
+        {/* his shadow first, so he stands on the pavement rather than over it */}
+        <path
+          d={pxPath([
+            [234, 176, 40, 3],
+            [240, 179, 28, 2],
+          ])}
+          fill="#050608"
+          opacity={0.6}
+        />
+        <path d={pxPath([[246, 96, 14, 11]])} fill="#6d5641" />
+        <path d={pxPath([[246, 96, 14, 3]])} fill="#3a2e24" />
+        <rect x={249} y={101} width={2} height={2} fill="#12100c" />
+        <rect x={255} y={101} width={2} height={2} fill="#12100c" />
+        <path
+          d={pxPath([
+            [240, 107, 26, 40],
+            [237, 112, 32, 30],
+          ])}
+          fill="#2b2f38"
+        />
+        <path d={pxPath([[240, 107, 26, 2]])} fill="#3c4250" />
+        <path
+          d={pxPath([
+            [242, 147, 10, 28],
+            [256, 147, 10, 28],
+          ])}
+          fill="#1b2230"
+        />
+        <rect x={240} y={173} width={13} height={3} fill="#14171d" />
+        <rect x={255} y={173} width={13} height={3} fill="#14171d" />
+        {/* the bag he is holding, and the cigarette he is not smoking indoors */}
+        <path d={pxPath([[268, 126, 10, 14]])} fill="#3d2f1c" />
+        <path d={pxPath([[268, 126, 10, 1]])} fill="#5a4526" />
+        <rect x={234} y={124} width={4} height={1} fill="#d8d3c5" opacity={0.7} />
+        <rect x={233} y={124} width={1} height={1} fill="#e8863c" />
+      </g>
 
-          <Vignette set={VIGNETTE} />
-        </svg>
-
-        {/* the hint line, same voice as every screen in the game */}
-        <p className="mt-3 text-center font-mono text-[11px] text-parchment/50">
-          {phase === "idle"
-            ? "e włóż kartę · esc odejdź"
-            : phase === "pin"
-              ? "0-9 pin · backspace popraw · esc odejdź"
-              : phase === "cash"
-                ? "e weź gotówkę"
-                : "↑↓ wybierz · e zatwierdź · esc odejdź"}
-        </p>
-        <p className="mt-1 text-center font-mono text-[10px] text-parchment/30">
-          masz przy sobie {money} zł
-        </p>
-      </div>
-    </div>
+      {/* the coins and receipt bits the machine throws when it finally pays */}
+      <g>{bits.nodes}</g>
+    </MinigameShell>
   );
 }
