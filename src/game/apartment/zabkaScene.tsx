@@ -2240,6 +2240,17 @@ export const ZABKA_SCENE: RuntimeSceneDef<WorldState> = {
   artKey: zabkaArtKey,
   id: "zabka",
   width: W,
+  /**
+   * The aisle. The fit-out already paints direction arrows on the floor at
+   * y=166..172 and nobody could ever stand on them, because the player was
+   * pinned to the shelf line. Twenty pixels of tile now, which is the aisle a
+   * Żabka this size actually has, and the arrows are underfoot where they belong.
+   */
+  ground: {
+    top: FLOOR,
+    bottom: 170,
+    zones: [{ x0: 0, x1: W, kind: "tile" }],
+  },
   objects: [
     {
       id: "door-street",
@@ -2249,8 +2260,8 @@ export const ZABKA_SCENE: RuntimeSceneDef<WorldState> = {
       range: 24,
       to: { scene: "outside", spawnX: 450 },
     },
-    { id: "baskets", kind: "flavor", x: 62, range: 8 },
-    { id: "standing-bar", kind: "flavor", x: 108, range: 24 },
+    { id: "baskets", kind: "flavor", x: 62, range: 8, approachY: 152 },
+    { id: "standing-bar", kind: "flavor", x: 108, range: 24, approachY: 160 },
     { id: "coffee-machine", kind: "sport", action: "coffee", x: 176, range: 26 },
     { id: "hotdog-grill", kind: "sport", action: "hotdog", x: 244, range: 26 },
     { id: "bakery-case", kind: "flavor", x: 308, range: 26 },

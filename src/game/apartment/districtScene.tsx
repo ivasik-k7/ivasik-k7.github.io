@@ -3788,6 +3788,28 @@ export const DISTRICT_SCENE: RuntimeSceneDef<WorldState> = {
   id: "district",
   width: W,
   /**
+   * THE PAVEMENT, which this scene has been drawing all along.
+   *
+   * GROUND is the shopfront line and KERB is where the slabs stop; the eighteen
+   * pixels between them are half a metre of pavement that nobody could stand on.
+   * The band takes all of it but the last two, so the feet can reach the kerb
+   * and never the carriageway — a square you can be crossed diagonally is worth
+   * more than one you can be walked along.
+   *
+   * The lamp columns get blockers because they are the one thing drawn standing
+   * ON the pavement rather than against a building, and walking through a
+   * lamp post is the single most obvious tell that a scene has no floor.
+   */
+  ground: {
+    top: GROUND,
+    bottom: KERB - 2,
+    zones: [
+      { x0: 0, x1: W, y0: KERB - 5, y1: KERB - 2, kind: "kerb" },
+      { x0: 0, x1: W, kind: "slabs" },
+    ],
+    blockers: LAMP_X.map((x) => ({ x0: x - 5, y0: GROUND, x1: x + 8, y1: GROUND + 5 })),
+  },
+  /**
    * Somebody actually walking across the square, stepped in the game loop
    * rather than in React: a patrol between the kiosk and the crossing, with a
    * pause at each end for the traffic. A square with nobody crossing it is a

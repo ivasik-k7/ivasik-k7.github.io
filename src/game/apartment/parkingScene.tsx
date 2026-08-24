@@ -5,7 +5,7 @@ import {
   Monologue,
   NpcActor,
   px,
-  type SceneDef,
+  type RuntimeSceneDef,
   stripes,
 } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
@@ -1222,6 +1222,12 @@ function AisleProps({ ph, fed }: { ph: Ph; fed: boolean }) {
 // ---------------------------------------------------------------------------
 
 const COLUMNS = [307, 678, 1059, 1309];
+/** Where the sump patches are. Shared with the ground zones, so the stain the
+ *  player can see and the stain the terrain knows about are the same stain. */
+const OIL_AT = [210, 448, 760, 1010, 1240, 1350];
+/** Where you stand to use the wall, and where you stand to look at a car. */
+const BACK = GROUND + 2;
+const CAR_Y = GROUND + 6;
 
 function ParkingScene({ world, phase }: { world: WorldState; phase?: string }) {
   const ph = toPhase(phase);
@@ -1264,7 +1270,7 @@ function ParkingScene({ world, phase }: { world: WorldState; phase?: string }) {
           ))}
           {px(1430, 150, 36, 5, P.hazard)}
           {[1434, 1444, 1454].map((sx) => px(sx, 150, 6, 5, P.hazardDark, `sb${sx}`))}
-          {[210, 448, 760, 1010, 1240, 1350].map((ox) => (
+          {OIL_AT.map((ox) => (
             <g key={`oil${ox}`}>
               <ellipse cx={ox} cy={160} rx={18} ry={5} fill={P.oil} opacity={0.5} />
               <ellipse cx={ox + 6} cy={163} rx={7} ry={2} fill="#3a3833" opacity={0.5} />
@@ -1631,48 +1637,106 @@ function ParkingEffects({
   );
 }
 
-export const PARKING_SCENE: SceneDef<WorldState> = {
+export const PARKING_SCENE: RuntimeSceneDef<WorldState> = {
   id: "parking",
   width: W,
+  /**
+   * THE AISLE, and not a line down the middle of it.
+   *
+   * This level was drawn with thirty pixels of floor and the player was pinned
+   * to the top edge of it, standing in the bay lines with the whole aisle behind
+   * him — which is the one place in a car park you never stand. The band runs
+   * from the car noses (GROUND, where every bumper and every prop's shadow
+   * lands) out to y=168, which is the last row of aisle that is not already
+   * somebody's near-lane parking.
+   *
+   * The columns and the two near-lane cars in the Foreground are blockers rather
+   * than a profile pinch. A profile would clamp the walk and read as an
+   * invisible wall; a blocker slides, so squeezing between a column and a
+   * parked Passat feels like squeezing past something, which is what it is.
+   */
+  ground: {
+    top: GROUND,
+    bottom: 168,
+    /**
+     * What is underfoot, where it differs from bare deck: the drain's puddle
+     * (which genuinely wades), the six patches of somebody's sump, and the
+     * hazard hatching at the ramp mouth. Read back through `live.surface`.
+     */
+    zones: [
+      { x0: 926, x1: 996, y0: 154, y1: 168, kind: "puddle", speed: 0.82 },
+      ...OIL_AT.map((ox) => ({ x0: ox - 20, x1: ox + 20, y0: 154, y1: 166, kind: "oil" })),
+      { x0: 1428, x1: 1468, y0: GROUND, y1: 158, kind: "hazard" },
+      { x0: 0, x1: W, kind: "deck" },
+    ],
+    blockers: [
+      /* the four columns, on the bay lines, standing on GROUND */
+      ...COLUMNS.map((mid) => ({ x0: mid - 12, y0: GROUND, x1: mid + 12, y1: GROUND + 6 })),
+      /* the near lane is parked full in two places — see the Foreground */
+      { x0: 148, y0: 159, x1: 342, y1: 168 },
+      { x0: 1298, y0: 161, x1: 1512, y1: 168 },
+    ],
+  },
+  /**
+   * Every world read the art performs, and nothing else. This scene had no
+   * artKey at all, so two thousand rects of concrete repainted on every toast,
+   * every step and every pocket change.
+   */
+  artKey: (w, ph) => [ph, w.golfLocked ? 1 : 0, extras(w).catFed ? 1 : 0].join("|"),
+  /**
+   * WHERE YOU STAND, now that there is somewhere to stand.
+   *
+   * Everything bolted to the wall or stacked against a bay line is used from
+   * the back of the aisle (`approachY: BACK`) — you walk up to a noticeboard,
+   * you do not read it from four metres away. A car is used from a step back
+   * (`CAR_Y`), because you look at a whole car and because standing on its
+   * bumper is not a thing. The two things actually lying in the aisle carry a
+   * `y` of their own so the marker sits on the floor where they are.
+   */
   objects: [
     {
       id: "parking-lift",
       kind: "liftbutton",
       x: 28,
       range: 20,
+      approachY: BACK,
       to: { scene: "elevator", spawnX: 100 },
     },
-    { id: "bikes", kind: "flavor", x: 66, range: 12 },
-    { id: "noticeboard", kind: "flavor", x: 102, range: 14 },
-    { id: "car-audi", kind: "car", x: 165, range: 26 },
-    { id: "extinguisher", kind: "flavor", x: 274, range: 14 },
-    { id: "graffiti", kind: "flavor", x: 307, range: 10 },
-    { id: "car-passat", kind: "car", x: 355, range: 26 },
-    { id: "camera", kind: "flavor", x: 433, range: 12 },
-    { id: "sign", kind: "flavor", x: 480, range: 12 },
-    { id: "car-lanos", kind: "car", x: 530, range: 24 },
-    { id: "tyres", kind: "flavor", x: 620, range: 14 },
-    { id: "fire-alarm", kind: "flavor", x: 660, range: 8 },
-    { id: "trolley", kind: "flavor", x: 687, range: 10 },
-    { id: "car-transit", kind: "car", x: 727, range: 26 },
-    { id: "cat", kind: "flavor", x: 780, range: 10 },
-    { id: "cage", kind: "flavor", x: 820, range: 22 },
-    { id: "car-octavia", kind: "car", x: 911, range: 26 },
-    { id: "leak", kind: "flavor", x: 950, range: 14 },
-    { id: "pan-marek", kind: "npc", priority: 2, x: 1006, range: 14, face: 1 },
-    { id: "electrics", kind: "flavor", x: 1040, range: 14 },
-    { id: "golf", kind: "mycar", x: 1109, range: 28 },
-    { id: "charger", kind: "flavor", x: 1190, range: 16 },
-    { id: "car-corsa", kind: "car", x: 1269, range: 24 },
-    { id: "moto", kind: "flavor", x: 1437, range: 20 },
-    { id: "mirror-dome", kind: "flavor", x: 1465, range: 10 },
-    { id: "barrier-panel", kind: "flavor", x: 1487, range: 9 },
+    { id: "bikes", kind: "flavor", x: 66, range: 12, approachY: BACK },
+    { id: "noticeboard", kind: "flavor", x: 102, range: 14, approachY: BACK },
+    { id: "car-audi", kind: "car", x: 165, range: 26, approachY: CAR_Y },
+    { id: "extinguisher", kind: "flavor", x: 274, range: 14, approachY: BACK },
+    /* the tag is on the first column, and the column is a blocker: you read it
+       from beside it, so the reach has to cover the width of the column */
+    { id: "graffiti", kind: "flavor", x: 307, range: 24, approachX: 290, approachY: BACK },
+    { id: "car-passat", kind: "car", x: 355, range: 26, approachY: CAR_Y },
+    { id: "camera", kind: "flavor", x: 433, range: 12, approachY: 160 },
+    { id: "sign", kind: "flavor", x: 480, range: 12, approachY: BACK },
+    { id: "car-lanos", kind: "car", x: 530, range: 24, approachY: CAR_Y },
+    { id: "tyres", kind: "flavor", x: 620, range: 14, approachY: BACK },
+    { id: "fire-alarm", kind: "flavor", x: 660, range: 8, approachY: BACK },
+    { id: "trolley", kind: "flavor", x: 687, range: 10, approachY: BACK },
+    { id: "car-transit", kind: "car", x: 727, range: 26, approachY: CAR_Y },
+    { id: "cat", kind: "flavor", x: 780, range: 10, approachY: BACK },
+    { id: "cage", kind: "flavor", x: 820, range: 22, approachY: BACK },
+    { id: "car-octavia", kind: "car", x: 911, range: 26, approachY: CAR_Y },
+    /* the drain and its permanent puddle: out in the aisle, not on the wall */
+    { id: "leak", kind: "flavor", x: 950, y: 160, range: 14, approachY: 164 },
+    { id: "pan-marek", kind: "npc", priority: 2, x: 1006, range: 14, face: 1, approachY: CAR_Y },
+    { id: "electrics", kind: "flavor", x: 1040, range: 14, approachY: BACK },
+    { id: "golf", kind: "mycar", x: 1109, range: 28, approachY: CAR_Y },
+    { id: "charger", kind: "flavor", x: 1190, range: 16, approachY: BACK },
+    { id: "car-corsa", kind: "car", x: 1269, range: 24, approachY: CAR_Y },
+    { id: "moto", kind: "flavor", x: 1437, range: 20, approachY: BACK },
+    { id: "mirror-dome", kind: "flavor", x: 1465, range: 10, approachY: 162 },
+    { id: "barrier-panel", kind: "flavor", x: 1487, range: 9, approachY: BACK },
     {
       id: "exit-ramp",
       kind: "stairs",
       priority: 1,
       x: 1545,
       range: 26,
+      approachY: 156,
       to: { scene: "outside", spawnX: 150 },
     },
   ],

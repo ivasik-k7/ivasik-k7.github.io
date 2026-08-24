@@ -7711,6 +7711,24 @@ export const STREET_SCENE: RuntimeSceneDef<WorldState> = {
   id: "outside",
   width: STREET_W,
   /**
+   * Ulica Słoneczna has sixteen pixels of pavement between the block and the
+   * kerb, and until now every one of them was scenery. The band takes it to two
+   * pixels short of the kerb line, which is where a person stops.
+   *
+   * The trzepak is the one blocker that matters: it is a steel frame standing in
+   * the middle of the yard, drawn at CY like everything else, and being able to
+   * walk through the trzepak in a Polish courtyard would be a small betrayal.
+   */
+  ground: {
+    top: GROUND,
+    bottom: KERB - 2,
+    zones: [
+      { x0: 0, x1: STREET_W, y0: KERB - 4, y1: KERB - 2, kind: "kerb" },
+      { x0: 0, x1: STREET_W, kind: "slabs" },
+    ],
+    blockers: LAMP_X.map((x) => ({ x0: x - 5, y0: GROUND, x1: x + 8, y1: GROUND + 5 })),
+  },
+  /**
    * Every world read the art performs. The old key was JSON.stringify(w.street),
    * which repainted on flags the art never looked at; this one lists them.
    */

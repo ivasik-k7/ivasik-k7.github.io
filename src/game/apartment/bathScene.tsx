@@ -1806,6 +1806,18 @@ function BathEffects({
 export const BATH_SCENE: RuntimeSceneDef<WorldState> = {
   id: "bath",
   width: W,
+  /**
+   * A bathroom is small, and the band is small with it: eighteen pixels, which
+   * at this key is the half-metre of tile between the fittings and the door.
+   * Shallower than the rooms either side of it on purpose — a bathroom you can
+   * stride about in does not read as a bathroom.
+   */
+  ground: {
+    top: FLOOR,
+    bottom: 168,
+    /* one surface in here, and it is wet more often than it is dry */
+    zones: [{ x0: 0, x1: W, kind: "tile" }],
+  },
   spawnX: 44,
   /**
    * Every world read the art performs, in order. Adding a read without adding

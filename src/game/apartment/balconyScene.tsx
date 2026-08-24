@@ -152,6 +152,9 @@ const SILL = 116; // window sill, 0.90 m
 const FLOOR = 150; // the slab, as in every other scene
 const CY = 149; // where contact shadows sit against the wall
 const HANDLE = 110; // 1.05 m — door handle, window handle, the switch is above it
+/** The two depths there are out here: against the wall, and leaning on the rail. */
+const WALL_Y = 152;
+const RAIL_Y = 160;
 
 /** Declared as a function only so the row table above reads top to bottom. */
 function FLOOR_HEAD() {
@@ -2450,33 +2453,63 @@ export const BALCONY_SCENE: RuntimeSceneDef<WorldState> = {
       o.season,
     ].join("|");
   },
+  /**
+   * TWELVE PIXELS, AND THEY ARE THE WHOLE POINT OF A BALCONY.
+   *
+   * The slab is deeper than this — a metre and a half — but the parapet is a
+   * near-plane crop in the Foreground from y=146 down, so only the back 30 cm of
+   * it is in frame. Walking further than that would sink the figure behind the
+   * cap rather than take him anywhere. So: the wall at the top, the rail at the
+   * bottom, and the two things you come out here to do live at opposite ends of
+   * it — the switch and the washing are against the wall, and smoking and taking
+   * a call happen leaning on the parapet, which is where people actually do
+   * both. That is worth twelve pixels.
+   */
+  ground: {
+    top: FLOOR,
+    bottom: 162,
+    /**
+     * The slab is bare concrete except where the mat is, and the mat is the one
+     * patch of this balcony that has ever been dry.
+     */
+    zones: [
+      { x0: 16, x1: 56, y0: FLOOR, y1: 160, kind: "mat" },
+      { x0: 0, x1: W, kind: "slab" },
+    ],
+    /* the divider at the far end is a wall, not a suggestion */
+    blockers: [{ x0: DIV.x0 - 2, y0: FLOOR, x1: W, y1: 162 }],
+  },
   objects: [
-    { id: "boots", kind: "flavor", x: 10, range: 8 },
+    { id: "boots", kind: "flavor", x: 10, range: 8, approachY: WALL_Y },
     /* --- new: the mat, and the one thing that fits in the gap at 18…24 --- */
-    { id: "doormat", kind: "flavor", x: 21, range: 3 },
+    { id: "doormat", kind: "flavor", x: 21, y: 156, range: 3, approachY: 156 },
     {
       id: "door-living3",
       kind: "flatdoor",
       priority: 1,
       x: 44,
       range: 20,
+      approachY: WALL_Y,
       to: { scene: "studio", spawnX: 610 },
     },
-    { id: "ashtray", kind: "flavor", x: 70, range: 8 },
-    { id: "smoke", kind: "sport", action: "smoke", x: 96, range: 12 },
-    { id: "switch-balcony", kind: "lamp", x: 116, range: 7 },
-    { id: "flowers", kind: "flavor", x: 132, range: 7 },
-    { id: "call", kind: "sport", action: "call", x: 148, range: 7 },
-    { id: "laundry", kind: "flavor", x: 166, range: 8 },
-    { id: "skis", kind: "flavor", x: 184, range: 7 },
-    { id: "broom", kind: "flavor", x: 196, range: 5 },
-    { id: "seedlings", kind: "flavor", x: 216, range: 10 },
-    { id: "ac-unit", kind: "flavor", x: 234, range: 8 },
-    { id: "crate", kind: "flavor", x: 252, range: 8 },
+    { id: "ashtray", kind: "flavor", x: 70, range: 8, approachY: WALL_Y },
+    /* out at the rail, both of them, because that is where you go to do them */
+    { id: "smoke", kind: "sport", action: "smoke", x: 96, range: 12, approachY: RAIL_Y },
+    { id: "switch-balcony", kind: "lamp", x: 116, range: 7, approachY: WALL_Y },
+    { id: "flowers", kind: "flavor", x: 132, range: 7, approachY: RAIL_Y },
+    { id: "call", kind: "sport", action: "call", x: 148, range: 7, approachY: RAIL_Y },
+    { id: "laundry", kind: "flavor", x: 166, range: 8, approachY: WALL_Y },
+    { id: "skis", kind: "flavor", x: 184, range: 7, approachY: WALL_Y },
+    { id: "broom", kind: "flavor", x: 196, range: 5, approachY: WALL_Y },
+    { id: "seedlings", kind: "flavor", x: 216, range: 10, approachY: WALL_Y },
+    { id: "ac-unit", kind: "flavor", x: 234, range: 8, approachY: WALL_Y },
+    { id: "crate", kind: "flavor", x: 252, range: 8, approachY: WALL_Y },
     /* --- new: the drainpipe, the dish and the meters, in the gap at 260…268 --- */
-    { id: "drainpipe", kind: "flavor", x: 264, range: 4 },
-    { id: "bicycle", kind: "flavor", x: 280, range: 13 },
-    { id: "divider", kind: "flavor", x: 302, range: 8 },
+    { id: "drainpipe", kind: "flavor", x: 264, range: 4, approachY: WALL_Y },
+    { id: "bicycle", kind: "flavor", x: 280, range: 13, approachY: WALL_Y },
+    /* the divider is behind its own blocker, so the reach has to cover the
+       distance from the last walkable pixel to the panel itself */
+    { id: "divider", kind: "flavor", x: 302, range: 24, approachX: 282, approachY: 156 },
   ],
   Component: ({ world, phase }) => <BalconyScene world={world} phase={phase} />,
   /* the cast and the sources do most of it; the engine takes the rest */

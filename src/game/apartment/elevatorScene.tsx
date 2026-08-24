@@ -14,8 +14,8 @@ import {
   PixelText,
   pxPath,
   type Rect,
+  type RuntimeSceneDef,
   repeat,
-  type SceneDef,
   SharedDefs,
   STEP_FADE,
   STEP_SLIDE,
@@ -1993,17 +1993,29 @@ export function elevatorArtKey(world: WorldState, phase: string): string {
   ].join("|");
 }
 
-export const ELEVATOR_SCENE: SceneDef<WorldState> = {
+export const ELEVATOR_SCENE: RuntimeSceneDef<WorldState> = {
   id: "elevator",
   width: W,
+  /**
+   * A lift car is 1.1 m deep and this one is cropped by the bottom of frame, so
+   * the band is twelve pixels — the least depth of any scene in the game, and
+   * deliberately. It is not there so you can walk about; it is there so you can
+   * step back off the panel and stand in the corner like everybody does, and so
+   * that a lift full of people has somewhere to put them.
+   */
+  ground: {
+    top: FLOOR,
+    bottom: 162,
+    zones: [{ x0: 0, x1: W, kind: "lino" }],
+  },
   objects: [
     { id: "lift-sticker", kind: "flavor", x: 18, range: 9 },
-    { id: "lift-mirror", kind: "flavor", x: 46, range: 16 },
+    { id: "lift-mirror", kind: "flavor", x: 46, range: 16, approachY: 160 },
     { id: "lift-ad", kind: "flavor", x: 82, range: 12 },
     { id: "lift-hatch", kind: "flavor", x: 100, range: 8 },
     { id: "lift-plate", kind: "flavor", x: 120, range: 10 },
     { id: "lift-intercom", kind: "flavor", x: 141, range: 9 },
-    { id: "lift-panel", kind: "liftpanel", x: 166, range: 16 },
+    { id: "lift-panel", kind: "liftpanel", x: 166, range: 16, approachY: 152 },
     { id: "lift-camera", kind: "flavor", x: 191, range: 8 },
   ],
   Component: ({ world, phase }) => <ElevatorScene world={world} phase={phase} />,

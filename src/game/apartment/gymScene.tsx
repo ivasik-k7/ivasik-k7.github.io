@@ -20,8 +20,8 @@ import {
   px,
   pxPath,
   type Rect,
+  type RuntimeSceneDef,
   repeat,
-  type SceneDef,
   SharedDefs,
   STEP_FADE,
   STEP_SLIDE,
@@ -2366,9 +2366,34 @@ export function gymArtKey(world: WorldState, phase: string): string {
   ].join("|");
 }
 
-export const GYM_SCENE: SceneDef<WorldState> = {
+export const GYM_SCENE: RuntimeSceneDef<WorldState> = {
   id: "gym",
   width: W,
+  /**
+   * FIVE FLOORS, and the game already knew where all five of them were.
+   *
+   * `floorField` paints the entry, reception, cardio, weights and changing-room
+   * floors between y=152 and y=166, and the lifting platform is a separate
+   * eighty-eight pixels of timber at x=936. All of that was decoration under a
+   * player standing on one line. The band is the floor those fields are painted
+   * on, and the zones are the same five boundaries the art uses, so what the
+   * player is standing on and what `live.surface` says are the same thing.
+   *
+   * The platform is declared before the rubber it sits inside, because the
+   * first matching zone wins.
+   */
+  ground: {
+    top: FLOOR,
+    bottom: 170,
+    zones: [
+      { x0: 936, x1: 1024, kind: "platform" },
+      { x0: 0, x1: Z.stairEnd, kind: "entry" },
+      { x0: Z.stairEnd, x1: Z.receptionEnd, kind: "lino" },
+      { x0: Z.receptionEnd, x1: Z.cardioEnd, kind: "cardio" },
+      { x0: Z.cardioEnd, x1: Z.weightsEnd, kind: "rubber" },
+      { x0: Z.weightsEnd, x1: W, kind: "changing" },
+    ],
+  },
   objects: [
     /* --- the way in and out, which is the stair up from the lobby --- */
     {
@@ -2390,19 +2415,19 @@ export const GYM_SCENE: SceneDef<WorldState> = {
     { id: "gym-cooler", kind: "sport", action: "use", x: 386, range: 12 },
     /* --- cardio --- */
     { id: "gym-partition", kind: "flavor", x: 418, range: 18 },
-    { id: "gym-treadmill", kind: "sport", action: "run", x: 484, range: 44 },
-    { id: "gym-mats", kind: "sport", action: "stretch", x: 572, range: 16 },
+    { id: "gym-treadmill", approachY: 158, kind: "sport", action: "run", x: 484, range: 44 },
+    { id: "gym-mats", approachY: 164, kind: "sport", action: "stretch", x: 572, range: 16 },
     { id: "gym-tv", kind: "flavor", x: 620, range: 14 },
-    { id: "gym-bike", kind: "sport", action: "cycle", x: 672, range: 22 },
+    { id: "gym-bike", approachY: 158, kind: "sport", action: "cycle", x: 672, range: 22 },
     { id: "gym-fan", kind: "flavor", x: 700, range: 6 },
     { id: "gym-mirror", kind: "flavor", x: 716, range: 10 },
     /* --- weights --- */
-    { id: "gym-pullup", kind: "sport", action: "pull", x: 746, range: 14 },
-    { id: "gym-rack", kind: "sport", action: "squat", x: 802, range: 24 },
-    { id: "gym-bench", kind: "sport", action: "press", x: 882, range: 22 },
+    { id: "gym-pullup", approachY: 158, kind: "sport", action: "pull", x: 746, range: 14 },
+    { id: "gym-rack", approachY: 160, kind: "sport", action: "squat", x: 802, range: 24 },
+    { id: "gym-bench", approachY: 160, kind: "sport", action: "press", x: 882, range: 22 },
     { id: "gym-chalk", kind: "flavor", x: 926, range: 8 },
-    { id: "gym-platform", kind: "sport", action: "deadlift", x: 976, range: 26 },
-    { id: "gym-kettlebells", kind: "sport", action: "swing", x: 1014, range: 10 },
+    { id: "gym-platform", approachY: 164, kind: "sport", action: "deadlift", x: 976, range: 26 },
+    { id: "gym-kettlebells", approachY: 162, kind: "sport", action: "swing", x: 1014, range: 10 },
     /* --- changing room --- */
     { id: "switch-szatnia", kind: "lamp", x: 1052, range: 10 },
     { id: "gym-lockers", kind: "openable", x: 1100, range: 30 },

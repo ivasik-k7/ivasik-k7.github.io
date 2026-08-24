@@ -19,8 +19,8 @@ import {
   px,
   pxPath,
   type Rect,
+  type RuntimeSceneDef,
   repeat,
-  type SceneDef,
   SharedDefs,
   STEP_FADE,
   STEP_SLIDE,
@@ -2227,9 +2227,26 @@ export function bedroomArtKey(world: WorldState, phase: string): string {
   ].join("|");
 }
 
-export const BEDROOM_SCENE: SceneDef<WorldState> = {
+export const BEDROOM_SCENE: RuntimeSceneDef<WorldState> = {
   id: "study",
   width: W,
+  /**
+   * The room you train in, so the floor has to be a floor.
+   *
+   * Half a metre from the wall out, and the rug that is already painted at
+   * x=304..440 is a named zone rather than a picture of one — the kettlebell and
+   * the barbell live on it, and standing on it is the difference between
+   * swinging a giria over boards and swinging it over something that will not
+   * mark them.
+   */
+  ground: {
+    top: FLOOR,
+    bottom: 170,
+    zones: [
+      { x0: 300, x1: 444, y0: 158, y1: 170, kind: "rug" },
+      { x0: 0, x1: W, kind: "boards" },
+    ],
+  },
   objects: [
     {
       id: "door-living2",
@@ -2242,10 +2259,10 @@ export const BEDROOM_SCENE: SceneDef<WorldState> = {
     { id: "switch-bed", kind: "lamp", x: 76, range: 12 },
     { id: "window-yard", kind: "window", x: 127, range: 16 },
     { id: "computer", kind: "computer", x: 201, range: 20 },
-    { id: "giria", kind: "sport", action: "swing", x: 270, range: 14 },
-    { id: "barbell", kind: "sport", action: "press", x: 296, range: 10 },
+    { id: "giria", kind: "sport", action: "swing", x: 270, range: 14, approachY: 162 },
+    { id: "barbell", kind: "sport", action: "press", x: 296, range: 10, approachY: 162 },
     { id: "painting", kind: "sport", action: "pray", x: 329, range: 10 },
-    { id: "bed", kind: "bed", x: 385, range: 24, face: 1, data: "about" },
+    { id: "bed", kind: "bed", x: 385, range: 24, face: 1, data: "about", approachY: 152 },
     { id: "wardrobe", kind: "openable", x: 520, range: 18 },
   ],
   Component: ({ world, phase }) => <BedroomScene world={world} phase={phase} />,

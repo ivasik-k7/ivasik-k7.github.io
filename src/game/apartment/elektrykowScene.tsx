@@ -1705,7 +1705,15 @@ const PROPS: readonly PropSpec[] = [
   { id: "prop-barrel-a", x: 1008, y: 156, w: 22 },
   { id: "prop-barrel-b", x: 1030, y: 167, w: 22 },
   { id: "prop-drum", x: 588, y: 164, w: 32 },
-  { id: "prop-kosz", x: 1200, y: 167, w: 14 },
+  /**
+   * The bin stood at x=1200, which put its footprint UNDER the picnic table's:
+   * 1192..1208 against the table's 1194..1246, with two pixels of clear y
+   * between them. Nothing looked wrong, and the bin could not be used — the
+   * approach point could not escape one blocker without landing in the other,
+   * so `nearestWalkable` bounced it back and forth and the walk stalled short.
+   * Moved clear of the table's left leg, which is also where a bin goes.
+   */
+  { id: "prop-kosz", x: 1176, y: 167, w: 14 },
   { id: "prop-picnic", x: 1220, y: 160, w: 58 },
   { id: "prop-aboard", x: 1330, y: 157, w: 26 },
 ] as const;

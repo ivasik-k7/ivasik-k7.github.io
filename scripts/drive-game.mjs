@@ -92,15 +92,37 @@ check(
 );
 await shot("corridor-walkto");
 
-// --- degenerate scene: the old single line, bit-identical -------------------
+/**
+ * --- the flat, which is no longer flat ------------------------------------
+ *
+ * This used to travel to the studio and assert that y stayed pinned at 150,
+ * because the studio was the example of a scene still standing on the engine's
+ * single line. Every scene in the game has a floor now, so there is nothing
+ * left in the running game to check that against — and asserting the old
+ * behaviour would only be asserting that the migration had not happened.
+ *
+ * The degenerate path itself is still covered, and better covered, by unit
+ * test: core/ground.test.ts calls `groundOf({})`, `hasDepth(SINGLE_LINE)` and
+ * `clampY(SINGLE_LINE, …)` directly. What is worth checking HERE is the thing
+ * only the live game can show: that the flat's floor is real and that the
+ * kitchen and the living end are different surfaces underfoot.
+ */
 await page.evaluate(() => window.__game.travel("studio", 120));
 await page.waitForTimeout(900);
 await page.keyboard.down("ArrowDown");
-await page.waitForTimeout(500);
+await page.waitForTimeout(2200);
 await page.keyboard.up("ArrowDown");
 const flat = await live();
-check(`flat scene pins y to the floor line (y=${flat.y})`, flat.y === 150);
-await shot("studio-flat");
+check(`the flat has a floor (y=${flat.y}, surface=${flat.surface})`, flat.y === 170);
+check(`and the kitchen end is tiled (surface=${flat.surface})`, flat.surface === "tile");
+await page.evaluate(() => window.__game.walkTo(700, 168));
+await page.waitForTimeout(2600);
+const boards = await live();
+check(
+  `and the living end is boards (x=${boards.x.toFixed(0)}, surface=${boards.surface})`,
+  boards.surface === "boards",
+);
+await shot("studio-floor");
 
 // --- depth is remembered per scene ------------------------------------------
 await page.evaluate(() => window.__game.travel("corridor"));

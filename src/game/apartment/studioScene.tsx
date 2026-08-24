@@ -3107,6 +3107,26 @@ export const STUDIO_SCENE: RuntimeSceneDef<WorldState> = {
   id: "studio",
   width: W,
   spawnX: 70,
+  /**
+   * The flat has a floor now, not a line down the middle of it.
+   *
+   * Half a metre of it, from the wall run out into the room — which is all a
+   * studio this size has, and enough that you can stand back from the sofa,
+   * cross in front of the kitchen instead of through it, and crouch to the dog
+   * at his own depth rather than looming over him from the skirting.
+   *
+   * The two floor finishes are the ones already painted: tile as far as the
+   * bathroom door, oak boards after it. `live.surface` reads them back, so the
+   * kitchen and the living end can eventually sound different underfoot.
+   */
+  ground: {
+    top: FLOOR,
+    bottom: 170,
+    zones: [
+      { x0: 0, x1: 406, kind: "tile" },
+      { x0: 406, x1: W, kind: "boards" },
+    ],
+  },
   artKey: studioArtKey,
   objects: [
     {
@@ -3121,7 +3141,7 @@ export const STUDIO_SCENE: RuntimeSceneDef<WorldState> = {
     { id: "keys", kind: "flavor", x: 104, range: 6 },
     { id: "switch", kind: "lamp", x: 122, range: 12 },
     { id: "spices", kind: "flavor", x: 143, range: 10 },
-    { id: "table", kind: "flavor", x: 156, range: 6 },
+    { id: "table", kind: "flavor", x: 156, range: 6, approachY: 160 },
     { id: "kettle", kind: "kettle", x: 169, range: 14 },
     { id: "speaker", kind: "radio", x: 197, range: 10 },
     { id: "dishrack", kind: "flavor", x: 217, range: 10 },
@@ -3161,9 +3181,9 @@ export const STUDIO_SCENE: RuntimeSceneDef<WorldState> = {
       priority: 1,
       to: { scene: "balcony", spawnX: 48 },
     },
-    { id: "dogbowls", kind: "bowls", x: 594, range: 10 },
-    { id: "dogbed", kind: "flavor", x: 630, range: 8 },
-    { id: "dog", kind: "dog", x: 648, range: 18, priority: 2 },
+    { id: "dogbowls", kind: "bowls", x: 594, range: 10, approachY: 158 },
+    { id: "dogbed", kind: "flavor", x: 630, range: 8, approachY: 158 },
+    { id: "dog", kind: "dog", x: 648, range: 18, priority: 2, approachY: 158 },
     { id: "artbrut", kind: "flavor", x: 696, range: 10 },
     { id: "bookshelf", kind: "panel", x: 700, range: 5, data: "skills" },
     { id: "tv", kind: "tv", x: 726, range: 10 },
@@ -3171,7 +3191,7 @@ export const STUDIO_SCENE: RuntimeSceneDef<WorldState> = {
     { id: "guitar", kind: "guitar", x: 774, range: 14, priority: 1 },
     { id: "laptop", kind: "computer", x: 812, range: 8 },
     { id: "phone", kind: "panel", x: 836, range: 5, data: "links" },
-    { id: "sofa", kind: "sport", x: 862, range: 10, action: "sit", face: -1 },
+    { id: "sofa", kind: "sport", x: 862, range: 10, action: "sit", face: -1, approachY: 152 },
     { id: "flag", kind: "flavor", x: 872, range: 7 },
     { id: "sidetable", kind: "flavor", x: 904, range: 10 },
   ],

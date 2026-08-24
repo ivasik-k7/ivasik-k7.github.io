@@ -2822,7 +2822,22 @@ export const CORRIDOR_SCENE: RuntimeSceneDef<WorldState> = {
    * mats, the PPOZ stencil, contact shadows — sits at the back line, so the
    * player only ever passes in front of it.
    */
-  ground: { top: FLOOR, bottom: 170 },
+  /**
+   * The landing. It had the band from the start — this was the scene the band
+   * was piloted on — but never the surfaces, so `live.surface` came back null
+   * on the one floor in the building that is three different things: the tile
+   * the whole landing is laid in, the coir mat outside flat 14, and the strip
+   * in front of the lift where twenty years of doors have polished it.
+   */
+  ground: {
+    top: FLOOR,
+    bottom: 170,
+    zones: [
+      { x0: 24, x1: 62, y0: FLOOR, y1: 160, kind: "mat" },
+      { x0: 436, x1: 476, kind: "worn" },
+      { x0: 0, x1: W, kind: "tile" },
+    ],
+  },
   /**
    * Every world read the art performs, and nothing else. This scene had no
    * artKey at all, so the art plane repainted on any world change; these are the
