@@ -2588,17 +2588,114 @@ const STAIR_TREADS = pxPath(
     return [Z.stairs - 38 + inset, RAIL_Y + 10 + i * 4, 76 - inset * 2, 2] as Rect;
   }),
 );
-/** Each tread gets a lit nosing, and the flight gets its dark cheek walls —
- * the two lines that finish the illusion of going down. */
-const STAIR_NOSINGS = pxPath(
-  Array.from({ length: 5 }, (_, i) => {
-    const inset = 4 + i * 5;
-    return [Z.stairs - 38 + inset, RAIL_Y + 10 + i * 4, 76 - inset * 2, 1] as Rect;
-  }),
-);
+/** The flight's dark cheek walls — the line that finishes the illusion of going down. */
 const STAIR_CHEEKS = pxPath([
   [Z.stairs - 38, RAIL_Y + 8, 3, 22],
   [Z.stairs + 35, RAIL_Y + 8, 3, 22],
+]);
+
+/* ---- the fine grain of the stair ------------------------------------------
+ * A flight into an underpass is five materials meeting: the coping the
+ * platform slab ends in, the terrazzo treads with their brass nosings worn to
+ * a line, the risers nobody ever cleans, the white glazed tile the PKP put on
+ * every underpass wall in the country, and the dark. Each tread is built as a
+ * face, a nosing, a riser and the pale path worn down its middle, and the
+ * flight is lit from below by the underpass tubes, which is the one light in
+ * this scene that comes UP. */
+const STAIR_STEP = (i: number) => {
+  const inset = 4 + i * 5;
+  return { x: Z.stairs - 38 + inset, y: RAIL_Y + 10 + i * 4, w: 76 - inset * 2 };
+};
+/** The riser under each tread: two pixels of shadow, deeper each step down. */
+const STAIR_RISERS = pxPath(
+  Array.from({ length: 5 }, (_, i) => {
+    const t = STAIR_STEP(i);
+    return [t.x, t.y + 2, t.w, 2] as Rect;
+  }),
+);
+/** The pale path worn down the middle of every tread, narrowing with depth. */
+const STAIR_WEAR = pxPath(
+  Array.from({ length: 5 }, (_, i) => {
+    const t = STAIR_STEP(i);
+    const w = Math.max(10, Math.round(t.w * 0.55) - i * 2);
+    return [Z.stairs - Math.round(w / 2) + 3, t.y, w, 1] as Rect;
+  }),
+);
+/** Brass nosings, worn to a bright line, chipped where the trolleys go. */
+const STAIR_BRASS = pxPath(
+  Array.from({ length: 5 }, (_, i) => {
+    const t = STAIR_STEP(i);
+    return [t.x + 2, t.y, t.w - 4, 1] as Rect;
+  }),
+);
+const STAIR_BRASS_CHIPS = pxPath([
+  [Z.stairs - 20, RAIL_Y + 10, 3, 1],
+  [Z.stairs + 8, RAIL_Y + 14, 2, 1],
+  [Z.stairs - 6, RAIL_Y + 22, 4, 1],
+]);
+/** The anti-slip strip on the top tread: yellow once, grey where feet land. */
+const STAIR_TACTILE = pxPath([[Z.stairs - 30, RAIL_Y + 8, 60, 2]]);
+const STAIR_TACTILE_WORN = pxPath([[Z.stairs - 14, RAIL_Y + 8, 28, 2]]);
+/** The cheek walls are white glazed tile in 150 mm courses, grout dark. */
+const STAIR_TILE_COURSES = pxPath([
+  ...repeat(7, 3, [Z.stairs - 38, RAIL_Y + 9, 3, 1] as Rect, "y"),
+  ...repeat(7, 3, [Z.stairs + 35, RAIL_Y + 9, 3, 1] as Rect, "y"),
+]);
+const STAIR_TILE_GRIME = pxPath([
+  [Z.stairs - 38, RAIL_Y + 22, 3, 8],
+  [Z.stairs + 35, RAIL_Y + 20, 3, 10],
+]);
+/** Grit kicked down the treads, and the wet the bottom two never lose. */
+const STAIR_GRIT = pxPath([
+  [Z.stairs - 24, RAIL_Y + 11, 1, 1],
+  [Z.stairs + 12, RAIL_Y + 11, 2, 1],
+  [Z.stairs - 8, RAIL_Y + 15, 1, 1],
+  [Z.stairs + 18, RAIL_Y + 15, 1, 1],
+  [Z.stairs - 2, RAIL_Y + 19, 2, 1],
+  [Z.stairs + 6, RAIL_Y + 23, 1, 1],
+]);
+const STAIR_WET = pxPath([
+  [Z.stairs - 12, RAIL_Y + 22, 24, 2],
+  [Z.stairs - 8, RAIL_Y + 26, 16, 2],
+]);
+/** The drain slot at the foot, so the wet has somewhere to go and does not. */
+const STAIR_DRAIN = pxPath([[Z.stairs - 6, RAIL_Y + 28, 12, 2]]);
+const STAIR_DRAIN_SLOTS = pxPath(repeat(4, 3, [Z.stairs - 5, RAIL_Y + 28, 1, 2] as Rect));
+/** The coping the platform ends in: a bevelled edge, not a line. */
+const STAIR_COPING = bevelPaths([
+  [Z.stairs - 42, RAIL_Y + 4, 84, 4],
+  [Z.stairs - 42, RAIL_Y + 8, 4, 22],
+  [Z.stairs + 38, RAIL_Y + 8, 4, 22],
+]);
+const STAIR_COPING_CHIPS = pxPath([
+  [Z.stairs - 30, RAIL_Y + 4, 4, 1],
+  [Z.stairs + 16, RAIL_Y + 5, 3, 2],
+]);
+/** The underpass tubes, throwing their light up the flight. */
+const STAIR_UPLIGHT = tiers(
+  (k) =>
+    steppedQuad(
+      RAIL_Y + 10,
+      Z.stairs - Math.round(14 * k),
+      Z.stairs + Math.round(14 * k),
+      RAIL_Y + 30,
+      Z.stairs - Math.round(34 * k),
+      Z.stairs + Math.round(34 * k),
+      4,
+    ),
+  "w",
+  0.9,
+);
+/** The rail's brackets, and the shadow the rail throws down the cheek. */
+const STAIR_RAIL_BRACKETS = pxPath([
+  [Z.stairs - 44, RAIL_Y - 12, 3, 2],
+  [Z.stairs + 41, RAIL_Y - 12, 3, 2],
+  [Z.stairs - 44, RAIL_Y + 2, 3, 2],
+  [Z.stairs + 41, RAIL_Y + 2, 3, 2],
+]);
+const STAIR_RAIL_SHADOW = pxPath([
+  [Z.stairs - 41, RAIL_Y - 30, 1, 38],
+  [Z.stairs + 44, RAIL_Y - 30, 1, 38],
 ]);
 /** The balustrade: two standards, a top rail and a knee rail, sloping down. */
 const STAIR_RAIL = pxPath([
@@ -3063,15 +3160,35 @@ function Furniture({
         />
       </path>
 
-      {/* the stair down to the underpass */}
+      {/* the stair down to the underpass: the dark first, then the light that
+          comes up out of it, then the flight built tread by tread */}
       <path d={STAIR_OPENING} fill="#12141a" />
-      {/* the dark deepens with the flight: the bottom treads sink into it */}
       <path d={STAIR_DEPTH} fill="#06070b" opacity={0.7} />
-      <path d={STAIR_CHEEKS} fill="#000" opacity={0.4} />
-      <path d={STAIR_TREADS} fill={conc.mid} opacity={0.75} />
-      <path d={STAIR_NOSINGS} fill={conc.hi} opacity={0.5} />
-      <path d={STAIR_LIP} fill={conc.hi} />
+      <Light set={STAIR_UPLIGHT} op={night ? 1 : 0.55} />
+      {/* the cheeks: white glazed tile, grouted, grimed toward the bottom */}
+      <path d={STAIR_CHEEKS} fill={night ? "#8a8f8a" : "#c9cdc6"} opacity={0.9} />
+      <path d={STAIR_TILE_COURSES} fill="#3a3d3a" opacity={0.6} />
+      <path d={STAIR_TILE_GRIME} fill={dth("n", "25")} opacity={0.8} />
+      {/* the treads: face, riser, brass nosing, the worn path, grit, wet */}
+      <path d={STAIR_TREADS} fill={conc.base} />
+      <path d={STAIR_RISERS} fill="#000" opacity={0.45} />
+      <path d={STAIR_WEAR} fill={conc.hi} opacity={0.45} />
+      <path d={STAIR_BRASS} fill={night ? "#a08a4a" : "#d9bc62"} opacity={0.9} />
+      <path d={STAIR_BRASS_CHIPS} fill={conc.deep} />
+      <path d={STAIR_TACTILE} fill={night ? K.safetyWorn : K.safety} opacity={0.8} />
+      <path d={STAIR_TACTILE_WORN} fill={conc.mid} opacity={0.7} />
+      <path d={STAIR_GRIT} fill={conc.deep} opacity={0.8} />
+      <path d={STAIR_WET} fill="#2a3038" opacity={0.5} />
+      <path d={STAIR_DRAIN} fill={galv.deep} />
+      <path d={STAIR_DRAIN_SLOTS} fill="#000" opacity={0.6} />
+      {/* the coping the slab ends in, and the rail on it */}
+      <Bev set={STAIR_COPING} mat={CONC[ph]} />
+      <path d={STAIR_COPING_CHIPS} fill={conc.deep} opacity={0.7} />
+      <path d={STAIR_LIP} fill={conc.hi} opacity={0.5} />
+      <path d={STAIR_RAIL_SHADOW} fill="#000" opacity={0.25} />
       <path d={STAIR_RAIL} fill={galv.base} />
+      <path d={STAIR_RAIL} transform="translate(0,-1)" fill={galv.hi} opacity={0.45} />
+      <path d={STAIR_RAIL_BRACKETS} fill={galv.deep} />
       <path d={STAIR_SIGN_HANGERS} fill={galv.base} />
       <path d={STAIR_SIGN} fill={spec.exit ? K.signBlue : "#8a2424"} />
       <g transform={`translate(${Z.stairs - 18} ${RAIL_Y - 46})`}>
