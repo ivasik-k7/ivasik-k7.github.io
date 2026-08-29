@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { edgesAt, insideBlocker, nearestWalkable } from "@/engine/core/ground";
 import type { GroundBand, RuntimeObject, RuntimeSceneDef } from "@/engine/core/runtime-types";
 import type { WorldState } from "@/lib/worldState";
@@ -41,6 +41,17 @@ function approachOf(obj: RuntimeObject, band: GroundBand) {
 const scenes = Object.entries(ALL);
 
 describe("scene ground", () => {
+  /**
+   * Every scene is a code-split chunk, and the flat is the heaviest of them:
+   * cold, its first import can take longer than vitest's 5 s default, which
+   * made the first test that touched it fail on a slow run. Warm them all up
+   * front, on their own generous budget, so the tests measure the terrain and
+   * not the module loader.
+   */
+  beforeAll(async () => {
+    await Promise.all(scenes.map(([, load]) => load()));
+  }, 60_000);
+
   for (const [id, load] of scenes) {
     describe(id, () => {
       it("declares a walkable band", async () => {

@@ -183,7 +183,10 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png` });
   await page.evaluate(() =>
     window.__game.updateWorld((w) => ({ ...w, station: { weather: "clear" } })),
   );
-  await page.evaluate(() => window.__game.walkTo(960, 153, { timeoutMs: 30000 }));
+  /* placed, not walked: 580 px is beyond what one walkTo covers on a headless
+     host before its deadline, and the check is about the door, not the walk */
+  await page.evaluate(() => window.__game.travel("station", 960));
+  await page.waitForTimeout(2200);
   const sawDoor = await page
     .waitForFunction(() => Boolean(document.querySelector('[aria-label*="CARRIAGE DOOR"]')), null, {
       timeout: 100000,
