@@ -301,3 +301,69 @@ describe("lightKit", () => {
     expect(rectsOf(a)[0][1]).toBe(15);
   });
 });
+
+import {
+  bench as benchProp,
+  bicycle,
+  bikeRack,
+  bollards,
+  busShelter,
+  kiosk,
+  litter,
+  litterBin,
+  noticeBoard,
+  planter,
+  railing,
+} from "./propKit";
+
+describe("propKit", () => {
+  const G = 150;
+  const standsOn = (d: string, groundY: number) => {
+    const b = boundsOf(rectsOf(d));
+    return b !== null && b[1] + b[3] <= groundY + 0.001;
+  };
+
+  it("everything stands on the ground line and nothing hangs below it", () => {
+    expect(standsOn(bikeRack(20, G, 3).hoops, G)).toBe(true);
+    expect(standsOn(bicycle(40, G).tyres, G)).toBe(true);
+    expect(standsOn(litterBin(40, G, "box").body.base, G)).toBe(true);
+    expect(standsOn(litterBin(40, G, "hoop").post, G)).toBe(true);
+    expect(standsOn(benchProp(10, G, 68).legs, G)).toBe(true);
+    expect(standsOn(planter(10, G).box.face.base, G)).toBe(true);
+    expect(standsOn(bollards(10, 200, G).posts.base, G)).toBe(true);
+    expect(standsOn(busShelter(10, G).posts.base, G)).toBe(true);
+    expect(standsOn(kiosk(10, G).body.face.base, G)).toBe(true);
+    expect(standsOn(railing(0, 300, G).posts, G)).toBe(true);
+  });
+
+  it("a bicycle's wheels are rings with hubs at their centres", () => {
+    const b = bicycle(100, G);
+    const hubs = rectsOf(b.hubs);
+    expect(hubs).toHaveLength(2);
+    const tyres = boundsOf(rectsOf(b.tyres));
+    expect(tyres?.[3]).toBe(24);
+  });
+
+  it("the rack reports one stand per hoop", () => {
+    expect(bikeRack(20, G, 4).stands).toHaveLength(4);
+  });
+
+  it("a bench's shine sits on the seat line", () => {
+    const b = benchProp(10, G, 68);
+    const seat = boundsOf(rectsOf(b.seat.base));
+    const shine = rectsOf(b.shine);
+    expect(shine.every((r) => r[1] === seat?.[1])).toBe(true);
+  });
+
+  it("a notice board keeps its papers inside the frame", () => {
+    const n = noticeBoard(20, 30, 44, 48);
+    expect(allInside(rectsOf(n.papers), [20, 30, 44, 48])).toBe(true);
+  });
+
+  it("litter stays in its box and scales with density", () => {
+    const a = litter(0, 300, 152, 168, 1);
+    const b = litter(0, 300, 152, 168, 3);
+    expect(allInside(rectsOf(a.stubs), [0, 152, 300, 16])).toBe(true);
+    expect(rectsOf(b.stubs).length).toBeGreaterThan(rectsOf(a.stubs).length);
+  });
+});

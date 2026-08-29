@@ -69,6 +69,40 @@ import {
   steppedRing,
   streaks,
 } from "./pixelKit";
+import {
+  Bench,
+  Bicycle,
+  BikeRack,
+  Bollards,
+  BusShelter,
+  bench,
+  bicycle,
+  bikeRack,
+  bollards,
+  busShelter,
+  Cctv,
+  cctv,
+  gulls,
+  Kiosk,
+  kiosk,
+  LampPost,
+  Litter,
+  LitterBin,
+  lampPost,
+  litter,
+  litterBin,
+  NoticeBoard,
+  noticeBoard,
+  Pigeon,
+  Planter,
+  picto,
+  pigeon,
+  planter,
+  Railing,
+  railing,
+  SignPost,
+  signPost,
+} from "./propKit";
 
 /**
  * /kit — every primitive in the three kits, drawn once each, at the game's
@@ -220,6 +254,47 @@ const UPRIGHTS: Rect[] = [
   [220, 26, 8, 44],
 ];
 
+/* ---- prop tiles ----------------------------------------------------------- */
+const P_RACK = bikeRack(30, BOT, 3);
+const P_BIKE_A = bicycle(120, BOT, 1);
+const P_BIKE_B = bicycle(200, BOT, -1);
+const P_BIN_HOOP = litterBin(40, BOT, "hoop");
+const P_BIN_BOX = litterBin(120, BOT, "box");
+const P_BIN_POST = litterBin(220, BOT, "post");
+const P_LAMP_FOR_BIN = lampPost(218, BOT, 100, "post-top");
+const P_BENCH_A = bench(10, BOT, 68, "perforated");
+const P_BENCH_B = bench(110, BOT, 84, "slats");
+const P_BENCH_C = bench(220, BOT, 60, "shelter");
+const P_PLANTER_A = planter(20, BOT, 56, 18, 5);
+const P_PLANTER_B = planter(120, BOT, 40, 16, 8);
+const P_BOLLARDS = bollards(190, 290, BOT, 40);
+const P_SHELTER = busShelter(20, BOT, 130);
+const P_KIOSK = kiosk(200, BOT, 56, 82);
+const P_BOARD = noticeBoard(20, 30, 44, 48);
+const P_SIGN = signPost(120, BOT, 48, 14, 60);
+const P_CCTV_A = cctv(190, 30, 1);
+const P_CCTV_B = cctv(260, 30, -1);
+const P_RAIL = railing(0, TW, BOT, 36, 40);
+const P_LAMP = lampPost(60, BOT, 96, "cobra");
+const P_LAMP_B = lampPost(200, BOT, 96, "post-top");
+const P_LITTER = litter(0, TW, TOP + 2, BOT - 2, 3);
+const P_GULLS = gulls([
+  [40, 14],
+  [70, 20],
+  [230, 10],
+]);
+const P_PIGEONS = [pigeon(60, BOT - 4, 0), pigeon(120, BOT - 8, 1, -1), pigeon(190, BOT - 2, 2)];
+const P_PICTO = [
+  ["wheelchair", 20],
+  ["bicycle", 60],
+  ["noSmoking", 104],
+  ["cctv", 140],
+  ["arrowUp", 176],
+  ["arrowDown", 206],
+  ["exit", 236],
+  ["bin", 270],
+] as const;
+
 const PHASES: Ph[] = ["dawn", "day", "dusk", "night"];
 
 export function KitShowcase() {
@@ -324,6 +399,72 @@ export function KitShowcase() {
         </Tile>
         <Tile title="groundLayers — cobbles, one call">
           <GroundPaint layers={COMPOSED_COBBLE} />
+        </Tile>
+      </div>
+
+      <h2 className="mb-2 font-mono text-[11px] uppercase tracking-widest text-neutral-500">
+        propKit — street furniture, built once
+      </h2>
+      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Tile title="bikeRack · bicycle (both ways)">
+          <path d={pxPath([[0, TOP, TW, BOT - TOP]])} fill={g.base} />
+          <BikeRack set={P_RACK} ph={ph} />
+          <Bicycle set={P_BIKE_A} ph={ph} colour="#2f5d8a" />
+          <Bicycle set={P_BIKE_B} ph={ph} colour="#a33a30" />
+        </Tile>
+        <Tile title="litterBin — hoop · box · post">
+          <path d={pxPath([[0, TOP, TW, BOT - TOP]])} fill={g.base} />
+          <LitterBin set={P_BIN_HOOP} ph={ph} full />
+          <LitterBin set={P_BIN_BOX} ph={ph} />
+          <LampPost set={P_LAMP_FOR_BIN} ph={ph} lit={false} />
+          <LitterBin set={P_BIN_POST} ph={ph} />
+        </Tile>
+        <Tile title="bench — perforated · slats · shelter">
+          <path d={pxPath([[0, TOP, TW, BOT - TOP]])} fill={g.base} />
+          <Bench set={P_BENCH_A} ph={ph} />
+          <Bench set={P_BENCH_B} ph={ph} />
+          <Bench set={P_BENCH_C} ph={ph} />
+        </Tile>
+        <Tile title="planter (green, bare) · bollards">
+          <path d={pxPath([[0, TOP, TW, BOT - TOP]])} fill={g.base} />
+          <Planter set={P_PLANTER_A} ph={ph} />
+          <Planter set={P_PLANTER_B} ph={ph} bare />
+          <Bollards set={P_BOLLARDS} ph={ph} />
+        </Tile>
+        <Tile title="busShelter · kiosk">
+          <path d={pxPath([[0, TOP, TW, BOT - TOP]])} fill={g.base} />
+          <BusShelter set={P_SHELTER} ph={ph} behind={c.base} />
+          <Kiosk set={P_KIOSK} ph={ph} open={ph !== "night"} />
+        </Tile>
+        <Tile title="noticeBoard · signPost · cctv (both ways)">
+          <path d={pxPath([WALL])} fill={c.base} />
+          <path d={pxPath([[0, TOP, TW, BOT - TOP]])} fill={g.base} />
+          <NoticeBoard set={P_BOARD} ph={ph} glazed />
+          <SignPost set={P_SIGN} ph={ph} mat={matFrom("#12447c")} />
+          <PixelText x={P_SIGN.textAt.x} y={P_SIGN.textAt.y} text="SKM" fill="#f4f4f0" />
+          <Cctv set={P_CCTV_A} ph={ph} />
+          <Cctv set={P_CCTV_B} ph={ph} />
+        </Tile>
+        <Tile title="railing · lampPost (cobra, post-top)">
+          <path d={pxPath([[0, TOP, TW, BOT - TOP]])} fill={g.base} />
+          <Railing set={P_RAIL} ph={ph} />
+          <LampPost set={P_LAMP} ph={ph} />
+          <LampPost set={P_LAMP_B} ph={ph} />
+        </Tile>
+        <Tile title="litter(density 3) · gulls · pigeons · picto">
+          <path d={pxPath([[0, TOP, TW, BOT - TOP]])} fill={g.base} />
+          <Litter set={P_LITTER} ph={ph} leaves />
+          <path d={P_GULLS} fill={night ? "#3a3f4a" : "#e8ecf0"} />
+          {P_PIGEONS.map((p, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed birds
+            <Pigeon key={i} set={p} ph={ph} />
+          ))}
+          {P_PICTO.map(([name, x]) => (
+            <g key={name}>
+              <path d={pxPath([[x - 2, 30, 14, 16]])} fill="#1b4b96" />
+              <path d={pxPath(picto(name, x, 32))} fill="#f4f4f0" />
+            </g>
+          ))}
         </Tile>
       </div>
 

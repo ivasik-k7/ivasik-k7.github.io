@@ -104,6 +104,7 @@ export {
   SunBand,
   TierLight,
 } from "./scene/pixelLight";
+export * from "./scene/propKit";
 export * from "./scene/props";
 export {
   ANIMAL_FURS,

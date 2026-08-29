@@ -71,3 +71,26 @@ diagonal is whole-pixel rows.
 - A plane that must line up with the ground (a footbridge, a doorway) runs at parallax 1.
 - CSS `transform` **replaces** an SVG `transform` attribute; put placement on an outer `<g>`.
 - Tests: `src/engine/scene/kits.test.ts` — bounds, determinism, shape agreement.
+
+## propKit — street furniture, built once
+
+Each generator returns precomputed paths; each painter takes `set` + `ph` and picks
+its own materials (`GALV`, `MUNICIPAL_GREEN`, `MUNICIPAL_BLACK`, `SLAT_OAK`, `PRECAST`).
+
+| generator / painter | what for |
+|---|---|
+| `bikeRack(x,g,n) / BikeRack`, `bicycle(x,g,facing) / Bicycle` | Sheffield stands; a bike with ring wheels, spokes, diamond frame, lock |
+| `litterBin(x,g,"hoop"\|"box"\|"post") / LitterBin` | the three bins there are; `full` |
+| `bench(x,g,w,"perforated"\|"slats"\|"shelter") / Bench` | with the shine where people sit and the one burn |
+| `planter(x,g,w,h) / Planter` | precast box, soil, shrubs with highlight and shade, blooms; `bare` |
+| `bollards(x0,x1,g,pitch) / Bollards` | steel posts with cap and reflective band |
+| `busShelter(x,g,w) / BusShelter` | portal frame, roof with dirt, glazed back (`behind`), perch bench, timetable case |
+| `kiosk(x,g) / Kiosk` | Ruch box with window full of stock, hatch; `open` false = shutter |
+| `noticeBoard(x,y,w,h) / NoticeBoard` | frame, cork, pinned papers, one corner lifting |
+| `signPost(x,g,w,h,postH) / SignPost` | a plate on a post, `textAt` for the 3×5 font |
+| `cctv(x,y,facing) / Cctv` | camera on an arm, panning, red LED |
+| `railing(x0,x1,g,h,pitch) / Railing` | galvanised posts, top and knee rail, rust at the feet |
+| `lampPost(x,g,h,"cobra"\|"post-top") / LampPost` | column, plinth, door, head; pair with `streetLamp()` from lightKit at `headAt` |
+| `litter(x0,x1,y0,y1,density) / Litter` | stubs, gum, paper, caps, receipts, dry leaves |
+| `gulls(points)`, `pigeon(x,y,i,facing) / Pigeon` | the three-pixel gull; a pigeon that hops in discrete jumps |
+| `PICTO / picto(name,x,y)` | wheelchair, bicycle, noSmoking, cctv, arrows, exit, bin, wifi |
