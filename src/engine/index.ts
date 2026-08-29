@@ -23,8 +23,11 @@ export {
 } from "./audio/lofi";
 export { playSfx, type SfxName, setSfxLevel } from "./audio/sfx";
 export { mumble, type VoiceProfile, voiceFor } from "./audio/voice";
+// scene composition & art kit
+export * from "./character";
 // core
 export * from "./core/constants";
+export * from "./core/gait";
 export * from "./core/ground";
 export * from "./core/math";
 export {
@@ -70,6 +73,7 @@ export type {
   SceneLifecycleCtx,
   SeqStep,
 } from "./core/runtime-types";
+export * from "./core/talkBrain";
 export type {
   ActionDef,
   AnyWorld,
@@ -83,10 +87,10 @@ export type {
   SceneRenderProps,
   SpriteMap,
   SpritePalette,
+  WalkVariant,
 } from "./core/types";
 // runtime
 export { GameRuntime } from "./runtime/GameRuntime";
-// scene composition & art kit
 export * from "./scene/artkit";
 export * from "./scene/groundKit";
 export * from "./scene/layers";

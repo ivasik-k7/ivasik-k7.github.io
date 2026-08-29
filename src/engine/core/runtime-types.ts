@@ -207,10 +207,23 @@ export type SceneSource<W extends AnyWorld> =
 export type SeqStep<W extends AnyWorld> =
   | { wait: number }
   | { say: string }
-  | { walkTo: number; y?: number; timeoutMs?: number }
+  | {
+      walkTo: number;
+      y?: number;
+      timeoutMs?: number;
+      /** walk speed as a fraction of normal — 0.5 is an unhurried morning */
+      speed?: number;
+    }
   | { face: 1 | -1 }
   | { hold: string; forMs: number }
-  | { action: string }
+  | {
+      action: string;
+      /**
+       * Start the action again each time it ends, for as long as this returns
+       * true — a cigarette that lasts exactly as long as the speech over it.
+       */
+      repeat?: () => boolean;
+    }
   | { world: Partial<W> | ((w: W) => W) }
   | { fx: { kind: string; x?: number; ttlMs?: number; data?: unknown } }
   | { shake: number; ms?: number }
@@ -237,7 +250,10 @@ export type RuntimeCtxExtras<W extends AnyWorld> = {
   letterbox(on: boolean): void;
   /** Ignore player input without pausing the simulation. */
   lockInput(on: boolean): void;
-  runSequence(steps: SeqStep<W>[], opts?: { cinematic?: boolean }): Promise<boolean>;
+  runSequence(
+    steps: SeqStep<W>[],
+    opts?: { cinematic?: boolean; skippable?: boolean },
+  ): Promise<boolean>;
   cancelSequence(): void;
   /** setTimeout on the *game* clock: pauses with the game, dies with the runtime. */
   after(ms: number, fn: () => void): number;
@@ -309,7 +325,7 @@ export type LiveState = {
   /** 0..1 through that action, or 0 when nothing is running */
   actionProgress: number;
   /** why the current frame was chosen */
-  source: "forced" | "action" | "walk" | "idle";
+  source: "forced" | "action" | "walk" | "talk" | "idle";
   moving: boolean;
   facing: 1 | -1;
   x: number;
@@ -323,7 +339,10 @@ export type RuntimeApi<W extends AnyWorld> = {
   interact(id?: string): void;
   travel(scene: string, spawnX?: number, spawnY?: number): void;
   walkTo(x: number, y?: number): Promise<boolean>;
-  runSequence(steps: SeqStep<W>[], opts?: { cinematic?: boolean }): Promise<boolean>;
+  runSequence(
+    steps: SeqStep<W>[],
+    opts?: { cinematic?: boolean; skippable?: boolean },
+  ): Promise<boolean>;
   getWorld(): W;
   updateWorld(patch: Partial<W> | ((w: W) => W)): void;
   getStats(): RuntimeStats;

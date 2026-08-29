@@ -1,3 +1,4 @@
+import { t } from "i18next";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PixelLabel, playSfx } from "@/engine";
 import { buildStamp } from "@/lib/build";
@@ -83,8 +84,8 @@ function PauseInner({
     () => [
       {
         id: "resume",
-        label: "RESUME",
-        note: "back to it",
+        label: t("mainmenu.resume"),
+        note: t("notes.resume"),
         run: () => {
           playSfx("click");
           onResume();
@@ -92,8 +93,8 @@ function PauseInner({
       },
       {
         id: "settings",
-        label: "SETTINGS",
-        note: "sound, picture, reading",
+        label: t("mainmenu.settings"),
+        note: t("notes.settings"),
         run: () => {
           playSfx("click");
           setScreen("settings");
@@ -101,10 +102,8 @@ function PauseInner({
       },
       {
         id: "title",
-        label: confirmQuit ? "LEAVE — SURE?" : "LEAVE",
-        note: confirmQuit
-          ? "press again to go back to the title screen"
-          : "the game saves as you play, so this is safe",
+        label: confirmQuit ? t("mainmenu.leaveSure") : t("mainmenu.leave"),
+        note: confirmQuit ? t("notes.leaveSure") : t("notes.leave"),
         run: () => {
           if (!confirmQuit) {
             setConfirmQuit(true);
@@ -165,7 +164,12 @@ function PauseInner({
       {/* Where you are and what time it is — the two things you want to be
           reminded of by a screen you opened by accident. */}
       <div className="flex items-baseline gap-4">
-        <PixelLabel text="PAUSED" px={scale.heading + 1} fill={PARCHMENT} opacity={0.9} />
+        <PixelLabel
+          text={t("mainmenu.paused")}
+          px={scale.heading + 1}
+          fill={PARCHMENT}
+          opacity={0.9}
+        />
         {place ? <PixelLabel text={place} px={scale.sub} fill={SIGNAL} opacity={0.55} /> : null}
         {clock ? <PixelLabel text={clock} px={scale.sub} fill={PARCHMENT} opacity={0.4} /> : null}
       </div>
@@ -185,7 +189,7 @@ function PauseInner({
       </nav>
 
       <div className="mt-10 flex items-center gap-6">
-        <span style={PROSE.quiet(scale)}>↑↓ pick · enter choose · esc resume</span>
+        <span style={PROSE.quiet(scale)}>{t("notes.pauseHint")}</span>
         <span className="flex-1" />
         <PixelLabel
           text={buildStamp().toUpperCase()}

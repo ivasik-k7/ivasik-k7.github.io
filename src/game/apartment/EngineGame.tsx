@@ -1,3 +1,4 @@
+import { t } from "i18next";
 import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PanelId } from "@/components/game/Hud";
@@ -9,6 +10,7 @@ import {
   ambience,
   FpsMeter,
   GameRuntime,
+  loadGame,
   lofiPlayer,
   Monologue,
   type RuntimeApi,
@@ -27,7 +29,8 @@ import {
 } from "@/lib/worldState";
 import { PauseMenu } from "../menu/PauseMenu";
 import { PLACE_NAME, SAVE_KEY, SAVE_VERSION } from "../menu/saveSummary";
-import { paletteForAppearanceCached } from "./appearance";
+import { normalizeAppearance, paletteForAppearanceCached, playerForAppearance } from "./appearance";
+import { OPENING_START, openingCutscene, openingEnd } from "./cutscenes";
 import { APARTMENT_HANDLERS } from "./handlers";
 import { OUTSIDE_SCENES } from "./outsideScenes";
 import { PLAYER } from "./player";
@@ -98,62 +101,63 @@ const SCENES = Object.fromEntries(
 );
 
 /** What pressing E actually does, by object kind — shown on the interact chip. */
+/** Verb keys by object kind, resolved through `t("verb.*")` at render. */
 const VERB: Record<string, string> = {
-  npc: "TALK",
-  cashier: "TALK",
-  dog: "PET",
-  door: "ENTER",
-  flatdoor: "ENTER",
-  creakdoor: "ENTER",
-  trainDoor: "BOARD",
-  biletomat: "BUY",
-  kasownik: "PUNCH",
-  konduktor: "TALK",
-  trainExit: "GET OFF",
-  routemap: "READ",
-  stairs: "ENTER",
-  liftdoors: "OPEN",
-  liftbutton: "CALL",
-  liftpanel: "PRESS",
-  panel: "VIEW",
-  computer: "USE",
-  openable: "OPEN",
-  zfridge: "OPEN",
-  zfreezer: "OPEN",
-  extcabinet: "OPEN",
-  bins: "OPEN",
-  parcel: "TAKE",
-  paczkomat: "CHECK",
-  sport: "TRAIN",
-  bed: "REST",
-  tv: "WATCH",
-  radio: "LISTEN",
-  kettle: "BREW",
-  coffee: "BREW",
-  cooker: "COOK",
-  plant: "WATER",
-  dishes: "WASH",
-  binbag: "EMPTY",
-  bowls: "FEED",
-  lamp: "SWITCH",
-  window: "LOOK",
-  flavor: "LOOK",
-  car: "LOOK",
-  mycar: "KEYS",
-  guitar: "PLAY",
-  bath: "SHOWER",
+  npc: "talk",
+  cashier: "talk",
+  dog: "pet",
+  door: "enter",
+  flatdoor: "enter",
+  creakdoor: "enter",
+  trainDoor: "board",
+  biletomat: "buy",
+  kasownik: "punch",
+  konduktor: "talk",
+  trainExit: "getOff",
+  routemap: "read",
+  stairs: "enter",
+  liftdoors: "open",
+  liftbutton: "call",
+  liftpanel: "press",
+  panel: "view",
+  computer: "use",
+  openable: "open",
+  zfridge: "open",
+  zfreezer: "open",
+  extcabinet: "open",
+  bins: "open",
+  parcel: "take",
+  paczkomat: "check",
+  sport: "train",
+  bed: "rest",
+  tv: "watch",
+  radio: "listen",
+  kettle: "brew",
+  coffee: "brew",
+  cooker: "cook",
+  plant: "water",
+  dishes: "wash",
+  binbag: "empty",
+  bowls: "feed",
+  lamp: "switch",
+  window: "look",
+  flavor: "look",
+  car: "look",
+  mycar: "keys",
+  guitar: "play",
+  bath: "shower",
   /* Ulica Elektryków and the club */
-  barman: "ORDER",
-  frytki: "ORDER",
-  clubbar: "ORDER",
-  clubdoor: "ENTER",
-  portaloo: "USE",
-  dance: "DANCE",
-  speaker: "FEEL",
-  earplugs: "TAKE",
-  clubfuse: "PEEK",
-  festoon: "SWITCH",
-  bankomat: "USE",
+  barman: "order",
+  frytki: "order",
+  clubbar: "order",
+  clubdoor: "enter",
+  portaloo: "use",
+  dance: "dance",
+  speaker: "feel",
+  earplugs: "take",
+  clubfuse: "peek",
+  festoon: "switch",
+  bankomat: "use",
 };
 
 /** Which sound bed each location breathes. */
@@ -215,9 +219,26 @@ function stationIdOf(world: WorldState | undefined): string {
  * api it is already given here.
  */
 let runtimeApi: RuntimeApi<WorldState> | null = null;
+/** Armed by a fresh mount; the opening plays once the runtime hands over its api. */
+let openingPending = false;
+
+function playOpening(api: RuntimeApi<WorldState>) {
+  // start at once so the keys are his from the first frame — the sequence
+  // itself opens on a beat of silence while the scene draws and the fade lifts
+  api.runSequence(openingCutscene(), { cinematic: true, skippable: true }).then((finished) => {
+    if (finished) return;
+    // skipped: the flat still ends up the way the morning would have left it
+    api.updateWorld(openingEnd);
+    api.runSequence([{ say: t("cut.skip") }]);
+  });
+}
 
 function exposeGameApi(api: RuntimeApi<WorldState>) {
   runtimeApi = api;
+  if (openingPending) {
+    openingPending = false;
+    playOpening(api);
+  }
   // dev always; production only when asked for by the drive/bench harness
   // (scripts/drive-game.mjs, scripts/bench-game.mjs) via ?drive=1 — perf
   // baselines must run against the real build, not the dev server
@@ -243,19 +264,28 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
   // runs when debug is on — so opening it turns sampling on
   const showDebug = Boolean(params?.has("debug")) || bench;
   const devScene = params?.get("scene");
+  /**
+   * A new game has no save yet (New Game wipes the slot before this mounts).
+   * That is the one moment the opening plays: he wakes by the dog and talks
+   * you through the flat. A continued game starts where it was left.
+   */
+  const [fresh] = useState(() => {
+    const isFresh = loadGame(SAVE_KEY, SAVE_VERSION) === null && !devScene;
+    openingPending = isFresh;
+    return isFresh;
+  });
   const devX = Number(params?.get("x"));
   const devWorld = params
     ? {
         ...initialWorld,
-        appearance: {
-          skin: params.get("skin") ?? initialWorld.appearance.skin,
-          hair: params.get("hair") ?? initialWorld.appearance.hair,
-          beard: params.get("beard") ?? initialWorld.appearance.beard,
-          hat: params.get("hat") ?? initialWorld.appearance.hat,
-          shirt: params.get("shirt") ?? initialWorld.appearance.shirt,
-          trousers: params.get("trousers") ?? initialWorld.appearance.trousers,
-          shoes: params.get("shoes") ?? initialWorld.appearance.shoes,
-        },
+        appearance: normalizeAppearance({
+          ...initialWorld.appearance,
+          ...Object.fromEntries(
+            Object.keys(initialWorld.appearance)
+              .filter((k) => params.has(k))
+              .map((k) => [k, params.get(k) as string]),
+          ),
+        }),
       }
     : initialWorld;
 
@@ -273,15 +303,21 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     start:
       devScene && SCENES[devScene]
         ? { scene: devScene, x: Number.isFinite(devX) && devX > 0 ? devX : 100 }
-        : { scene: "studio", x: 70 },
+        : fresh
+          ? { ...OPENING_START }
+          : { scene: "studio", x: 70 },
     initialWorld: devWorld,
     player: PLAYER,
+    promptSwitchLabel: () => t("prompt.switch"),
+    playerFor: (w) => playerForAppearance(w.appearance),
     handlers: APARTMENT_HANDLERS,
     objectLabel: (obj) => t(`obj.${obj.id}`),
     /* "sport" covers both the gym rigs (TRAIN) and street/platform benches — the
      * action tells them apart: sitting down is not a workout. */
     objectVerb: (obj) =>
-      obj.kind === "sport" && obj.action === "sit" ? "SIT" : (VERB[obj.kind] ?? "USE"),
+      t(
+        `verb.${obj.kind === "sport" && obj.action?.startsWith("sit") ? "sit" : (VERB[obj.kind] ?? "use")}`,
+      ),
     dayPhase: () => dayPhase(new Date().getHours()),
     renderHud: (scene, world, phase, openOverlay) => (
       <HUD
@@ -293,7 +329,9 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
         pocket={{
           money: `${world.money} zł`,
           items: world.inventory.map((item) => {
-            const label = ITEM_LABEL[item.itemId] ?? item.itemId.toUpperCase();
+            const label = t(`item.${item.itemId}`, {
+              defaultValue: ITEM_LABEL[item.itemId] ?? item.itemId.toUpperCase(),
+            });
             return item.quantity > 1 ? `${label} ×${item.quantity}` : label;
           }),
         }}
@@ -377,7 +415,7 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
               close();
               onQuit?.();
             }}
-            place={PLACE_NAME[here] ?? here}
+            place={t(`hud.${here}`, { defaultValue: PLACE_NAME[here] ?? here })}
           />
         );
       if (o.type === "routemap")

@@ -55,6 +55,11 @@ export interface ActionDef {
   abort?: readonly string[];
 }
 
+export interface WalkVariant {
+  every: number;
+  frames: readonly (string | null)[];
+}
+
 export interface PlayerConfig<F extends string = string> {
   /** Rendered size in logical px (cells × cell). */
   width: number;
@@ -62,12 +67,34 @@ export interface PlayerConfig<F extends string = string> {
   palette: SpritePalette;
   frames: Record<F, SpriteMap>;
   walkCycle: readonly F[];
+  /**
+   * Logical px of travel per walk frame (default 16). The cycle is driven by
+   * distance, not time, so a foot drawn on the floor stays on the floor: at a
+   * stride of 8 px and 4 cells a frame, the planted shoe moves back exactly the
+   * four cells the body moves forward.
+   */
+  walkStride?: number;
+  /** Cycle index a walk starts on from standing (default 0) — the push-off. */
+  walkStart?: number;
+  /**
+   * Things the walk does now and then. Each variant is a cycle-length list of
+   * frame overrides (null = the base frame); `every` is the average number of
+   * cycles between occurrences. Picked deterministically from the cycle count
+   * by core/gait.ts, so a walk replays the same way for the same distance.
+   */
+  walkVariants?: readonly WalkVariant[];
   actions: Record<string, ActionDef>;
   /** Logical px per sprite cell (default 2). */
   cell?: number;
   walkSpeed?: number;
   /** Depth walk speed; defaults to walkSpeed × WALK_SPEED_Y_RATIO. */
   walkSpeedY?: number;
+  /**
+   * The character rests with the weight on one leg (the `leanIdle` frame)
+   * rather than squarely — a relaxed posture. Scenes can also ask for this
+   * per location; either one turns it on.
+   */
+  idleLean?: boolean;
 }
 
 // --- scene objects -----------------------------------------------------------
@@ -194,6 +221,15 @@ export interface GameConfig<W extends AnyWorld = AnyWorld> {
   start: { scene: string; x: number; y?: number };
   initialWorld: W;
   player: PlayerConfig;
+  /**
+   * The player *for this world* — a different body or different clothes are
+   * different frames, not just a different palette. Called on every world
+   * change, so it must be cheap when nothing relevant changed: return the same
+   * object for the same look (see `compileCharacter`).
+   */
+  playerFor?: (world: W) => PlayerConfig;
+  /** The "there are other things here" hint under the interact chip; default English. */
+  promptSwitchLabel?: () => string;
   /** Handler table by object kind. `door` is built in but can be overridden. */
   handlers: Record<string, InteractionHandler<W>>;
   /** Label for the "▸ OBJECT [E]" prompt. */

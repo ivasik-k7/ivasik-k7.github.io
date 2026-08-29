@@ -151,11 +151,13 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     showToast(t(`toast.${obj.id}${nextOpen ? "Open" : "Close"}`));
   },
 
-  sport: ({ obj, showToast, startAction, queueToast, shakeCamera }) => {
+  sport: ({ obj, world, showToast, startAction, queueToast, shakeCamera }) => {
     if (!obj.action) return;
-    startAction(obj.action);
+    // a bench, with a beer in the pocket, is a bench with a beer
+    const withBeer = obj.action === "sit" && world.inventory.some((i) => i.itemId === "beer");
+    startAction(withBeer ? "sitBeer" : obj.action);
     if (obj.action === "smoke") playSfx("match");
-    if (obj.action === "sit") playSfx("doorshut");
+    if (obj.action.startsWith("sit")) playSfx("doorshut");
     if (obj.action === "press" || obj.action === "swing") shakeCamera(2, 300);
     showToast(t(`toast.${obj.id}`));
     if (obj.action === "call") {
@@ -246,14 +248,23 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     if (obj.data) openOverlay({ type: "panel", id: obj.data });
   },
 
+  // the sleep panel rides the animation: it opens once he is lying down, and
+  // walking away before that cancels it along with the lie
   bed: ({ obj, startAction, showToast, openOverlay, shakeCamera }) => {
-    startAction("lay");
+    const timers: number[] = [];
+    startAction("lay", {
+      onInterrupt: () => {
+        for (const timer of timers) window.clearTimeout(timer);
+      },
+    });
     playSfx("doorshut");
-    window.setTimeout(() => shakeCamera(1.5, 200), 1200);
+    timers.push(window.setTimeout(() => shakeCamera(1.5, 200), 1200));
     showToast(t("toast.bedLie"));
-    window.setTimeout(() => {
-      if (obj.data) openOverlay({ type: "panel", id: obj.data });
-    }, 5400);
+    timers.push(
+      window.setTimeout(() => {
+        if (obj.data) openOverlay({ type: "panel", id: obj.data });
+      }, 5400),
+    );
   },
 
   computer: ({ openOverlay }) => {

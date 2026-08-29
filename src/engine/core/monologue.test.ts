@@ -70,8 +70,9 @@ describe("monologue floors", () => {
   });
 
   it("dwell grows with length inside hard bounds", () => {
+    // normal speed: 18 ms a character to type, then the reading curve
     expect(dwellMs("")).toBe(2000);
-    expect(dwellMs("Nie pytaj.")).toBe(2280);
-    expect(dwellMs("x".repeat(400))).toBe(7200);
+    expect(dwellMs("Nie pytaj.")).toBe(10 * 18 + 2280);
+    expect(dwellMs("x".repeat(400))).toBe(400 * 18 + 7200);
   });
 });

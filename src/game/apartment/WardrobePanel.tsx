@@ -1,139 +1,474 @@
-import { motion } from "motion/react";
+import { t } from "i18next";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PixelSprite, playSfx } from "@/engine";
-import type { WorldState } from "@/lib/worldState";
-import { APPEARANCE_SLOTS, cycleOption, paletteForAppearance } from "./appearance";
-import { PLAYER } from "./player";
+import {
+  Bev,
+  bevelPaths,
+  dth,
+  M,
+  PixelText,
+  pxPath,
+  type Rect,
+  textWidth,
+} from "@/engine/scene/pixelKit";
+import { initialWorld, type WorldState } from "@/lib/worldState";
+import { MinigameShell } from "../minigames/kit";
+import {
+  APPEARANCE_GROUPS,
+  APPEARANCE_SLOTS,
+  type Appearance,
+  activeOutfit,
+  applyOutfit,
+  cycleOption,
+  normalizeAppearance,
+  OUTFITS,
+  paletteForAppearance,
+  playerForAppearance,
+  rollAppearance,
+  swatchFor,
+} from "./appearance";
 
 /**
- * The wardrobe — a mirror with opinions. Live preview on the left,
- * one row per body zone on the right; changes apply to the world
- * immediately, so you walk out wearing what you picked.
+ * SZAFA — the hall wardrobe, close up.
+ *
+ * Drawn the way the bankomat is drawn: a piece of furniture on a logical
+ * canvas, every box with its bevel edge-light, the mirror recessed into the
+ * door with the man in it, and the rails on the open side with a cursor that
+ * a keyboard moves. No buttons. The whole thing is played from the same
+ * keys as the rest of the game — W/S for the rail, A/D for what hangs on it,
+ * Q/E for which part of the wardrobe you are looking in, digits for a whole
+ * outfit, R for whatever falls out, Space to see him move — and Escape is
+ * the door closing, which the engine owns.
+ *
+ * The mirror is honest: it shows the compiled player for the look on the
+ * rails, standing, walking or sitting, so a change is judged in motion.
  */
+
+/* logical canvas */
+const W = 300;
+const H = 190;
+const FLOOR_Y = 168;
+
+/* the wardrobe body, its two doors, and the mirror set into the left one */
+const BODY: Rect = [14, 6, 272, 162];
+const PLINTH: Rect = [12, 160, 276, 8];
+const MIRROR_FRAME: Rect = [26, 16, 84, 142];
+const MIRROR: Rect = [30, 20, 76, 134];
+const RAIL_X = 122;
+const RAIL_W = 160;
+const RAIL_Y0 = 38;
+const RAIL_H = 22;
+const TABS_Y = 24;
+
+const GLASS = "#20262e";
+const GLASS_HI = "#3a4450";
+const CURSOR = "#e8c445";
+const DIM = M.linen.deep;
+const INK = M.linen.base;
+
+type Pose = "stand" | "walk" | "sit";
+
+/**
+ * Colour options are named by what they paint, not by a key: the skin called
+ * "default" is Warm, the shirt called "default" is Black. This resolves an
+ * option to its catalogue key so the label can be translated; ids that are
+ * already keys (every cut and body option) pass straight through.
+ */
+const DEFAULT_KEY: Partial<Record<keyof Appearance, string>> = {
+  skin: "warm",
+  hair: "chestnut",
+  beard: "stubble",
+  shirt: "black",
+  trousers: "navy",
+  shoes: "white",
+};
+const ALIAS_KEY: Record<string, string> = {
+  "hoodie-grey": "grey",
+  "hoodie-black": "black",
+  sambo: "red",
+  sambovki: "blue",
+};
+function optionLabel(slotKey: keyof Appearance, id: string, fallback: string): string {
+  let key = id;
+  if (id === "default") key = DEFAULT_KEY[slotKey] ?? id;
+  else if (slotKey === "beard" && id === "none") key = "cleanShave";
+  else key = ALIAS_KEY[id] ?? id;
+  return t(`wardrobe.option.${key}`, { defaultValue: fallback });
+}
+const POSES: Pose[] = ["stand", "walk", "sit"];
+const WALK_MS = 170;
+
 export function WardrobePanel({
   world,
   updateWorld,
-  onClose,
 }: {
   world: WorldState;
   updateWorld: (patch: Partial<WorldState> | ((w: WorldState) => WorldState)) => void;
   onClose: () => void;
 }) {
-  const appearance = world.appearance;
-  const palette = paletteForAppearance(appearance);
+  const appearance = normalizeAppearance(world.appearance);
+  const palette = useMemo(() => paletteForAppearance(appearance), [appearance]);
+  const player = useMemo(() => playerForAppearance(appearance), [appearance]);
 
-  const set = (key: keyof WorldState["appearance"], id: string) => {
-    playSfx("click");
-    updateWorld((w) => ({ ...w, appearance: { ...w.appearance, [key]: id } }));
-  };
+  const [group, setGroup] = useState(2); // WHAT HE WEARS
+  const [row, setRow] = useState(0);
+  const [pose, setPose] = useState<Pose>("stand");
+  const [tick, setTick] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
+  const noteTimer = useRef<number>(0);
+  const stageRef = useRef<SVGGElement | null>(null);
+
+  const slots = APPEARANCE_SLOTS.filter((s) => s.group === APPEARANCE_GROUPS[group].id);
+  const slot = slots[Math.min(row, slots.length - 1)];
+
+  useEffect(() => {
+    if (pose !== "walk") return;
+    const id = window.setInterval(() => setTick((t) => t + 1), WALK_MS);
+    return () => window.clearInterval(id);
+  }, [pose]);
+  useEffect(() => () => window.clearTimeout(noteTimer.current), []);
+
+  const say = useCallback((text: string) => {
+    setNote(text);
+    window.clearTimeout(noteTimer.current);
+    noteTimer.current = window.setTimeout(() => setNote(null), 1800);
+  }, []);
+  const setAll = useCallback(
+    (a: Appearance) => updateWorld((w) => ({ ...w, appearance: a })),
+    [updateWorld],
+  );
+
+  /* ------------------------------------------------------------ input --- */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Escape") return; // the overlay contract owns Escape
+      e.stopPropagation();
+      const code = e.code;
+      if (code === "ArrowDown" || code === "KeyS") {
+        playSfx("click");
+        setRow((r) => (r + 1) % slots.length);
+      } else if (code === "ArrowUp" || code === "KeyW") {
+        playSfx("click");
+        setRow((r) => (r + slots.length - 1) % slots.length);
+      } else if (code === "KeyE" || code === "Tab" || code === "PageDown") {
+        e.preventDefault();
+        playSfx("click");
+        setGroup((g) => (g + 1) % APPEARANCE_GROUPS.length);
+        setRow(0);
+      } else if (code === "KeyQ" || code === "PageUp") {
+        e.preventDefault();
+        playSfx("click");
+        setGroup((g) => (g + APPEARANCE_GROUPS.length - 1) % APPEARANCE_GROUPS.length);
+        setRow(0);
+      } else if (
+        code === "ArrowRight" ||
+        code === "KeyD" ||
+        code === "ArrowLeft" ||
+        code === "KeyA" ||
+        code === "Enter"
+      ) {
+        const dir: 1 | -1 = code === "ArrowLeft" || code === "KeyA" ? -1 : 1;
+        if (!slot) return;
+        let next = cycleOption(slot, appearance[slot.key], dir);
+        // a hood needs a hoodie: skip past it rather than collapsing the
+        // choice to "nothing" behind the user's back
+        if (slot.key === "head" && next === "hood" && appearance.top !== "hoodie") {
+          next = cycleOption(slot, "hood", dir);
+          say(t("wardrobe.hoodNeedsHoodie"));
+        }
+        if (slot.key === "hat" && appearance.head !== "cap" && appearance.head !== "beanie") {
+          say(t("wardrobe.nothingOnHead"));
+        }
+        playSfx("click");
+        updateWorld((w) => ({
+          ...w,
+          appearance: normalizeAppearance({ ...w.appearance, [slot.key]: next }),
+        }));
+      } else if (code === "Space") {
+        e.preventDefault();
+        playSfx("click");
+        setPose((p) => POSES[(POSES.indexOf(p) + 1) % POSES.length]);
+      } else if (code === "KeyR") {
+        playSfx("chime");
+        setAll(rollAppearance());
+        say(t("wardrobe.fellOut"));
+      } else if (code === "Backspace") {
+        playSfx("click");
+        setAll(normalizeAppearance(initialWorld.appearance));
+        say(t("wardrobe.asDrawn"));
+      } else if (/^Digit[1-9]$/.test(code) || /^Numpad[1-9]$/.test(code)) {
+        const n = Number(code.slice(-1)) - 1;
+        const outfit = OUTFITS[n];
+        if (!outfit) return;
+        playSfx("chime");
+        setAll(applyOutfit(appearance, outfit));
+        say(outfit.note.toUpperCase());
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [appearance, slot, slots.length, updateWorld, say, setAll]);
+
+  /* ------------------------------------------------------------ mirror --- */
+  const frame =
+    pose === "walk"
+      ? player.frames[player.walkCycle[tick % player.walkCycle.length]]
+      : pose === "sit"
+        ? (player.frames.sit ?? player.frames.stand)
+        : player.frames.stand;
+  const cell = 3;
+  const spriteW = (player.width / (player.cell ?? 2)) * cell;
+  const spriteH = (player.height / (player.cell ?? 2)) * cell;
+  const spriteX = MIRROR[0] + Math.floor((MIRROR[2] - spriteW) / 2);
+  const spriteY = MIRROR[1] + MIRROR[3] - spriteH - 6;
+
+  const outfitOn = activeOutfit(appearance);
+  const outfitLabel = outfitOn
+    ? t(`wardrobe.outfit.${outfitOn}`, {
+        defaultValue: OUTFITS.find((o) => o.id === outfitOn)?.label ?? "",
+      })
+    : t("wardrobe.ownMix");
 
   return (
-    <motion.div
-      key="wardrobe"
-      className="absolute inset-0 z-40 flex items-center justify-center bg-black/70"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
+    <MinigameShell
+      w={W}
+      h={H}
+      bg="#0a0c10"
+      stageRef={stageRef}
+      verdict={null}
+      hint={t("minigame.wardrobe")}
+      maxWidth="max-w-2xl"
     >
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: click only stops backdrop propagation; ESC close is handled by the engine */}
-      <div
-        className="flex max-h-[90vh] gap-6 overflow-y-auto border border-parchment/30 bg-[#12100e] p-6"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Wardrobe"
-      >
-        {/* the mirror: live preview at 4× */}
-        <div className="flex flex-col items-center gap-3 border border-parchment/15 bg-[#1a1713] px-6 py-4">
-          <p className="font-mono text-parchment/50 text-xs tracking-[0.3em]">MIRROR</p>
-          <svg
-            aria-hidden="true"
-            width={PLAYER.width * 4}
-            height={PLAYER.height * 4}
-            viewBox={`0 0 ${PLAYER.width} ${PLAYER.height}`}
-            className="pixelated"
-          >
-            <PixelSprite map={PLAYER.frames.stand} palette={palette} cell={2} />
-          </svg>
-          <p className="max-w-36 text-center font-mono text-[10px] text-parchment/40 leading-relaxed">
-            The mirror withholds judgement. Barely.
-          </p>
-        </div>
+      {/* the hall wall and its skirting */}
+      <rect width={W} height={FLOOR_Y} fill="#231f1b" />
+      <rect x={0} y={FLOOR_Y} width={W} height={H - FLOOR_Y} fill="#17151a" />
+      <rect x={0} y={FLOOR_Y} width={W} height={2} fill="#2a262c" />
+      <rect width={W} height={H} fill={dth("n", "25")} />
+      {/* the wardrobe's stepped shadow onto the wall */}
+      <path
+        d={pxPath([
+          [BODY[0] + BODY[2], BODY[1] + 6, 5, BODY[3] - 6],
+          [BODY[0] + 4, BODY[1] + BODY[3], BODY[2] + 4, 4],
+        ])}
+        fill="#07080a"
+        opacity={0.55}
+      />
+      {/* carcass: oak veneer, bevel edge-light on every box */}
+      <rect x={BODY[0]} y={BODY[1]} width={BODY[2]} height={BODY[3]} fill={M.oak.base} />
+      <Bev set={bevelPaths([BODY])} mat={M.oak} />
+      {/* the grain: long faint lines the veneer would have */}
+      {[30, 62, 94, 126, 150].map((y) => (
+        <rect
+          key={y}
+          x={BODY[0] + 2}
+          y={y}
+          width={BODY[2] - 4}
+          height={1}
+          fill={M.oak.lo}
+          opacity={0.5}
+        />
+      ))}
+      <rect x={BODY[0]} y={BODY[1]} width={BODY[2]} height={BODY[3]} fill={dth("n", "12")} />
+      {/* plinth */}
+      <rect x={PLINTH[0]} y={PLINTH[1]} width={PLINTH[2]} height={PLINTH[3]} fill={M.oak.deep} />
+      <Bev set={bevelPaths([PLINTH])} mat={M.oak} op={0.6} />
 
-        {/* the rails: one row per zone */}
-        <div className="flex min-w-64 flex-col gap-3">
-          <p className="font-mono text-parchment text-sm tracking-[0.3em]">WARDROBE</p>
-          {APPEARANCE_SLOTS.map((slot) => {
-            const currentId = appearance[slot.key];
-            const current = slot.options.find((o) => o.id === currentId) ?? slot.options[0];
-            const swatch =
-              (Object.values(current.colors).find((c) => c !== "") as string) ?? "#3a3d43";
-            return (
-              <div
-                key={slot.key}
-                className="flex items-center justify-between gap-3 border border-parchment/15 bg-black/40 px-3 py-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-block h-4 w-4 border border-parchment/25"
-                    style={{ backgroundColor: swatch }}
-                  />
-                  <div className="flex flex-col">
-                    <span className="font-mono text-[10px] text-parchment/45 tracking-[0.25em]">
-                      {slot.label}
-                    </span>
-                    <span className="font-mono text-parchment/90 text-xs">{current.label}</span>
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    aria-label={`Previous ${slot.label}`}
-                    className="border border-parchment/25 px-2 py-1 font-mono text-parchment/70 text-xs hover:border-signal hover:text-signal"
-                    onClick={() => set(slot.key, cycleOption(slot, currentId, -1))}
-                  >
-                    ‹
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Next ${slot.label}`}
-                    className="border border-parchment/25 px-2 py-1 font-mono text-parchment/70 text-xs hover:border-signal hover:text-signal"
-                    onClick={() => set(slot.key, cycleOption(slot, currentId, 1))}
-                  >
-                    ›
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          <div className="mt-1 flex justify-between">
-            <button
-              type="button"
-              className="border border-parchment/25 px-3 py-1 font-mono text-parchment/70 text-xs hover:border-signal hover:text-signal"
-              onClick={() => {
-                playSfx("chime");
-                updateWorld((w) => ({
-                  ...w,
-                  appearance: Object.fromEntries(
-                    APPEARANCE_SLOTS.map((s) => [
-                      s.key,
-                      s.options[Math.floor(Math.random() * s.options.length)].id,
-                    ]),
-                  ) as WorldState["appearance"],
-                }));
-              }}
-            >
-              SURPRISE ME
-            </button>
-            <button
-              type="button"
-              className="border border-signal/60 px-3 py-1 font-mono text-signal text-xs hover:bg-signal/10"
-              onClick={onClose}
-            >
-              DONE [ESC]
-            </button>
-          </div>
-        </div>
-      </div>
-    </motion.div>
+      {/* the mirror door: frame, recess, glass, the man */}
+      <rect
+        x={MIRROR_FRAME[0]}
+        y={MIRROR_FRAME[1]}
+        width={MIRROR_FRAME[2]}
+        height={MIRROR_FRAME[3]}
+        fill={M.oak.lo}
+      />
+      <Bev set={bevelPaths([MIRROR_FRAME])} mat={M.oak} />
+      <path
+        d={pxPath([
+          [MIRROR[0] - 1, MIRROR[1] - 1, MIRROR[2] + 2, 1],
+          [MIRROR[0] - 1, MIRROR[1], 1, MIRROR[3] + 1],
+        ])}
+        fill="#0e1014"
+      />
+      <rect x={MIRROR[0]} y={MIRROR[1]} width={MIRROR[2]} height={MIRROR[3]} fill={GLASS} />
+      {/* the glass catches the hall light in one diagonal streak */}
+      <path
+        d={pxPath([
+          [MIRROR[0] + 6, MIRROR[1] + 4, 3, 40],
+          [MIRROR[0] + 9, MIRROR[1] + 14, 2, 30],
+          [MIRROR[0] + 12, MIRROR[1] + 26, 1, 20],
+        ])}
+        fill={GLASS_HI}
+        opacity={0.5}
+      />
+      {/* his shadow on the glass floor, then him */}
+      <rect
+        x={spriteX + 8}
+        y={spriteY + spriteH - 2}
+        width={spriteW - 16}
+        height={3}
+        fill="#0b0d11"
+        opacity={0.6}
+      />
+      <g transform={`translate(${spriteX} ${spriteY})`}>
+        <PixelSprite map={frame} palette={palette} cell={cell} />
+      </g>
+      <rect
+        x={MIRROR[0]}
+        y={MIRROR[1]}
+        width={MIRROR[2]}
+        height={MIRROR[3]}
+        fill={dth("n", "12")}
+      />
+      {/* the pose stamp, bottom of the glass */}
+      <PixelText
+        x={MIRROR[0] + Math.floor((MIRROR[2] - textWidth(t(`wardrobe.pose.${pose}`))) / 2)}
+        y={MIRROR[1] + MIRROR[3] - 8}
+        text={t(`wardrobe.pose.${pose}`)}
+        fill={GLASS_HI}
+      />
+      {/* door handle */}
+      <rect
+        x={MIRROR_FRAME[0] + MIRROR_FRAME[2] - 2}
+        y={84}
+        width={2}
+        height={12}
+        fill={M.brass.base}
+      />
+      <rect
+        x={MIRROR_FRAME[0] + MIRROR_FRAME[2] - 2}
+        y={84}
+        width={2}
+        height={1}
+        fill={M.brass.hi}
+      />
+
+      {/* the open side: a label plate, the shelves as tabs, the rails */}
+      <rect x={RAIL_X - 6} y={12} width={RAIL_W + 12} height={144} fill={M.oak.deep} />
+      <rect x={RAIL_X - 6} y={12} width={RAIL_W + 12} height={144} fill={dth("n", "25")} />
+      <PixelText x={RAIL_X} y={14} text={t("wardrobe.title")} fill={M.brass.base} />
+      <PixelText
+        x={RAIL_X + RAIL_W - textWidth(outfitLabel)}
+        y={14}
+        text={outfitLabel}
+        fill={outfitOn ? CURSOR : DIM}
+      />
+
+      {/* shelves: the four groups, the open one lit */}
+      {APPEARANCE_GROUPS.map((g, i) => {
+        const short = t(`wardrobe.group.${g.id}`);
+        const x = RAIL_X + i * 40;
+        const on = i === group;
+        return (
+          <g key={g.id}>
+            <rect x={x} y={TABS_Y} width={38} height={9} fill={on ? M.oak.hi : M.oak.lo} />
+            <rect
+              x={x}
+              y={TABS_Y}
+              width={38}
+              height={1}
+              fill={on ? M.linen.hi : M.oak.base}
+              opacity={0.8}
+            />
+            <PixelText
+              x={x + Math.floor((38 - textWidth(short)) / 2)}
+              y={TABS_Y + 2}
+              text={short}
+              fill={on ? M.oak.deep : M.oak.hi}
+            />
+          </g>
+        );
+      })}
+
+      {/* rails */}
+      {slots.map((s, i) => {
+        const y = RAIL_Y0 + i * RAIL_H;
+        const on = i === Math.min(row, slots.length - 1);
+        const currentId = appearance[s.key];
+        const current = s.options.find((o) => o.id === currentId) ?? s.options[0];
+        const sw = swatchFor(s, current.id, appearance);
+        const index = s.options.findIndex((o) => o.id === current.id);
+        const muted = s.key === "hat" && appearance.head !== "cap" && appearance.head !== "beanie";
+        return (
+          <g key={s.key} opacity={muted ? 0.45 : 1}>
+            {/* the rail itself: a steel bar with a highlight */}
+            <rect x={RAIL_X} y={y + RAIL_H - 3} width={RAIL_W} height={2} fill={M.steel.lo} />
+            <rect
+              x={RAIL_X}
+              y={y + RAIL_H - 3}
+              width={RAIL_W}
+              height={1}
+              fill={M.steel.hi}
+              opacity={0.6}
+            />
+            {on ? <PixelText x={RAIL_X} y={y + 8} text=">" fill={CURSOR} /> : null}
+            <PixelText
+              x={RAIL_X + 8}
+              y={y + 1}
+              text={t(`wardrobe.slot.${s.key}`, { defaultValue: s.label })}
+              fill={on ? INK : DIM}
+              op={0.7}
+            />
+            {/* what hangs there: a swatch lit the way the sprite is lit, or a numbered tag */}
+            {sw ? (
+              <g>
+                <rect x={RAIL_X + 8} y={y + 8} width={8} height={8} fill={sw.base} />
+                <path
+                  d={pxPath([
+                    [RAIL_X + 12, y + 12, 4, 4],
+                    [RAIL_X + 8, y + 15, 8, 1],
+                  ])}
+                  fill={sw.shade}
+                />
+                <rect
+                  x={RAIL_X + 8}
+                  y={y + 8}
+                  width={8}
+                  height={8}
+                  fill="none"
+                  stroke={M.oak.deep}
+                  strokeWidth={1}
+                />
+              </g>
+            ) : (
+              <g>
+                <rect x={RAIL_X + 8} y={y + 8} width={8} height={8} fill={M.linen.deep} />
+                <PixelText x={RAIL_X + 10} y={y + 10} text={String(index + 1)} fill={M.oak.deep} />
+              </g>
+            )}
+            <PixelText
+              x={RAIL_X + 20}
+              y={y + 9}
+              text={optionLabel(s.key, current.id, current.label).toUpperCase()}
+              fill={on ? M.linen.hi : INK}
+            />
+            {on ? (
+              <g>
+                <PixelText x={RAIL_X + RAIL_W - 22} y={y + 9} text="<" fill={CURSOR} />
+                <PixelText x={RAIL_X + RAIL_W - 6} y={y + 9} text=">" fill={CURSOR} />
+                <PixelText x={RAIL_X + RAIL_W - 16} y={y + 9} text={`${index + 1}`} fill={DIM} />
+              </g>
+            ) : null}
+          </g>
+        );
+      })}
+
+      {/* the note: what he thinks of it, briefly */}
+      {note ? (
+        <PixelText
+          x={RAIL_X + Math.max(0, Math.floor((RAIL_W - textWidth(note)) / 2))}
+          y={RAIL_Y0 + 4 * RAIL_H + 8}
+          text={note.length > 30 ? `${note.slice(0, 29)}…` : note}
+          fill={CURSOR}
+        />
+      ) : (
+        <PixelText
+          x={RAIL_X}
+          y={RAIL_Y0 + 4 * RAIL_H + 8}
+          text={`${t("wardrobe.frames", { count: Object.keys(player.frames).length })} · ${player.width / (player.cell ?? 2)}X${player.height / (player.cell ?? 2)}`}
+          fill={DIM}
+          op={0.7}
+        />
+      )}
+    </MinigameShell>
   );
 }

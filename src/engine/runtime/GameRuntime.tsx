@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { blinkFrame } from "../character/compile";
 import { type ActionRun, stepAction } from "../core/actionPlayer";
 import { type CamRig, newCamRig, stepCamRig } from "../core/cameraRig";
 import {
@@ -12,6 +13,8 @@ import {
   TRAVEL_SWITCH_AT_MS,
   WALK_SPEED_Y_RATIO,
 } from "../core/constants";
+import { newFaceState, resetFace, stepFace } from "../core/faceBrain";
+import { newGaitState, stepGait, walkSpan } from "../core/gait";
 import {
   clampY,
   clampYAt,
@@ -24,6 +27,7 @@ import {
 } from "../core/ground";
 import { newIdleState, resetIdle, stepIdle } from "../core/idleBrain";
 import { detectObjects, resolveActiveTarget, viewportScale } from "../core/math";
+import { dwellMs } from "../core/monologue";
 import { BandProvider } from "../core/runtime-cull";
 import {
   AtlasSprite,
@@ -60,6 +64,7 @@ import type {
   SeqStep,
 } from "../core/runtime-types";
 import { newSeqRun, type SeqHost, type SeqRun, stepSequence } from "../core/sequencer";
+import { newTalkState, resetTalk, stepTalk } from "../core/talkBrain";
 import type { AnyWorld, FxInstance, InteractionCtx, SceneObject } from "../core/types";
 import {
   advanceDialogue,
@@ -169,7 +174,7 @@ const PENDING_SCENE = Object.freeze({
 });
 
 export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeConfig<W> }) {
-  const { scenes, player, handlers, objectLabel } = config;
+  const { scenes, player: basePlayer, handlers, objectLabel } = config;
   const persist = config.persist;
 
   // --- options (normalised once per render; renders are rare) -------------------
@@ -210,6 +215,12 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     typeof restored?.scene === "string" ? restored.scene : config.start.scene,
   );
   const [world, setWorld] = useState<W>(restored?.world ?? config.initialWorld);
+  // the player this world dresses: same object back for the same look, so
+  // everything keyed on `player.frames` (atlas, sprite sheet) stays put
+  const player = useMemo(
+    () => config.playerFor?.(world) ?? basePlayer,
+    [config.playerFor, world, basePlayer],
+  );
   const [dialogue, setDialogue] = useState<{ state: DialogueState; obj: SceneObject } | null>(null);
   const [overlay, setOverlay] = useState<unknown>(null);
   const [intro, setIntro] = useState(Boolean(config.renderIntro));
@@ -344,6 +355,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const smilPausedRef = useRef(false);
   /** How long he has been standing still, and what he does about it next. */
   const idleRef = useRef(newIdleState());
+  const faceRef = useRef(newFaceState());
+  const gaitRef = useRef(newGaitState());
+  const talkRef = useRef(newTalkState());
   const bufferedInteractRef = useRef(0);
   const autoWalkRef = useRef<{
     x: number;
@@ -361,6 +375,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     stalledMs: number;
     /** Waypoints still to walk after (x, y) — a route around furniture. */
     rest: { x: number; y: number }[];
+    /** fraction of the normal walk speed */
+    speed: number;
   } | null>(null);
   const seqRef = useRef<SeqRun<W> | null>(null);
   const ctxFactoryRef = useRef<((obj: SceneObject) => RuntimeCtx<W>) | null>(null);
@@ -584,7 +600,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     // the game clock: a toast shown just before the menu opens is still
     // there, with its time left, when the menu closes
     const clock = clockRef.current;
-    const id = clock.after(3000, () => {
+    // as long as the line needs to be read at the player's text speed
+    const id = clock.after(dwellMs(toast.text), () => {
       setToast((cur) => (cur?.id === toast.id ? null : cur));
     });
     return () => clock.cancel(id);
@@ -941,7 +958,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   }, []);
 
   const runSequence = useCallback(
-    (steps: SeqStep<W>[], o?: { cinematic?: boolean }) => {
+    (steps: SeqStep<W>[], o?: { cinematic?: boolean; skippable?: boolean }) => {
       cancelSequence();
       const cinematic = o?.cinematic ?? false;
       if (cinematic) {
@@ -950,7 +967,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       }
       wakeRef.current();
       return new Promise<boolean>((resolve) => {
-        seqRef.current = newSeqRun(steps, cinematic, resolve);
+        seqRef.current = newSeqRun(steps, cinematic, resolve, o?.skippable ?? false);
       });
     },
     [cancelSequence],
@@ -1230,6 +1247,15 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         if (action === "cancel" || action === "menu") {
           event.preventDefault();
           setOverlay(null);
+        }
+        return;
+      }
+      // a cinematic owns the keys; the one thing it may allow is being skipped
+      if (inputLockRef.current) {
+        const run = seqRef.current;
+        if (action === "cancel" && run?.cinematic && run.skippable) {
+          event.preventDefault();
+          cancelSequence();
         }
         return;
       }
@@ -1569,12 +1595,13 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       };
     const seqHost: SeqHost<W> = {
       showToast: (text) => loopBag.current.showToast(text),
-      startWalk: (x, y, deadline) => {
+      startWalk: (x, y, deadline, speed) => {
         cancelAutoWalkStatic(autoWalkRef);
         const w = planWalkRef.current(x, y);
-        autoWalkRef.current = newAutoWalk(w.x, w.y, deadline, null, undefined, w.rest);
+        autoWalkRef.current = newAutoWalk(w.x, w.y, deadline, null, undefined, w.rest, speed);
       },
       walking: () => autoWalkRef.current !== null,
+      toastMs: dwellMs,
       setFacing: (facing) => {
         pos.current.facing = facing;
       },
@@ -1850,8 +1877,10 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             if (dirX !== 0) p.facing = dirX as 1 | -1;
             // the ground underfoot has a say: mud wades, ice hurries
             const surf = ground.zones ? speedAt(ground, p.x, p.y) : 1;
-            const dx = dirX * bag.walkSpeed * surf * dt;
-            const dy = dirY * bag.walkSpeedY * surf * dt;
+            // an auto-walk may ask for less than full pace (a slow morning)
+            const pace = surf * (autoWalkRef.current?.speed ?? 1);
+            const dx = dirX * bag.walkSpeed * pace * dt;
+            const dy = dirY * bag.walkSpeedY * pace * dt;
             const next = stepOnGround(
               ground,
               p.x,
@@ -1867,8 +1896,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             // blocker keeps the walk cycle alive, as it always has at the
             // scene margins. Bounded, and aligned to the cycle so wrapping
             // never skips a frame.
-            const span = 16 * Math.max(1, player.walkCycle.length) * 512;
-            p.walkDist = (p.walkDist + Math.abs(dx) + Math.abs(dy)) % span;
+            p.walkDist = (p.walkDist + Math.abs(dx) + Math.abs(dy)) % walkSpan(player);
             moving = true;
           } else {
             // self-heal a stale save, a changed band, or a profile edge the
@@ -2096,19 +2124,58 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         }
       }
 
-      // --- player frame (core/idleBrain owns the standing-about behaviour) -----
+      // --- player frame ---------------------------------------------------------
+      // core/gait owns the legs: the cycle frame by distance, the push-off on a
+      // start or a turn, the settle through the pass on a stop. It is skipped
+      // under an action so a walk-away interrupt does not "start" a walk under
+      // the abort frames and then settle once they are gone.
+      let gaitFrame: string | null = null;
+      if (!actionFrame) {
+        const gait = stepGait(gaitRef.current, player, p.walkDist, moving, p.facing, now);
+        p.walkDist = gait.walkDist;
+        gaitFrame = gait.frame;
+      } else {
+        gaitRef.current.moving = false;
+        gaitRef.current.settleFrame = null;
+      }
+      // core/talkBrain owns him for the length of a conversation: the game
+      // clock is stopped under a dialogue, so this runs on `now`
+      let talkFrame: string | null = null;
+      const dlg = dialogueRef.current;
+      if (dlg && !actionFrame && !gaitFrame) {
+        const line = dlg.state.lines[dlg.state.lineIndex];
+        const atChoices =
+          dlg.state.lineDone &&
+          dlg.state.lineIndex === dlg.state.lines.length - 1 &&
+          offeredChoices(dlg.state.tree.nodes[dlg.state.nodeId], () =>
+            ctxFactoryRef.current?.(dlg.obj),
+          ).length > 0;
+        const his = atChoices || (line !== undefined && !line.speaker);
+        talkFrame = stepTalk(talkRef.current, now, his);
+        resetIdle(idleRef.current);
+      } else {
+        resetTalk(talkRef.current);
+      }
+      // core/idleBrain owns the standing-about behaviour
       let idleFrame = "stand";
-      if (!moving && !actionFrame) {
-        idleFrame = stepIdle(idleRef.current, now, paused, player.frames, def.idleLean ?? false);
+      if (!moving && !actionFrame && !gaitFrame && !talkFrame) {
+        // a cutscene has him standing where it put him: he breathes, he does
+        // not stretch or look over his shoulder in the middle of a line
+        idleFrame = stepIdle(
+          idleRef.current,
+          now,
+          paused || seqRef.current !== null,
+          Boolean(def.idleLean || player.idleLean),
+        );
       } else {
         resetIdle(idleRef.current);
       }
-      let frame =
-        forcedFrameRef.current ??
-        actionFrame ??
-        (moving
-          ? player.walkCycle[Math.floor(p.walkDist / 16) % player.walkCycle.length]
-          : idleFrame);
+      let frame = forcedFrameRef.current ?? actionFrame ?? gaitFrame ?? talkFrame ?? idleFrame;
+      // the face layer: the lids have their own clock, and close on whatever
+      // the body is showing — walking, talking, lifting — not only at rest.
+      // A held frame is for looking at, so it keeps its eyes open.
+      if (forcedFrameRef.current) resetFace(faceRef.current, now);
+      else if (stepFace(faceRef.current, now)) frame = blinkFrame(player.frames, frame);
 
       {
         const live = liveRef.current;
@@ -2130,9 +2197,11 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           ? "forced"
           : actionFrame
             ? "action"
-            : moving
+            : gaitFrame
               ? "walk"
-              : "idle";
+              : talkFrame
+                ? "talk"
+                : "idle";
         live.moving = moving;
         live.target = nearRef.current?.id ?? null;
         live.surface = ground.zones ? surfaceAt(ground, p.x, p.y) : null;
@@ -2645,6 +2714,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                 {/* player */}
                 <div
                   ref={playerElRef}
+                  data-player=""
                   className="pixelated absolute top-0 left-0"
                   style={{
                     width: player.width * scale,
@@ -2703,8 +2773,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                   {foregroundNode}
                 </div>
 
-                {/* target markers — ride the world above the focused object */}
-                {!intro && !overlay && !dialogue
+                {/* target markers — ride the world above the focused object;
+                    a cinematic has nothing to point at */}
+                {!intro && !overlay && !dialogue && !cinema
                   ? opts.showAllMarkers
                     ? targets.list.map((obj) => (
                         <TargetMarker key={obj.id} obj={obj} scale={scale} />
@@ -2722,8 +2793,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           </AnimationGateProvider>
         </BandProvider>
 
-        {/* HUD */}
-        {!intro && !overlay ? (
+        {/* HUD — and none of it while a cinematic has the screen */}
+        {!intro && !overlay && !cinema ? (
           <>
             {config.renderHud?.(scene, world, phase, setOverlay)}
             {!dialogue ? (
@@ -2733,6 +2804,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
                 pulse={promptPulse}
                 label={objectLabel}
                 verb={config.objectVerb}
+                switchLabel={config.promptSwitchLabel?.()}
                 onInteract={() => interact(nearRef.current)}
                 onSelect={selectTarget}
               />
@@ -2965,6 +3037,7 @@ function newAutoWalk(
   interactId: string | null,
   resolve?: (ok: boolean) => void,
   rest?: { x: number; y: number }[],
+  speed = 1,
 ) {
   return {
     x,
@@ -2972,6 +3045,8 @@ function newAutoWalk(
     deadline,
     interactId,
     resolve,
+    /** fraction of the normal walk speed — a cutscene can take its time */
+    speed,
     lastGap: Number.POSITIVE_INFINITY,
     stalledMs: 0,
     /** waypoints still to walk after (x,y) — a route around furniture */

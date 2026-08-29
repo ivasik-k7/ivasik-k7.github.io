@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playSfx } from "@/engine";
 import {
@@ -578,15 +579,15 @@ export function Bowls({
       const line =
         tier === 2
           ? s.nosed === 0
-            ? "Дві миски, рівно по риску, і він не зрушив жодної. Gross сідає перший раз у житті без нагадування."
-            : "Rowno po kreskę. He waited. Mostly."
+            ? i18n.t("minigame.verdict.bowls.best")
+            : i18n.t("minigame.verdict.bowls.bestNosed")
           : tier === 1
             ? s.spilled > 3
-              ? "Пів кухні в воді, але поїв. Mop is in the corridor."
-              : "Zjadł. Nie pochwalił, ale zjadł."
+              ? i18n.t("minigame.verdict.bowls.midSpill")
+              : i18n.t("minigame.verdict.bowls.mid")
             : s.nosed > 1
-              ? "Він перевернув усе, що можна було перевернути, і подивився так, ніби це ти винен."
-              : "Too little, too late. Gross eats it anyway and holds it against you.";
+              ? i18n.t("minigame.verdict.bowls.lowNosed")
+              : i18n.t("minigame.verdict.bowls.low");
       setVerdict(line);
       setPhase("done");
       window.setTimeout(() => {
@@ -997,7 +998,7 @@ export function Bowls({
         phase === "done"
           ? ""
           : phase === "intro"
-            ? "e — postaw miski"
+            ? i18n.t("minigame.bowlsIntro")
             : mastered
               ? "trzymaj na misce — nalej · klik na Grossa — czekaj · s — sucharek · esc"
               : "trzymaj na misce — nalej · klik na Grossa — czekaj · esc"

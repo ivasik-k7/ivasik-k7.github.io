@@ -16,10 +16,10 @@ export function countOf(world: WorldState, itemId: string): number {
 }
 
 /** Pay for a thing and pocket it; refuses politely when short. */
-export function buy(ctx: Ctx, itemId: string, price: number) {
+export function buy(ctx: Ctx, itemId: string, price: number): boolean {
   if (ctx.world.money < price) {
     playSfx("denied");
-    return;
+    return false;
   }
   playSfx("register");
   ctx.updateWorld((w) => ({
@@ -27,6 +27,18 @@ export function buy(ctx: Ctx, itemId: string, price: number) {
     money: w.money - price,
     inventory: addToInventory(w, itemId),
   }));
+  return true;
+}
+
+/**
+ * Buy a drink and drink it: the animation that goes with what was bought,
+ * started the moment the money changes hands, so it plays as the dialogue
+ * closes. A bar is not a shop — nothing bought at one goes home unopened.
+ */
+export function buyAndDrink(ctx: Ctx, itemId: string, price: number, action: string): boolean {
+  const ok = buy(ctx, itemId, price);
+  if (ok) ctx.startAction(action);
+  return ok;
 }
 
 /** Branch helper: to the sold-<price> node, or to "short". */

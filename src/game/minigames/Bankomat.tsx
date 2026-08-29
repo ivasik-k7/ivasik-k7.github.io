@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playSfx } from "@/engine";
 import {
@@ -264,8 +265,8 @@ export function Bankomat({
       setNote("KARTA. PARAGON W CENIE.");
       setVerdict(
         queueRef.current?.style.display === ""
-          ? "Karta w kieszeni. Pan za tobą nic nie powiedział, i to było najgorsze."
-          : "Karta w kieszeni. Nikt nie patrzył. Dobry wieczór.",
+          ? i18n.t("minigame.verdict.bankomat.queue")
+          : i18n.t("minigame.verdict.bankomat.alone"),
       );
       after(500, () => playSfx("register"));
       after(2400, onClose);
@@ -368,8 +369,8 @@ export function Bankomat({
         phase === "eject"
           ? ""
           : phase === "idle"
-            ? "[e] вкласти картку · esc відійти"
-            : "цифри · w s вибір · e підтвердити · esc забрати картку"
+            ? i18n.t("minigame.bankomatIdle")
+            : i18n.t("minigame.bankomat")
       }
       maxWidth="max-w-2xl"
     >

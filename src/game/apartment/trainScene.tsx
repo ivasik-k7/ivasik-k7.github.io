@@ -2260,7 +2260,7 @@ export const TRAIN_SCENE: RuntimeSceneDef<WorldState> = {
     ...SEAT_X.filter((_, i) => i % 2 === 0).map((x, i) => ({
       id: `train-seat-${i + 1}`,
       kind: "sport",
-      action: "sit",
+      action: "sitTrain",
       face: 1 as const,
       x: x + SEAT_D + Math.round(KNEE / 2),
       range: 40,

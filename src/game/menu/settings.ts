@@ -1,4 +1,5 @@
 import { ambience, lofiPlayer, setPrefs, setSfxLevel } from "@/engine";
+import { setLanguage } from "@/i18n";
 
 /**
  * Player settings — persisted, and only the ones the game can actually honour.
@@ -30,6 +31,8 @@ export type Settings = {
   /** the typewriter speed in the dialogue and monologue panels */
   textSpeed: "slow" | "normal" | "fast" | "instant";
   fullscreen: boolean;
+  /** the interface language; English until somebody says otherwise */
+  language: "en" | "uk" | "pl";
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -42,6 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reducedMotion: "system",
   textSpeed: "normal",
   fullscreen: false,
+  language: "en",
 };
 
 const KEY = "osiedle.settings.v1";
@@ -76,6 +80,7 @@ export function saveSettings(s: Settings): void {
  * every load.
  */
 export function applySettings(s: Settings): void {
+  setLanguage(s.language);
   lofiPlayer.setMasterVolume(s.master);
   lofiPlayer.setVolume(s.music);
   ambience.setLevel(s.ambience);

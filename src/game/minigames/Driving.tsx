@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import { useEffect, useRef, useState } from "react";
 import { playSfx } from "@/engine";
 import { dth, M, PixelText, pxPath, steppedEllipse } from "@/engine/scene/pixelKit";
@@ -262,11 +263,11 @@ export function Driving({
         const line =
           tier === 2
             ? s.wet
-              ? "Ani rysy — i to w deszczu. Golf pachnie jak przed wyjazdem."
-              : "Ani rysy. Golf pachnie jak przed wyjazdem."
+              ? i18n.t("minigame.verdict.driving.bestWet")
+              : i18n.t("minigame.verdict.driving.best")
             : tier === 1
-              ? "Serce stanęło dwa razy. Lakier cały — prawie."
-              : "Marek zauważy. Marek wszystko zauważa.";
+              ? i18n.t("minigame.verdict.driving.mid")
+              : i18n.t("minigame.verdict.driving.low");
         setVerdict(line);
         setPhase("done");
         window.setTimeout(() => {
@@ -412,7 +413,7 @@ export function Driving({
       bg="#080b12"
       stageRef={stageRef}
       verdict={verdict}
-      hint={phase === "done" ? "" : "w s смуги · shift газ · space скинути · esc на узбіччя"}
+      hint={phase === "done" ? "" : i18n.t("minigame.driving")}
     >
       {/* night over the bay */}
       <rect x={0} y={0} width={W} height={HORIZON} fill="#0a0d14" />

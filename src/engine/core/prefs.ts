@@ -50,6 +50,19 @@ export const TEXT_MS: Record<TextSpeedPref, number> = {
   instant: 0,
 };
 
+/**
+ * How long a line *stays* once it has typed, relative to normal. Text speed
+ * is a reading speed, not just a typing speed: a slow reader needs the
+ * sentence to sit there after the last letter lands, and a fast one wants it
+ * gone. "instant" types in one frame, so it still needs a moment to be read.
+ */
+export const READ_MUL: Record<TextSpeedPref, number> = {
+  slow: 1.7,
+  normal: 1,
+  fast: 0.7,
+  instant: 0.6,
+};
+
 let prefs: EnginePrefs = { ...DEFAULT_PREFS };
 const listeners = new Set<() => void>();
 
@@ -80,6 +93,11 @@ export function subscribePrefs(fn: () => void): () => void {
 /** How fast text types, in ms per character. */
 export function textCharMs(): number {
   return TEXT_MS[prefs.textSpeed];
+}
+
+/** The reading-time multiplier for the current text speed. */
+export function readMul(): number {
+  return READ_MUL[prefs.textSpeed];
 }
 
 /**

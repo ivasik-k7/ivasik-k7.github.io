@@ -1,3 +1,4 @@
+import { t } from "i18next";
 import { loadGame } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 
@@ -58,12 +59,12 @@ function ago(iso: string): string {
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) return "";
   const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
-  if (mins < 1) return "a moment ago";
-  if (mins < 60) return `${mins} min ago`;
+  if (mins < 1) return t("save.moment");
+  if (mins < 60) return t("save.minutes", { count: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return hours === 1 ? "an hour ago" : `${hours} hours ago`;
+  if (hours < 24) return hours === 1 ? t("save.hour") : t("save.hours", { count: hours });
   const days = Math.round(hours / 24);
-  return days === 1 ? "yesterday" : `${days} days ago`;
+  return days === 1 ? t("save.yesterday") : t("save.days", { count: days });
 }
 
 /** "34 zł" and "Gross petted 6 times", when there is anything to say. */
@@ -74,16 +75,16 @@ function detailFor(world: WorldState | undefined): string | undefined {
   const items = Array.isArray(world.inventory)
     ? world.inventory.reduce((n, it) => n + (it.quantity ?? 0), 0)
     : 0;
-  if (items > 0) bits.push(items === 1 ? "one thing in your bag" : `${items} things in your bag`);
+  if (items > 0) bits.push(items === 1 ? t("save.oneThing") : t("save.things", { count: items }));
   const pets = world.dogPets ?? 0;
-  if (pets > 0) bits.push(pets === 1 ? "Gross petted once" : `Gross petted ${pets} times`);
+  if (pets > 0) bits.push(pets === 1 ? t("save.petOnce") : t("save.petTimes", { count: pets }));
   return bits.length ? bits.join(" · ") : undefined;
 }
 
 export function readSave(): SaveSummary | null {
   const slot = loadGame<WorldState>(SAVE_KEY, SAVE_VERSION);
   if (!slot) return null;
-  const place = PLACE_NAME[slot.scene] ?? slot.scene;
+  const place = t(`hud.${slot.scene}`, { defaultValue: PLACE_NAME[slot.scene] ?? slot.scene });
   const when = ago(slot.savedAt);
   return {
     scene: slot.scene,

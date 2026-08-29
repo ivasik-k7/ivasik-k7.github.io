@@ -3093,7 +3093,7 @@ function StudioEffects({
         </g>
       </svg>
       {/* while he sits, the sofa's seat edge comes forward and holds him */}
-      {actionUi === "sit" ? (
+      {actionUi === "sitSofa" ? (
         <svg
           aria-hidden="true"
           className="pixelated pointer-events-none absolute"
@@ -3234,7 +3234,7 @@ export const STUDIO_SCENE: RuntimeSceneDef<WorldState> = {
     { id: "guitar", kind: "guitar", x: 774, range: 14, priority: 1 },
     { id: "laptop", kind: "computer", x: 812, range: 8 },
     { id: "phone", kind: "panel", x: 836, range: 5, data: "links" },
-    { id: "sofa", kind: "sport", x: 862, range: 10, action: "sit", face: -1, approachY: 152 },
+    { id: "sofa", kind: "sport", x: 862, range: 10, action: "sitSofa", face: -1, approachY: 152 },
     { id: "flag", kind: "flavor", x: 872, range: 7 },
     { id: "sidetable", kind: "flavor", x: 904, range: 10 },
   ],

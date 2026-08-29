@@ -26,6 +26,7 @@ export function InteractPrompt({
   pulse,
   label,
   verb,
+  switchLabel,
   onInteract,
   onSelect,
 }: {
@@ -35,6 +36,8 @@ export function InteractPrompt({
   pulse: number;
   label: (obj: SceneObject) => string;
   verb?: (obj: SceneObject) => string;
+  /** the hint when more than one target is in reach */
+  switchLabel?: string;
   onInteract: () => void;
   onSelect: (id: string) => void;
 }) {
@@ -76,7 +79,12 @@ export function InteractPrompt({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <PixelLabel text="UP/DOWN SWITCH" px={2} fill={PARCHMENT} opacity={0.3} />
+            <PixelLabel
+              text={switchLabel ?? "UP/DOWN SWITCH"}
+              px={2}
+              fill={PARCHMENT}
+              opacity={0.3}
+            />
           </motion.div>
         ) : null}
 

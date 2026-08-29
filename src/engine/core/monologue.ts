@@ -1,3 +1,4 @@
+import { readMul, textCharMs } from "./prefs";
 /**
  * monologue.ts — the rules of short-form speech, with no DOM in them.
  *
@@ -49,12 +50,18 @@ export const CHANNEL_OF: Record<MonologueKind, MonologueChannel> = {
 };
 
 /**
- * How long a line stays on screen, from its length. The floor keeps a short
- * "no" from blinking away; the ceiling keeps a rambler from squatting on the
- * channel while four other people wait for the floor.
+ * How long a line stays on screen: the time it takes to type itself out, plus
+ * the time it takes to read, from its length. The floor keeps a short "no"
+ * from blinking away; the ceiling keeps a rambler from squatting on the
+ * channel while four other people wait for the floor. Both halves follow the
+ * player's text-speed preference — a slow reader gets a slower typewriter
+ * *and* a longer hold, because the point of the setting is being able to
+ * finish the sentence.
  */
 export function dwellMs(text: string): number {
-  return Math.min(7200, Math.max(2000, 1800 + text.length * 48));
+  const typing = text.length * textCharMs();
+  const reading = Math.min(7200, Math.max(2000, 1800 + text.length * 48)) * readMul();
+  return Math.round(typing + reading);
 }
 
 type Holder = {

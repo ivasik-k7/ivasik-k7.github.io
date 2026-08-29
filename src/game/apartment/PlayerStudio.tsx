@@ -1,16 +1,18 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SpritePalette } from "@/engine";
 import {
   type LiveState,
   PixelFrame,
   PixelLabel,
+  type PlayerConfig,
   type RuntimeApi,
   type RuntimeStats,
+  type SpriteMap,
+  type SpritePalette,
+  validateCharacter,
 } from "@/engine";
-import type { WorldState } from "@/lib/worldState";
-import { APPEARANCE_SLOTS, paletteForAppearanceCached } from "./appearance";
+import { initialWorld, type WorldState } from "@/lib/worldState";
+import { APPEARANCE_SLOTS, paletteForAppearanceCached, playerForAppearance } from "./appearance";
 import { OUTSIDE_SCENES } from "./outsideScenes";
-import { PLAYER } from "./player";
 import { APARTMENT_SCENES } from "./scenes";
 
 /**
@@ -103,8 +105,8 @@ function sameLive(a: LiveState, b: LiveState): boolean {
   );
 }
 
-function actionRows(): ActionRow[] {
-  return Object.entries(PLAYER.actions)
+function actionRows(player: PlayerConfig): ActionRow[] {
+  return Object.entries(player.actions)
     .map(([id, d]) => {
       const enter = (d.enter?.length ?? 0) * d.frameMs;
       const loop = d.frames.length * d.frameMs * d.loops;
@@ -152,7 +154,10 @@ export function PlayerStudio({ onClose }: { onClose: () => void }) {
       // anything had changed. Only publish when a field actually moved.
       setLive((prev) => (prev && sameLive(prev, l) ? prev : l));
       setStats(g.getStats());
-      setAppearance(g.getWorld().appearance);
+      setAppearance((prev) => {
+        const next = g.getWorld().appearance;
+        return prev === next ? prev : next;
+      });
       const t = trailRef.current;
       if (t[t.length - 1]?.frame !== l.frame) {
         seqRef.current += 1;
@@ -164,15 +169,37 @@ export function PlayerStudio({ onClose }: { onClose: () => void }) {
     return () => window.clearInterval(id);
   }, []);
 
-  const acts = useMemo(actionRows, []);
+  const player = useMemo(
+    () => playerForAppearance(appearance ?? initialWorld.appearance),
+    [appearance],
+  );
+  const acts = useMemo(() => actionRows(player), [player]);
+  const rig = useMemo(() => {
+    const names = Object.keys(player.frames);
+    const twins = names.filter((n) => n.endsWith("~blink")).length;
+    return {
+      frames: names.length,
+      authored: names.length - twins,
+      twins,
+      issues: validateCharacter(player, {
+        airborne: new Set(["bedLie", "bedLieB", "bedSide", "bedSitUp"]),
+      }).filter((i) => !i.frame?.endsWith("~blink")),
+    };
+  }, [player]);
   const places = useMemo(
     () => [...Object.keys(APARTMENT_SCENES), ...Object.keys(OUTSIDE_SCENES)].sort(),
     [],
   );
-  const frames = useMemo(() => Object.keys(PLAYER.frames).sort(), []);
+  const frames = useMemo(
+    () =>
+      Object.keys(player.frames)
+        .filter((f) => !f.endsWith("~blink"))
+        .sort(),
+    [player],
+  );
   const palette = useMemo(
-    () => (appearance ? paletteForAppearanceCached(appearance) : PLAYER.palette),
-    [appearance],
+    () => (appearance ? paletteForAppearanceCached(appearance) : player.palette),
+    [appearance, player.palette],
   );
 
   const play = useCallback((id: string) => api()?.startAction(id), []);
@@ -252,6 +279,7 @@ export function PlayerStudio({ onClose }: { onClose: () => void }) {
                 <FrameCell
                   key={f}
                   name={f}
+                  map={player.frames[f]}
                   palette={palette}
                   held={held === f}
                   showing={live?.frame === f}
@@ -325,6 +353,31 @@ export function PlayerStudio({ onClose }: { onClose: () => void }) {
                   onChange={(v) => setSlot(slot.key, v)}
                 />
               ))}
+            </div>
+          </Pane>
+
+          <Pane title={`RIG · ${rig.frames} FRAMES`} cap="max-h-[18vh]">
+            <div>
+              <Row k="AUTHORED" v={String(rig.authored)} />
+              <Row k="BLINK TWINS" v={String(rig.twins)} />
+              <Row
+                k="BOX"
+                v={`${player.width / (player.cell ?? 2)}×${player.height / (player.cell ?? 2)}`}
+              />
+              {rig.issues.length === 0 ? (
+                <Empty text="VALIDATOR CLEAN" />
+              ) : (
+                rig.issues.slice(0, 12).map((i) => (
+                  <div key={`${i.frame}-${i.message}`} className="py-px">
+                    <PixelLabel
+                      text={`${i.severity === "error" ? "!" : "·"} ${i.frame ?? ""} ${i.message}`.toUpperCase()}
+                      px={2}
+                      fill={i.severity === "error" ? SIGNAL : PARCHMENT}
+                      opacity={0.8}
+                    />
+                  </div>
+                ))
+              )}
             </div>
           </Pane>
 
@@ -476,12 +529,14 @@ const THUMB_H = 36;
 
 const FrameCell = memo(function FrameCell({
   name,
+  map,
   palette,
   held,
   showing,
   onHold,
 }: {
   name: string;
+  map: SpriteMap | undefined;
   palette: SpritePalette;
   held: boolean;
   showing: boolean;
@@ -491,7 +546,6 @@ const FrameCell = memo(function FrameCell({
   const ref = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
     const c = ref.current;
-    const map = PLAYER.frames[name];
     if (!c || !map) return;
     const ctx = c.getContext("2d");
     if (!ctx) return;
@@ -527,7 +581,7 @@ const FrameCell = memo(function FrameCell({
       }
       flush(row.length);
     }
-  }, [name, palette]);
+  }, [map, palette]);
 
   // A plain bordered button rather than a `PixelFrame`: the frame component
   // carries a clip path, rivets and a scanline layer, which is right for a

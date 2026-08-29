@@ -1,6 +1,6 @@
 import { defineTree, playSfx } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
-import { buy, canAfford } from "./commerce";
+import { buyAndDrink, canAfford } from "./commerce";
 import type { Ctx } from "./types";
 
 /** Inside Turbina. Vignette people: the gag rhythm is the characterization,
@@ -392,17 +392,20 @@ export function buildKlubowyTree(world: WorldState) {
     {
       label: "Woda. (0 zł)",
       next: "water",
-      effect: () => playSfx("pour"),
+      effect: (ctx: Ctx) => {
+        playSfx("pour");
+        ctx.startAction("water");
+      },
     },
     {
       label: "Izotonik. (10 zł)",
       next: canAfford(10),
-      effect: (ctx: Ctx) => buy(ctx, "izotonik", 10),
+      effect: (ctx: Ctx) => buyAndDrink(ctx, "izotonik", 10, "water"),
     },
     {
       label: "Piwo. (15 zł)",
       next: canAfford(15),
-      effect: (ctx: Ctx) => buy(ctx, "beer", 15),
+      effect: (ctx: Ctx) => buyAndDrink(ctx, "beer", 15, "beer"),
     },
     { label: "Nic. Odpoczywam od basu.", next: "bye" },
   ];

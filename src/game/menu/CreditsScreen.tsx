@@ -1,3 +1,4 @@
+import { t } from "i18next";
 import { useEffect, useRef, useState } from "react";
 import { MUSIC_TRACKS, PixelLabel } from "@/engine";
 import { BUILD } from "@/lib/build";
@@ -195,7 +196,7 @@ export function CreditsScreen({
   }, [still]);
 
   return (
-    <MenuPanel title="CREDITS" onBack={onBack} hint="↑↓ scroll   esc back">
+    <MenuPanel title={t("credits.title")} onBack={onBack} hint={t("credits.hint")}>
       <div className="flex h-full">
         <div
           className="relative h-full w-full overflow-hidden"

@@ -1,5 +1,7 @@
+import { t } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { lofiPlayer, PixelLabel, playSfx } from "@/engine";
+import { LANGUAGE_LABEL, LANGUAGES } from "@/i18n";
 import { MARK_W, MenuMark } from "./MenuMark";
 import { MenuPanel } from "./MenuPanel";
 import { useMenuScale } from "./menuScale";
@@ -137,71 +139,81 @@ export function SettingsScreen({
 
   const rows = useMemo<Row[]>(
     () => [
-      { kind: "head", label: "SOUND" },
+      { kind: "head", label: t("settings.sound") },
       {
         kind: "meter",
-        label: "OVERALL",
+        label: t("settings.overall"),
         value: settings.master,
         step: level("master"),
-        note: "everything, after the three channels below",
+        note: t("settings.overallNote"),
       },
       {
         kind: "meter",
-        label: "MUSIC",
+        label: t("settings.music"),
         value: settings.music,
         step: level("music"),
         note: lofiPlayer.track.mood,
       },
       {
         kind: "meter",
-        label: "ATMOSPHERE",
+        label: t("settings.atmosphere"),
         value: settings.ambience,
         step: level("ambience"),
-        note: "the room's hum, the street, the stairwell",
+        note: t("settings.atmosphereNote"),
       },
       {
         kind: "meter",
-        label: "EFFECTS",
+        label: t("settings.effects"),
         value: settings.sfx,
         step: level("sfx"),
-        note: "doors, switches, the kettle, the lift",
+        note: t("settings.effectsNote"),
       },
       {
         kind: "choice",
-        label: "SPEAKING VOICE",
-        shown: settings.voice ? "on" : "off",
+        label: t("settings.voice"),
+        shown: settings.voice ? t("settings.on") : t("settings.off"),
         step: toggle("voice"),
-        note: "the mumble under a line of dialogue",
+        note: t("settings.voiceNote"),
       },
-      { kind: "head", label: "PICTURE" },
+      { kind: "head", label: t("settings.picture") },
       {
         kind: "choice",
-        label: "DETAIL",
-        shown: settings.quality,
+        label: t("settings.detail"),
+        shown: t(`settings.quality.${settings.quality}`),
         step: cycle("quality", QUALITY),
-        note: "auto drops detail by itself when the frames get tight",
+        note: t("settings.detailNote"),
       },
       {
         kind: "choice",
-        label: "MOVEMENT",
-        shown: settings.reducedMotion === "system" ? "as my system" : "hold still",
+        label: t("settings.movement"),
+        shown:
+          settings.reducedMotion === "system"
+            ? t("settings.movementSystem")
+            : t("settings.movementStill"),
         step: cycle("reducedMotion", MOTION),
-        note: "stops the camera drift, the idle sway and the typing",
+        note: t("settings.movementNote"),
       },
       {
         kind: "choice",
-        label: "FULL SCREEN",
-        shown: isFull ? "on" : "off",
+        label: t("settings.fullscreen"),
+        shown: isFull ? t("settings.on") : t("settings.off"),
         step: toggleFullscreen,
-        note: "F11 does this too, and this row follows it",
+        note: t("settings.fullscreenNote"),
       },
-      { kind: "head", label: "READING" },
+      { kind: "head", label: t("settings.reading") },
       {
         kind: "choice",
-        label: "TEXT SPEED",
-        shown: settings.textSpeed,
+        label: t("settings.textSpeed"),
+        shown: t(`settings.speed.${settings.textSpeed}`),
         step: cycle("textSpeed", SPEED),
-        note: "how fast a line types itself out",
+        note: t("settings.textSpeedNote"),
+      },
+      {
+        kind: "choice",
+        label: t("settings.language"),
+        shown: LANGUAGE_LABEL[settings.language],
+        step: cycle("language", LANGUAGES),
+        note: t("settings.languageNote"),
       },
     ],
     [settings, level, cycle, toggle, isFull, toggleFullscreen],
@@ -258,7 +270,7 @@ export function SettingsScreen({
   const note = rows[cursor]?.kind === "head" ? undefined : (rows[cursor] as { note?: string }).note;
 
   return (
-    <MenuPanel title="SETTINGS" onBack={onBack} hint="↑↓ pick   ←→ change   esc back">
+    <MenuPanel title={t("settings.title")} onBack={onBack} hint={t("settings.hint")}>
       <div className="flex h-full flex-col" style={{ maxWidth: 400 + SLOT, marginLeft: -MARK_W }}>
         {/* The list scrolls when the window is too short for thirteen rows —
             with the machine's own scrollbar, not the operating system's. */}

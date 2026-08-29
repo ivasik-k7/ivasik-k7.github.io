@@ -1,5 +1,3 @@
-import type { SpriteMap } from "./types";
-
 /**
  * idleBrain.ts — what the character does while standing about.
  *
@@ -15,14 +13,13 @@ import type { SpriteMap } from "./types";
  *  – and being modulo, it was perfectly regular. Metronomic idles are the
  *    single clearest tell that a character is a sprite rather than a person.
  *
- * What replaced it: breath and blink run on the same clock so a blink takes
- * the breath's current pose rather than resetting it, the intervals are
- * jittered from a cheap hash so no two are the same length, and the flourish
- * waits on real idle time and never runs while the game is paused.
+ * What replaced it: the intervals are jittered from a cheap hash so no two
+ * are the same length, and the flourish waits on real idle time and never
+ * runs while the game is paused. The blink has since moved out altogether —
+ * `faceBrain.ts` closes the eyes on whatever frame the body is showing, so it
+ * no longer needs to know what the breath is doing.
  */
 
-/** A blink is 170 ms whatever else is happening. */
-const BLINK_MS = 170;
 /** He stands for at least this long before doing anything with it. */
 const IDLE_FLOURISH_MIN = 7000;
 const IDLE_FLOURISH_SPREAD = 9000;
@@ -43,14 +40,12 @@ export function jitter(seed: number, span: number): number {
 /** How long he has been standing still, and what he does about it next. */
 export type IdleState = {
   since: number;
-  nextBlink: number;
   nextFlourish: number;
   flourish: number;
 };
 
 export const newIdleState = (): IdleState => ({
   since: 0,
-  nextBlink: 0,
   nextFlourish: 0,
   flourish: 0,
 });
@@ -65,35 +60,16 @@ export function resetIdle(idle: IdleState): void {
  * action); the state advances itself and re-arms on the first tick after a
  * reset.
  */
-export function stepIdle(
-  idle: IdleState,
-  now: number,
-  paused: boolean,
-  frames: Record<string, SpriteMap>,
-  idleLean: boolean,
-): string {
-  let idleFrame = "stand";
+export function stepIdle(idle: IdleState, now: number, paused: boolean, idleLean: boolean): string {
   if (idle.since === 0) {
     idle.since = now;
-    idle.nextBlink = now + 2200 + jitter(now, 3200);
     idle.nextFlourish = now + IDLE_FLOURISH_MIN + jitter(now + 1, IDLE_FLOURISH_SPREAD);
   }
   // the breath: down for a beat, up for a beat, the beat itself drifting
   const cycle = 1500 + jitter(Math.floor(now / 3400), 500);
   const out = now % cycle < cycle * 0.52;
   const breath = out ? "stand" : "idleB";
-
-  if (now >= idle.nextBlink) {
-    if (now >= idle.nextBlink + BLINK_MS) {
-      idle.nextBlink = now + 1800 + jitter(now, 4200);
-    } else {
-      // blink at whatever height the breath has him: the lids close, the
-      // ribs do not jump
-      const lowBlink = out ? "blink" : "blinkLow";
-      idleFrame = frames[lowBlink] ? lowBlink : "blink";
-    }
-  }
-  if (idleFrame === "stand") idleFrame = breath;
+  let idleFrame = breath;
 
   if (!paused && now >= idle.nextFlourish) {
     const ft = now - idle.nextFlourish;

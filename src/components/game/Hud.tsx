@@ -410,7 +410,7 @@ export function HUD({ room, phase, pocket, onOpenMenu, showAudio = true }: HudPr
               <PixelLabel text={phaseLabel} px={2} fill={EMBER} opacity={0.75} />
             </span>
             <PixelLabel text={roomLabel} px={3} fill={SIGNAL} opacity={0.9} />
-            <PixelLabel text="TAB - MENU" px={2} fill={PARCHMENT} opacity={0.28} />
+            <PixelLabel text={t("prompt.tabMenu")} px={2} fill={PARCHMENT} opacity={0.28} />
           </span>
         </PixelFrame>
 

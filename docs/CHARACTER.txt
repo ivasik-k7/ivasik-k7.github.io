@@ -1,0 +1,704 @@
+# CHARACTER v2 — the parametric player
+
+A major-version plan for `characterBuilder` and the player it produces: natural
+animation, a fully customizable look, better body parts, real clothes, and a
+builder powerful enough that every one of those is a parameter rather than a
+hand-edited pixel map.
+
+This is a *major* version because the contract changes. `createCharacter()`
+today takes hand-drawn maps and glues them together. Tomorrow it takes a
+description of a person and draws them. Everything that reads `PlayerConfig`
+keeps working; everything that authors one changes.
+
+---
+
+## 0. Where we actually are
+
+Read this before planning anything, because the shape of the problem is in
+the code, not in the wish list.
+
+* `src/engine/sprite/characterBuilder.ts` (230 lines) is a frame-assembly DSL:
+  `part` / `frame.stack.patch` / `variant` / `walkCycle` / `action` / `skin` /
+  `build`. It validates palette keys and frame names and pads frames. It has
+  no notion of an arm, a leg, a head, a garment, or a pose — a "part" is a
+  named rectangle of characters. It cannot mirror a facing, blend two frames,
+  or tell you that a hand is not attached to a shoulder.
+
+* `src/game/apartment/player.ts` (2,155 lines) is the only character the game
+  has that is drawn by hand. ~100 `Patch` literals for arms and props, ~40
+  frames, ~30 actions, plus three ad-hoc transforms (`bowHead`, `dropBody`,
+  `raiseChin`). It is good pixel art and it is a dead end: every new pose is a
+  new literal, every proportion change touches every literal, and none of it
+  survives a different body.
+
+* `src/engine/sprite/npcBuilder.ts` + `npcBody` / `npcFace` / `npcHair` /
+  `npcPalette` already *are* a parametric character model — `NpcLook` has skin,
+  hair style, head shape, brow, eyes, nose, mouth, ears, facial hair, hat, top,
+  bottom, shoes, texture, accent, prop; `NpcSpec` has `build` and `height`;
+  the `ARM` pose library uses 2-link IK to put a hand where a pose says. NPCs
+  are already more customizable than the player. This is the asset we build
+  on, not a rival to replace.
+
+* `src/game/apartment/appearance.ts` + `WardrobePanel.tsx` is a palette-only
+  wardrobe. Seven slots in `WorldState.appearance` (skin, hair, beard, hat,
+  shirt, trousers, shoes), each option a set of hex overrides. A "hoodie" and
+  a "tee" are the same pixels in different colours. Clothes cannot change the
+  silhouette, so there are no jackets, no collars, no sleeves, no boots.
+
+* Animation runtime: `core/actionPlayer.ts` plays enter → loop → exit and
+  handles interrupts via `abort`; `core/idleBrain.ts` jitters breath, blink
+  and a flourish. This is a *frame sequencer*. There is no layering (the face
+  cannot blink during an action unless the action's frames were authored with
+  a blink), no blending between two poses, no notion of a pose as data.
+
+* Developer surfaces: `?npcs` (`NpcStudio.tsx`) builds a stranger on a plinth;
+  `?player` (`PlayerStudio.tsx`) docks panels around the live game and shows
+  actions, frames, wardrobe slots and runtime stats.
+
+The gap, in one sentence: **the NPC pipeline is parametric and the player is
+not, and neither has a pose layer between "frame name" and "pixels".**
+
+---
+
+## 1. Goals and non-goals
+
+### Goals
+
+1. One character model for player and NPCs. The player is a `CharacterSpec`
+   like everyone else; the difference is that his spec is authored with more
+   care and saved to `WorldState`.
+2. A body that is described, not drawn: proportions as numbers, limbs as
+   segments, poses as joint targets, frames as the *output* of the builder.
+3. Clothes as geometry. A jacket adds shoulders and a hem; boots add height
+   to the foot; a hood is a shape behind the neck. Colour is the last step,
+   not the only step.
+4. Animation with layers and transitions: locomotion under, upper body over,
+   face over that, breath through all of it; poses interpolate rather than cut.
+5. A builder that is a real tool — a data model, a validator, a compiler to
+   `PlayerConfig`, and a UI that edits the data model live with an honest
+   preview.
+6. Nothing lost. Every action in `player.ts` today has a v2 equivalent that
+   reads at least as well side-by-side at 4×.
+
+### Non-goals
+
+* A different art style. It stays 24-column, 2 px cells, three tones per
+  material, right-facing profile mirrored by the renderer. Fable-era pixel
+  art, not HD.
+* Skeletal animation at runtime. Frames are still baked at build time and
+  the renderer still draws `SpriteMap`s. Procedural work happens in the
+  builder, once, and is cached. The 60 fps budget on a phone is not up for
+  negotiation (see `docs/PERFOMANCE.txt`).
+* Rewriting `GameRuntime`. The runtime consumes `PlayerConfig` and asks
+  `actionPlayer` for a frame name. v2 adds a pose layer *above* that; the
+  runtime only learns to ask a slightly richer question (§5.4).
+
+---
+
+## 2. Architecture of v2
+
+```
+CharacterSpec (data, serializable, what the wardrobe edits)
+      │
+      ▼
+   Anatomy  ── proportions → part geometry (head, torso, pelvis, arm & leg segments)
+      │
+      ▼
+   Rig      ── named joints + segment lengths + IK; Pose = joint targets
+      │
+      ▼
+   Layers   ── garments, hair, face traits, props, each a function (Rig, Pose) → Patch[]
+      │
+      ▼
+   Compiler ── poses × layers → frames; clips → actions; cache by spec hash
+      │
+      ▼
+   PlayerConfig  (unchanged contract for GameRuntime)
+```
+
+Directory: `src/engine/character/` (new), leaving `sprite/` in place until
+the migration in §8 removes it.
+
+```
+character/
+  spec.ts        CharacterSpec, defaults, versioned schema, migrate()
+  anatomy.ts     proportions → grid geometry; the PLAYER ruler lives here
+  rig.ts         joints, segments, 2-link IK (moved out of npcBody.ARM)
+  pose.ts        Pose type, pose library, interpolate(a, b, t), mirror()
+  layers/
+    skin.ts      the body itself
+    face.ts      npcFace, extended (§4.3)
+    hair.ts      npcHair, extended
+    garments/    top.ts bottom.ts shoes.ts outer.ts headwear.ts accessories.ts
+    props.ts     held things
+  clips.ts       Clip = timed poses per layer; the animation library
+  compile.ts     spec + clips → PlayerConfig; frame cache
+  validate.ts    every invariant from §7 as a check with a message
+  builder.ts     the fluent API on top of all of the above
+  index.ts
+```
+
+The key move is `pose.ts`: today a frame is pixels; in v2 a frame is a pose,
+and pixels are derived. That single indirection is what makes proportions,
+clothes, transitions and mirroring all fall out for free.
+
+---
+
+## 3. The data model: `CharacterSpec`
+
+Everything a person can be, as data. Serializable to JSON, stored in
+`WorldState.character` (replacing `appearance`), versioned with a `v` field
+and a `migrate()` so saved games survive.
+
+```ts
+interface CharacterSpec {
+  v: 2;
+  id: string;
+  name: string;
+  body: BodySpec;
+  face: FaceSpec;
+  hair: HairSpec;
+  wardrobe: WardrobeSpec;
+  motion: MotionSpec;
+  behaviour: BehaviourSpec;
+}
+```
+
+### 3.1 `BodySpec` — proportions, not pixels
+
+Continuous where the grid allows it, stepped where it does not, always
+clamped to what reads at 24 columns.
+
+| field | range | what it moves |
+|---|---|---|
+| `height` | 160–200 cm → 32–40 rows | leg segment lengths first, then torso |
+| `build` | `slight` `lean` `athletic` `heavy` `powerlifter` | shoulder width, waist taper, thigh width, neck |
+| `shoulders` | −2…+2 | shoulder columns on top of build |
+| `waist` | −2…+2 | taper rows |
+| `hips` | −1…+1 | pelvis width |
+| `neck` | `thin` `normal` `thick` | neck columns, row 6 |
+| `legLength` | −2…+2 | shifts the hip row; torso compensates |
+| `armLength` | −1…+1 | UPPER_ARM / FOREARM |
+| `posture` | `upright` `relaxed` `slouched` `braced` | resting spine offset, head forward lean |
+| `handedness` | `right` `left` | which arm leads props |
+
+Rule from the existing rig, kept: **the player is the ruler.** The default
+spec compiles to exactly the current 195 cm / 96 kg silhouette (head 10,
+shoulders 18, waist 14, hips 12, hips at row 22 in PLAYER's frame). A golden
+test asserts this pixel-for-pixel so the migration is provably lossless.
+
+### 3.2 `FaceSpec`
+
+Everything `NpcLook` already exposes (head shape, brow, eyeShape, nose,
+mouth, ears, facial hair) plus:
+
+* `eyeColour`, `skin` (with `undertone` for the highlight `y`),
+* `age` → `young` `adult` `worn` (cheek row, brow weight, one shade line),
+* `expression` baseline: `neutral` `stern` `soft` `tired` — the resting mouth
+  and brow, which every emote is a delta from (§5.3),
+* `marks`: scar, mole, broken nose, glasses (frames + tint), earring.
+
+### 3.3 `HairSpec`
+
+`style` (the existing `NpcHairStyle` set + `undercut`, `slicked`, `curly`,
+`long-tied`, `receding`), `colour`, `greying` (0–3 salt lines), `length`
+where the style allows, `beard` moved here from `face` as its own
+`{ style, length, colour | inherit }`.
+
+### 3.4 `WardrobeSpec` — slots that hold garments
+
+```ts
+interface WardrobeSpec {
+  head?:  GarmentRef;   // cap, beanie, ushanka, hood-up, none
+  face?:  GarmentRef;   // glasses, mask
+  torso:  GarmentRef;   // tee, longsleeve, shirt, hoodie, kurtka, sweater, tank
+  outer?: GarmentRef;   // jacket, coat, bomber, tracksuit-top, vest
+  legs:   GarmentRef;   // jeans, trousers, tracksuit, shorts, sambo-shorts
+  feet:   GarmentRef;   // trainers, boots, sandals, barefoot, slippers
+  hands?: GarmentRef;   // gloves, wraps, watch
+  extra?: GarmentRef[]; // bag, belt, scarf, chain, headphones
+}
+type GarmentRef = { id: string; colour: FabricName | Hex; texture?: NpcTexture; state?: string };
+```
+
+`state` is how a hoodie has a hood up or down, a jacket is open or zipped,
+sleeves are rolled. It is a garment-defined enum, not a global flag.
+
+A garment is code, not a colour: `(rig, pose, body) => Patch[]` per layer
+depth, plus metadata — `covers` (which body zones it occludes so the layer
+below can skip drawing them), `addsRows` (boots), `addsCols` (a coat's
+shoulders), `sleeve` (`none` `short` `long` — decides where skin shows on the
+arm at every arm pose, which is the thing the palette wardrobe could never
+do), `collar`, `hem`, and `conflicts` (no coat over a kurtka).
+
+### 3.5 `MotionSpec` — how he moves, as parameters
+
+* `gait`: `stride` (−1…+1), `bounce` (0–2 px), `armSwing` (0–1), `cadence`
+  (frame ms scale), `heavyFoot` (plant frame hold).
+* `idle`: `breathDepth`, `weightShift` (period, amplitude), `lookAround`
+  (probability, dwell), `fidget` set (which flourishes are in his repertoire).
+* `tempo`: a global time scale for actions, so a tired or drunk state slows
+  him without new frames.
+
+### 3.6 `BehaviourSpec`
+
+What the runtime uses to pick contextual animation: `mood` (drives baseline
+expression and idle picks), `energy` (posture and tempo), `warmth` (how he
+greets), `habits` (smoker, phone-checker, stretcher — weights the idle
+brain). These already exist as scattered world flags; the spec gives them a
+home and the builder a way to preview them.
+
+---
+
+## 4. Body parts and appearance — the drawing layer
+
+### 4.1 Anatomy
+
+`anatomy.ts` turns `BodySpec` into a `Skeleton`: row indices for crown, brow,
+eyes, nose, mouth, chin, shoulder, chest, waist, hip, knee, ankle, sole; and
+column widths at each. It is the *only* place proportions become grid
+numbers. `npcBody.ts` constants (`W`, `HEAD_ROWS`, `TORSO_ROWS`, `LEG_ROWS`,
+`CENTRE`) become the *default* skeleton, not hardcoded truths.
+
+Head rows stay fixed relative to the crown (0 crown, 1 brow, 2 eyes, 3
+cheek/ear, 4 nose, 5 mouth, 6 chin) because face, hair and hat depend on
+them. Height goes into legs and torso, never the head.
+
+### 4.2 Rig and IK
+
+Move `ARM` and its IK out of `npcBody.ts` into `rig.ts`, and add legs. Joints:
+neck, shoulderL/R, elbowL/R, wristL/R, hipL/R, kneeL/R, ankleL/R, spine
+(one bend point at the waist). A `Pose` is a set of joint *targets* (angle
+or `to: [x, y]`) plus spine bend, head yaw (`front` / `profile` /
+`over-shoulder` — the existing `mirrorRows` trick, formalized) and head pitch
+(the existing `bow` / `raiseChin`, formalized as a per-frame offset so it
+never desyncs from face patches — the invariant that bit us before).
+
+The IK solver already exists for two links. Add: elbow-side preference
+(hands on hips bend out, a phone bends in), reach clamping with a `strain`
+flag so a validator can warn "hand cannot reach this", and a foot solver
+that plants soles on the ground row rather than letting a leg length change
+float the feet.
+
+### 4.3 Face, hair, marks
+
+`npcFace.ts` and `npcHair.ts` carry over almost unchanged as layers, plus
+the additions in §3.2–3.3. New: an **expression delta** system — each
+`Expression` (`neutral`, `smile`, `grimace`, `surprise`, `focus`, `pain`,
+`wink`, `talk-a`, `talk-b`) is a 3×3 patch at brow / eyes / mouth, composed
+over the baseline. Expressions are a *layer* (§5.2), so a face can react
+during any body pose with no new frames authored.
+
+### 4.4 Garments
+
+Port the existing `topDetail` / `bottomDetail` / `shoeDetail` /
+`accentPatchFor` / `propCells` from `npcBuilder.ts` into per-garment modules
+under `layers/garments/`. Each garment implements the interface in §3.4.
+Then the new ones the game has been missing: a jacket (opens, adds two
+shoulder columns and a hem row), a coat, boots (+1 row, ankle covered), a
+sweater (knit texture, ribbed hem), a tracksuit (stripe on the arm at every
+arm pose — proof that sleeves follow the rig), gloves, a bag on a strap, the
+sambo kurtka with its belt as a real belt.
+
+Garment layering order is fixed and enforced: skin → legs → feet → torso →
+outer → hands → hair → head → face-wear → props. A garment may only draw at
+its depth; the validator catches a hem drawn under a leg.
+
+### 4.5 Palette and materials
+
+`npcPalette.ts` stays as the material system (lit / base / shade triplets)
+with a `Hex` escape hatch for custom colours. Add: **derived tones** — given
+one base hex, compute lit and shade with fixed luminance steps so a custom
+colour never ships with a flat single tone. Add: skin-dependent derivation
+for shaved head / clean shave stays exactly as `appearance.ts` does it today
+(the option has no hex; it resolves against the body).
+
+---
+
+## 5. Animation — natural, layered, transitional
+
+### 5.1 Clips replace frame lists
+
+```ts
+interface Clip {
+  id: string;
+  layer: "locomotion" | "body" | "arms" | "face" | "breath";
+  keys: { at: number; pose: Partial<Pose>; ease?: Ease }[];   // ms
+  loop?: boolean;
+  enter?: Clip; exit?: Clip; abort?: Clip;                     // as today
+  interruptible?: boolean;
+  priority: number;
+  holds?: string[];   // props this clip owns; conflicting clips can't co-play
+}
+```
+
+The compiler samples a clip at the cell-friendly rate (the existing
+`frameMs` per action becomes a per-clip `step`) and bakes the sampled poses
+into frames. Authoring is keys; output is still frames; `actionPlayer.ts`
+still plays enter → loop → exit. The `ActionDef` it consumes becomes
+compiler output.
+
+### 5.2 Layers
+
+Five layers, composed per tick by a small `LayerMixer` in `core/`:
+
+* **locomotion** — stand, walk, run, turn, stop, sit, lie. Owns legs, pelvis,
+  spine bend, arm swing *unless* an arms clip holds the arms.
+* **body** — whole-body actions (squat, deadlift, swing, shower, sit). Takes
+  over locomotion; today's `interruptible` semantics keep working.
+* **arms** — talk, wave, phone, drink, smoke, pet, reach. Can play *over*
+  walking: he can carry the phone while walking, which is impossible today.
+* **face** — blink, expression, talk mouth. Always free to play.
+* **breath** — the 1-px chest / head rise. Runs through everything; sits
+  out only when a body clip says `holds: ["breath"]` (mid-deadlift).
+
+Priorities resolve conflicts deterministically; a higher-priority clip on a
+layer pre-empts, plays the lower clip's `abort` if it has one, and restores
+it afterwards if it was looping (the "resume idle after greeting" case).
+
+### 5.3 Transitions
+
+Between any two poses on the same layer the mixer interpolates joint targets
+over `blendMs` (default 120 ms, per-clip override) and the compiler bakes
+the in-between frames — so the transition from `stand` to `smoke` is a real
+arm raise, not a cut, and it exists for every clip pair without authoring.
+Rules:
+
+* Interpolate in joint space, then re-solve IK, then rasterize. Never
+  cross-fade pixels.
+* Snap, don't blend, when the two poses face different ways (a turn is its
+  own 2-frame clip).
+* Feet: if both poses plant a foot, that foot stays planted through the
+  blend (fixes foot sliding by construction).
+* A blend is skipped when the distance is under one cell — micro-jitter is
+  worse than a hard 1-px step.
+* `enter` / `exit` clips remain for anything the blend can't do (picking a
+  kettlebell up off the floor).
+
+### 5.4 Runtime changes (small)
+
+`GameRuntime` currently asks: "what frame name now?" It will ask the mixer:
+"given locomotion state, active clips, idle brain, and face state, what
+frame name now?" The mixer returns a key into the baked frame table. No
+per-frame rasterization. The frame table grows (poses × blends × faces); the
+compiler dedupes identical frames and the cache is keyed by spec hash so a
+wardrobe change invalidates only garment layers (§9).
+
+### 5.5 Idle, made alive
+
+`idleBrain.ts` grows from breath + blink + flourish into a small repertoire
+driven by `MotionSpec.idle` and `BehaviourSpec`:
+
+* weight shift (hip 1 px, shoulders counter) every 4–9 s, jittered;
+* look around (head yaw to `over-shoulder` and back) when nothing has
+  happened for a while, biased toward the nearest interactable;
+* micro-fidgets: scratch neck, check phone, roll shoulder, stretch, tap
+  foot, adjust cap — picked by weight, never the same one twice in a row,
+  never during dialogue or while an arms clip holds;
+* contextual idles: cold scene → hands in pockets / breath cloud; after gym
+  → shake arms out; late → yawn; near Gross → glance down.
+
+All idle clips are `arms` or `face` layer so they cannot break locomotion.
+
+### 5.6 Locomotion
+
+* Walk: 6-key cycle with proper contact/passing/recoil, arm swing tied to
+  `gait.armSwing`, bounce tied to `gait.bounce`; the stride adapts to
+  `legLength` so a taller spec doesn't shuffle.
+* Run: separate cycle with lean, already an action today; becomes
+  locomotion so it can be sustained.
+* Start / stop: 2-key transitions, a lean in and a settle, replacing the
+  current instant stop.
+* Turn: a 2-frame pivot instead of a mirror flip.
+* Sit / stand: the existing `SIT_ROWS` logic as a clip with an enter / exit.
+* Stairs / slopes: hook for scene ground bands to request a lean.
+
+### 5.7 Parity list
+
+Every id in `player.ts`'s action table gets a clip: use, sit, lay, pet,
+drink, coffee, run, cycle, stretch, pull, squat, deadlift, hotdog, call,
+swing, press, sambo, pray, smoke, shower, pee, strum, talk — plus new:
+wave, nod, shrug, point, look-at, shiver, yawn, laugh, hurt, celebrate,
+carry (bag / box / kettlebell walk), lean-on-wall, crouch, kneel, doorway
+duck. Each is verified with the frame strip and in-scene sweep (§10).
+
+---
+
+## 6. The builder API
+
+Two levels: **spec** (data, what UIs edit) and **fluent** (code, for authors
+and tests).
+
+```ts
+const spec = defaultCharacter()                // == today's player, pixel for pixel
+  .body({ height: 195, build: "powerlifter", neck: "thick" })
+  .face({ brow: "heavy", mouth: "set", expression: "stern" })
+  .hair({ style: "short", colour: "chestnut", beard: { style: "stubble" } })
+  .wear("torso", { id: "hoodie", colour: "graphite", state: "hood-down" })
+  .wear("outer", { id: "bomber", colour: "olive", state: "open" })
+  .wear("legs",  { id: "tracksuit", colour: "black", texture: "stripe" })
+  .wear("feet",  { id: "trainers", colour: "white" })
+  .motion({ gait: { heavyFoot: 1, armSwing: 0.6 }, idle: { fidget: ["neck", "phone"] } })
+  .spec();
+
+const player = compileCharacter(spec, CLIPS);   // PlayerConfig
+```
+
+Fluent additions on `CharacterBuilder` for the author who still wants to draw:
+
+* `.pose(name, Pose)` and `.clip(id, Clip)` — the new primitives;
+* `.patch(...)` still exists for one-off props; a patch now declares which
+  joint it is attached to, so it follows the arm through every blend (fixes
+  the "cigarette left in mid-air" class of bugs by construction);
+* `.garment(id, GarmentImpl)` — register a custom garment;
+* `.override(frame, map)` — the escape hatch: hand-draw one frame when the
+  compiler can't. Flagged in the validator so it's a known debt, not a
+  hidden one;
+* `.skin()` survives as a palette twin;
+* `.build()` runs `validate.ts` and throws with a list, not the first error.
+
+`createCharacter()` from v1 stays as a thin compatibility wrapper over
+`.override()` for one release, then goes.
+
+---
+
+## 7. Validator — the invariants, as code
+
+Every rule we learned the hard way becomes a check with a readable message:
+
+* every limb segment is connected (flood-fill from torso reaches every
+  skin / sleeve cell);
+* hands land within reach; strained IK is a warning, unreachable is an error;
+* soles are on the ground row in every locomotion frame; airborne only in
+  frames a clip marks `airborne`;
+* head rows are exactly seven and face features are at their fixed rows in
+  every frame — including bowed and raised ones;
+* no patch is drawn outside the silhouette it is attached to (the floating
+  far lapel);
+* garment depth order is respected; a garment declares `covers` and the
+  covered zone is actually not visible;
+* three tones exist for every material actually used; no single-tone
+  material over more than N cells;
+* translucent / white cells don't sit on skin (invisible smoke);
+* every clip's blend to and from `stand` stays under one row of foot travel;
+* frame count and byte size against a per-character budget (§9);
+* no two frames are identical under different names (dead frames);
+* every `WardrobeSpec` combination in the shipped catalogue compiles — a
+  combinatorial smoke test in CI, not by hand.
+
+---
+
+## 8. Migration — lossless, in stages
+
+1. **Extract, don't rewrite.** Move `ARM` + IK to `rig.ts`, `npcFace` /
+   `npcHair` to `layers/`, garment functions to `layers/garments/`. NPCs
+   compile through the new path; snapshot every NPC's frames before and
+   after and diff to zero.
+2. **Skeleton the player.** Write `anatomy.ts` so the default `BodySpec`
+   reproduces PLAYER's head / torso / legs maps exactly (golden test).
+3. **Poses for the player.** Re-express each `P.*` patch as a `Pose` and
+   each frame as pose + layers. Each converted action is diffed against its
+   hand-drawn original at the frame level; ≤ N-cell differences are reviewed
+   on the strip, larger ones mean the pose is wrong.
+4. **Wardrobe → garments.** `appearance.ts` options become `GarmentRef`s;
+   `WorldState.appearance` migrates to `WorldState.character` with a
+   `migrate()` from the seven old ids. The `WardrobePanel` keeps its two
+   lists ("who he is" / "what he wears") and gains silhouette-changing items.
+5. **Clips and the mixer.** Introduce layers behind a flag; ship with the
+   flag on once §5.7 parity is verified.
+6. **Delete.** `player.ts` literals, `characterBuilder` v1 assembly, palette-
+   only wardrobe. Not before every consumer is on v2.
+
+---
+
+## 9. Performance budget
+
+* Compile once per spec hash; cache in memory and `localStorage` (the
+  `lazyRegistry.ts` pattern). Cold compile of the full player clip set under
+  40 ms on a mid phone; warm under 1 ms.
+* Frame table for the player ≤ 600 frames after dedupe; each frame stored
+  as the current `string[]` map (renderer unchanged). Report the count in
+  `?player`.
+* Wardrobe edits recompile only layers above the changed depth.
+* The mixer does no allocation per tick; pose interpolation happens at
+  compile time, never in the loop.
+* Idle brain and mixer are pure functions with tests, like `actionPlayer`.
+* Developer surfaces poll at the existing 125 ms and must not change the
+  frame rate they display.
+
+---
+
+## 10. Developer tooling
+
+`?player` (Player Studio) grows into the **Character Bench**, same visual
+language as `?npcs`, full viewport:
+
+* left: the spec as grouped controls (Body / Face / Hair / Wardrobe / Motion /
+  Behaviour) with presets, randomize-within-taste, undo, copy-as-JSON;
+* centre: the live game as today, plus a toggle to a plinth with lighting
+  presets and a 4× loupe;
+* right: layers view (toggle each layer's contribution), clip list with
+  play / scrub / loop / blend-to, transition matrix (pick any two clips,
+  watch the blend), idle brain state, validator output, frame count and
+  compile time, FPS.
+* bottom: the frame strip for the selected clip, exportable as PNG for
+  review, and the ASCII dump for the selected frame.
+
+Headless verification (from the existing memory of how we check art):
+
+* the ASCII probe and frame strip scripts move into `scripts/` as real
+  tooling (`scripts/character-strip.mjs`, `scripts/character-dump.mjs`);
+* the in-scene sweep runs in `drive-game.mjs`;
+* a `character-matrix` CI job compiles every catalogue garment combination
+  and every clip and runs the validator.
+
+---
+
+## 11. Phases
+
+**Phase 0 — Recon and goldens (1 iteration).** Snapshot every player and
+NPC frame to `docs/golden/`. Write the audit of §0 into
+`docs/ARCHITECTURE.md`. Decide the `CharacterSpec` schema and freeze it.
+
+**Phase 1 — Rig and anatomy.** `anatomy.ts`, `rig.ts`, `pose.ts`. NPCs and
+the default player compile through it with zero diff. Validator §7 items
+1–4.
+
+**Phase 2 — Layers and garments.** Port face / hair / garments; add jacket,
+boots, sweater, tracksuit, gloves, bag. Wardrobe UI shows silhouette items.
+World migration. Validator items 5–8.
+
+**Phase 3 — Clips, mixer, transitions.** Layered animation behind a flag.
+Convert the parity list. Blend matrix in the Bench. Validator items 9–12.
+
+**Phase 4 — Natural motion pass.** Idle repertoire, start / stop / turn,
+contextual idles, expression deltas. Frame strips and sweeps for every clip,
+looked at, not just generated.
+
+**Phase 5 — Bench and tooling.** Character Bench complete, headless scripts,
+CI matrix, docs.
+
+**Phase 6 — Cut over and delete.** Flag on, v1 removed, `player.ts` becomes
+a 60-line spec.
+
+Each phase ends with an independent review pass in the spirit of `REQS.txt`
+§1–2: a fresh look for popping, sliding, snapping, dead options, combinations
+that produce garbage, and anything that looks mechanical when chained.
+
+---
+
+## 12. Definition of done
+
+* The player is a `CharacterSpec`; `player.ts` contains no pixel literals.
+* Every listed body, face, hair, wardrobe and motion parameter changes
+  something visible, and no parameter is dead.
+* Any combination in the shipped catalogue compiles and passes the validator.
+* Every v1 action has a v2 clip that reads as well or better at 4×.
+* Blends exist between every clip pair on a layer; no foot slides; no
+  feature desyncs from a bowed head; no prop floats.
+* Idle never repeats the same sequence twice in a minute of standing.
+* Cold compile ≤ 40 ms mid-phone, frame table ≤ 600, 60 fps unchanged.
+* `npx tsc -b`, `npx biome check src`, `npm run build`, the golden diffs,
+  and the CI matrix are all green.
+* The Character Bench does the whole §10 workflow without leaving the page.
+
+---
+
+## 13. What v2.0 actually shipped (2026-08-29)
+
+The first cut of this plan is in the tree. Where it followed the plan and
+where it deliberately did not:
+
+**Built as planned**
+
+* `src/engine/character/` exists: `spec.ts` (body: build / height / neck /
+  posture; garment kinds for torso / bottom / feet / head), `morph.ts` (the
+  proportion and garment passes), `compile.ts` (spec → `PlayerConfig`, cached
+  by spec key, plus the face layer), `validate.ts` (box, palette, feet on the
+  floor, connectivity, duplicate frames, action references).
+* `player.ts` is `buildPlayer(spec)`. The default spec reproduces the drawn
+  player **pixel for pixel** against `__golden__/player-v1.json`
+  (`player.test.ts`); the only frames allowed to differ are listed there with
+  the reason (the barbell now runs into its plates).
+* Garments are geometry: sleeve length follows every arm pose (the hand is
+  found by walking the skin away from the cloth, which survives arms that
+  bend back to the face), shorts bare the shin, boots climb it, a tracksuit
+  stripes the seam, a hoodie has a hood that can go up, a jacket has a zip
+  and lapels, a kurtka has a belt, a jumper a ribbed hem, a tank bares the
+  shoulders. Boots/sandals/barefoot, cap/beanie/hood.
+* Body: five builds (shoulders, thighs and hips move together; arm patches
+  follow the shoulders), four heights (shins lengthen; lying poses ride the
+  floor), three necks, three postures (slouched drops the head in
+  locomotion; relaxed rests on one leg).
+* The face is a layer: `faceBrain.ts` keeps the lids' clock and the runtime
+  swaps in the eyes-closed twin of *whatever* frame the body is showing. He
+  blinks walking, talking and lifting. The idle brain no longer owns the
+  blink.
+* `GameConfig.playerFor(world)` — the runtime takes a different `PlayerConfig`
+  per world, so clothes and bodies are frames, not palettes.
+* Wardrobe (`SZAFA`): rebuilt in the bankomat's language — a `MinigameShell`
+  logical canvas, oak carcass with bevel edge-light, a recessed mirror with
+  the compiled man in it (stand / walk / sit), rails with a cursor. Keyboard
+  only: W/S rail, A/D option, Q/E shelf (body / man / clothes / colour), 1–6
+  whole outfits, R roll, Space pose, Escape closes (engine-owned). Cuts,
+  colours and body are separate slots; legacy save ids map onto cuts
+  (`hoodie-grey` → hoodie, `black` boots → boots) so old saves load dressed
+  the way they always were.
+* Player Studio: a RIG pane with frame counts and live validator output.
+* `scripts/verify-character.mjs`: screenshots the live character per look,
+  walks him for a strip, and logs frame names (this is how `passB~blink` was
+  confirmed mid-stride).
+
+**Deviations, on purpose**
+
+* Parts are still *drawn*, not generated. Proportions are parametric morphs
+  over the drawn parts (run-based widen/narrow, shin extension, side shifts)
+  rather than a formula. At 24 columns the artist's decisions beat a formula,
+  and the golden test needed the default to be exact; the plan's §4.1
+  "described, not drawn" is deferred until a body outside the morph range is
+  actually wanted.
+* No pose layer / joint interpolation yet (§5.1–5.3). Actions are still
+  authored frame lists with enter/exit/abort; the face layer is the one
+  runtime layer added. Blending between arbitrary poses on hand-drawn patches
+  is not something a compiler can do honestly; it needs the pose layer first.
+* `WorldState.appearance` was widened rather than replaced by
+  `WorldState.character`: it *is* the spec, the shape keys are optional in
+  storage, and `normalizeAppearance` fills them — no save version bump.
+
+**Known follow-ups**
+
+* Powerlifter + shower: a clothes pile drawn one row above the floor line
+  reads as detached in the validator; harmless, but the validator's floor
+  rule should be "within the last two rows".
+* Peer files (`forumScene.tsx`, `trainStation.tsx`) currently fail `tsc`;
+  the character work is clean when they are excluded.
+* Posture "relaxed" only changes the idle; a resting-shoulder offset would
+  make it read at a glance.
+* A phone-check / neck-scratch fidget needs one new arm patch each.
+
+---
+
+## Status — 2026-08-29
+
+Landed from this plan, smaller than §2 and in the order the game needed it:
+
+* `engine/character/pose.ts` — `Pose` (legs + drop/lift, arms in body
+  coordinates, head bow/chin/turn, `over` patches after the head moves),
+  `buildPose`, `overlay(upper, lower)`. Every frame added since the rig
+  became a function is a row in a pose table in `player.ts` (walk, counter
+  drinks, seats); the drawn frames the golden guards are untouched. The first
+  layered clip is `sitBeer*` = `overlay(beer*, seated)`.
+* `core/gait.ts` — the eight-frame walk by distance (`walkStride` 8 px), the
+  push-off on a start or a turn, the settle through the pass on a stop, and
+  deterministic variants (`walkVariants`: a scuff, a glance back).
+* `core/talkBrain.ts` — the player during a dialogue: gestures on his lines
+  and at the choices, still with a nod on the other side's. Wall clock, since
+  the game clock stops under a dialogue.
+* Seats by object (`sit` bench / `sitSofa` / `sitTrain` / `lean`) held until
+  the player walks away; `lay` interruptible with the bed's panel timer
+  cancelled on the interrupt; counter drinks with their own props (cup,
+  bun, bottle, water) started from the bar dialogues via `buyAndDrink`.
+
+Not done: pose interpolation (§5), garments as geometry (§4), the rig/IK
+(§2 `rig.ts`), and the runtime asking for layered frames on demand — the
+layered frames are baked by the recipe like everything else.

@@ -1,7 +1,7 @@
 import { defineTree, playSfx } from "@/engine";
 import { learn, npcMemory } from "@/engine/systems/memory";
 import type { WorldState } from "@/lib/worldState";
-import { buy, canAfford } from "./commerce";
+import { buyAndDrink, canAfford } from "./commerce";
 import type { Ctx } from "./types";
 
 /** Ulica Elektryków: the people of the night shift. */
@@ -377,17 +377,17 @@ export function buildBarmankaTree(world: WorldState) {
     {
       label: "Grzaniec. (15 zł)",
       next: canAfford(15),
-      effect: (ctx: Ctx) => buy(ctx, "grzaniec", 15),
+      effect: (ctx: Ctx) => buyAndDrink(ctx, "grzaniec", 15, "coffee"),
     },
     {
       label: "Piwo z kranu. (12 zł)",
       next: canAfford(12),
-      effect: (ctx: Ctx) => buy(ctx, "beer", 12),
+      effect: (ctx: Ctx) => buyAndDrink(ctx, "beer", 12, "beer"),
     },
     {
       label: "Woda. (6 zł)",
       next: canAfford(6),
-      effect: (ctx: Ctx) => buy(ctx, "water", 6),
+      effect: (ctx: Ctx) => buyAndDrink(ctx, "water", 6, "water"),
     },
     { label: "Nic, tylko się grzeję.", next: "bye" },
   ];

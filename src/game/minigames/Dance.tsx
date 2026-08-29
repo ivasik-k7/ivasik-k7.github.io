@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playSfx } from "@/engine";
 import {
@@ -218,10 +219,10 @@ export function Dance({
           if (dancerArmsRef.current && tier === 2) dancerArmsRef.current.style.display = "";
           const line =
             tier === 2
-              ? "Бармен кивнув. У Турбіні це орден."
+              ? i18n.t("minigame.verdict.dance.best")
               : tier === 1
-                ? "Tańczysz jak spawacz. To komplement."
-                : "The floor forgives. The bouncer saw nothing.";
+                ? i18n.t("minigame.verdict.dance.mid")
+                : i18n.t("minigame.verdict.dance.low");
           setVerdict(line);
           setPhase("done");
           window.setTimeout(() => {
@@ -367,7 +368,7 @@ export function Dance({
       bg="#0b0a10"
       stageRef={stageRef}
       verdict={verdict}
-      hint={phase === "done" ? "" : "a d кроки · w офбіт · esc зійти з паркету"}
+      hint={phase === "done" ? "" : i18n.t("minigame.dance")}
     >
       {/* the hall: brick to the arches, the old turbine windows blacked out */}
       <rect x={0} y={0} width={W} height={FLOOR_Y} fill="#0d0c13" />

@@ -1,27 +1,59 @@
 import { PLAYER_PALETTE } from "@/components/game/sprites";
-import type { SpritePalette } from "@/engine";
+import {
+  type BodySpec,
+  type BottomKind,
+  BUILDS,
+  type Build,
+  type CharacterSpec,
+  type FootKind,
+  HEIGHTS,
+  type HeadKind,
+  type Height,
+  NECKS,
+  type Neck,
+  type PlayerConfig,
+  POSTURES,
+  type Posture,
+  type SpritePalette,
+  TORSO_GARMENTS,
+  type TorsoKind,
+} from "@/engine";
 import type { WorldState } from "@/lib/worldState";
+import { playerFor as compilePlayer } from "./player";
 
 /**
- * Appearance — the paper-doll layers of the player, expressed as palette
- * zones over the shared body frames:
- *   head   → hair (h/H) + skin (s/S/y) + eyes (e)
- *   torso  → shirt (t/T); the bare forearms stay skin
- *   legs   → trousers (p/q)
- *   feet   → shoes (b/B)
- * Every option ships its own shade pair so volume survives the recolor.
- * The wardrobe writes option ids into world.appearance; paletteFor()
- * resolves them into a live palette for the runtime.
+ * Appearance — who he is and what he has on, as option ids.
  *
- * Two slots are *derived* rather than authored, because their colour is a
- * property of the body underneath and not a choice: a clean shave paints the
- * beard zone in skin, and a shaved head paints the scalp in skin. Anything
- * that borrows from a neighbouring zone has to be resolved here, against the
- * look as a whole — an option that hardcodes a hex is an option that only
- * looks right on one body.
+ * Two kinds of thing live in `world.appearance` and they are resolved by two
+ * different systems:
+ *
+ *   colours   skin · hair · beard · hat · shirt · trousers · shoes
+ *             → a palette (`paletteForAppearance`), the same paper-doll
+ *             recolour the wardrobe has always done;
+ *   shapes    top · bottom · feet · head · build · height · neck · posture
+ *             → a `CharacterSpec` (`specForAppearance`), which the rig turns
+ *             into different pixels: a hoodie has a hood, boots have a
+ *             shaft, a powerlifter has shoulders.
+ *
+ * The shape keys are new. A save written before they existed has only the
+ * colour keys, and some of those colour ids used to *imply* a shape —
+ * "hoodie-grey" was the grey option that also meant a hoodie. `normalize`
+ * fills a missing shape from the legacy id, so an old save loads wearing what
+ * it always wore, now with the geometry to match.
+ *
+ * Two colour slots are *derived*: a clean shave paints the beard zone in
+ * skin, a shaved head paints the scalp in skin. Anything that borrows from a
+ * neighbouring zone is resolved here against the look as a whole.
  */
 
-export type SlotGroup = "person" | "wear";
+/** What a save actually holds — shape keys may be missing. */
+export type StoredAppearance = WorldState["appearance"];
+/** What the game reads — every key present (see `normalizeAppearance`). */
+export type Appearance = Required<StoredAppearance>;
+/** Loose input: URL params, rolls, old saves. */
+export type AppearanceInput = Partial<{ [K in keyof StoredAppearance]: string }>;
+
+export type SlotGroup = "body" | "person" | "cut" | "colour";
 
 export interface SlotOption {
   id: string;
@@ -30,32 +62,88 @@ export interface SlotOption {
 }
 
 export interface AppearanceSlot {
-  key: keyof WorldState["appearance"];
+  key: keyof Appearance;
   label: string;
-  /** Who he is, or what he put on this morning — the wardrobe reads as two lists. */
   group: SlotGroup;
   options: SlotOption[];
 }
 
 export const APPEARANCE_GROUPS: { id: SlotGroup; label: string }[] = [
+  { id: "body", label: "THE BODY" },
   { id: "person", label: "WHO HE IS" },
-  { id: "wear", label: "WHAT HE WEARS" },
+  { id: "cut", label: "WHAT HE WEARS" },
+  { id: "colour", label: "IN WHAT COLOUR" },
 ];
 
+const cutOptions = (labels: Record<string, string>): SlotOption[] =>
+  Object.entries(labels).map(([id, label]) => ({ id, label, colors: {} }));
+
+export const BUILD_LABEL: Record<Build, string> = {
+  slight: "Slight",
+  lean: "Lean",
+  athletic: "Athletic",
+  heavy: "Heavy",
+  powerlifter: "Powerlifter",
+};
+export const HEIGHT_LABEL: Record<Height, string> = {
+  short: "178 cm",
+  average: "188 cm",
+  tall: "195 cm",
+  towering: "202 cm",
+};
+export const NECK_LABEL: Record<Neck, string> = { thin: "Thin", normal: "Normal", thick: "Thick" };
+export const POSTURE_LABEL: Record<Posture, string> = {
+  upright: "Upright",
+  relaxed: "Relaxed",
+  slouched: "Slouched",
+};
+export const TOP_LABEL: Record<TorsoKind, string> = {
+  tee: "T-shirt",
+  tank: "Tank top",
+  longsleeve: "Long sleeve",
+  hoodie: "Hoodie",
+  jumper: "Jumper",
+  jacket: "Jacket",
+  kurtka: "Sambo kurtka",
+  shirt: "Shirt",
+};
+export const BOTTOM_LABEL: Record<BottomKind, string> = {
+  trousers: "Trousers",
+  joggers: "Joggers",
+  shorts: "Shorts",
+  tracksuit: "Tracksuit",
+};
+export const FEET_LABEL: Record<FootKind, string> = {
+  sneakers: "Sneakers",
+  boots: "Boots",
+  sandals: "Sandals",
+  barefoot: "Barefoot",
+};
+export const HEAD_LABEL: Record<HeadKind, string> = {
+  none: "Nothing",
+  cap: "Cap",
+  beanie: "Beanie",
+  hood: "Hood up",
+};
+
 export const APPEARANCE_SLOTS: AppearanceSlot[] = [
+  // --- the body ---------------------------------------------------------------
+  { key: "build", label: "BUILD", group: "body", options: cutOptions(BUILD_LABEL) },
+  { key: "height", label: "HEIGHT", group: "body", options: cutOptions(HEIGHT_LABEL) },
+  { key: "neck", label: "NECK", group: "body", options: cutOptions(NECK_LABEL) },
+  { key: "posture", label: "POSTURE", group: "body", options: cutOptions(POSTURE_LABEL) },
+  // --- the man ----------------------------------------------------------------
   {
     key: "skin",
     label: "SKIN",
     group: "person",
     options: [
-      {
-        id: "default",
-        label: "Warm",
-        colors: { s: "#e0b48c", S: "#c79a72", y: "#ead9a8" },
-      },
+      { id: "default", label: "Warm", colors: { s: "#e0b48c", S: "#c79a72", y: "#ead9a8" } },
       { id: "tan", label: "Tan", colors: { s: "#c99668", S: "#a87a4e", y: "#dbb488" } },
       { id: "pale", label: "Pale", colors: { s: "#ecc9a8", S: "#d2ad8a", y: "#f5e4c4" } },
+      { id: "olive", label: "Olive", colors: { s: "#c4a274", S: "#a2825a", y: "#d9c096" } },
       { id: "deep", label: "Deep", colors: { s: "#9a6a44", S: "#7c5232", y: "#b88a5e" } },
+      { id: "dark", label: "Dark", colors: { s: "#6e4a30", S: "#553722", y: "#8a6244" } },
     ],
   },
   {
@@ -67,6 +155,7 @@ export const APPEARANCE_SLOTS: AppearanceSlot[] = [
       { id: "black", label: "Black", colors: { h: "#1d1a17", H: "#100e0c" } },
       { id: "blond", label: "Blond", colors: { h: "#b89a5e", H: "#96793f" } },
       { id: "copper", label: "Copper", colors: { h: "#9a5230", H: "#7a3d20" } },
+      { id: "ash", label: "Ash", colors: { h: "#6f665c", H: "#544c44" } },
       { id: "silver", label: "Silver", colors: { h: "#a8a8a4", H: "#84847e" } },
       // no hexes: a shaved head is skin, resolved against today's skin below
       { id: "shaved", label: "Shaved", colors: {} },
@@ -79,111 +168,149 @@ export const APPEARANCE_SLOTS: AppearanceSlot[] = [
     options: [
       { id: "default", label: "Stubble", colors: { f: "#7a5c48", F: "#5f4636" } },
       { id: "full", label: "Full beard", colors: { f: "#4a3626", F: "#37281c" } },
+      { id: "grey", label: "Grey beard", colors: { f: "#8a847a", F: "#6a655c" } },
       { id: "none", label: "Clean shave", colors: {} },
     ],
   },
+  // --- the cut ----------------------------------------------------------------
+  { key: "head", label: "ON THE HEAD", group: "cut", options: cutOptions(HEAD_LABEL) },
+  { key: "top", label: "TOP", group: "cut", options: cutOptions(TOP_LABEL) },
+  { key: "bottom", label: "LEGS", group: "cut", options: cutOptions(BOTTOM_LABEL) },
+  { key: "feet", label: "FEET", group: "cut", options: cutOptions(FEET_LABEL) },
+  // --- the colour -------------------------------------------------------------
   {
     key: "hat",
     label: "HAT",
-    group: "wear",
+    group: "colour",
     options: [
-      { id: "none", label: "No hat", colors: { k: "", K: "" } },
-      { id: "navy", label: "Navy cap", colors: { k: "#2e4568", K: "#23344d" } },
-      { id: "black", label: "Black cap", colors: { k: "#26262c", K: "#17171b" } },
-      { id: "red", label: "Red cap", colors: { k: "#a33a30", K: "#7d2820" } },
+      { id: "navy", label: "Navy", colors: { k: "#2e4568", K: "#23344d" } },
+      { id: "black", label: "Black", colors: { k: "#26262c", K: "#17171b" } },
+      { id: "red", label: "Red", colors: { k: "#a33a30", K: "#7d2820" } },
+      { id: "olive", label: "Olive", colors: { k: "#5f7053", K: "#48563e" } },
+      { id: "grey", label: "Grey", colors: { k: "#6d7278", K: "#565a60" } },
+      // legacy: "none" was the way to take the cap off before `head` existed
+      { id: "none", label: "None", colors: {} },
     ],
   },
   {
     key: "shirt",
-    label: "TORSO",
-    group: "wear",
+    label: "TOP",
+    group: "colour",
     options: [
-      {
-        id: "default",
-        label: "Black tee",
-        colors: { t: "#1d1d24", T: "#0a0a0e", m: "#1d1d24", M: "#0a0a0e" },
-      },
-      {
-        id: "olive",
-        label: "Olive tee",
-        colors: { t: "#5f7053", T: "#48563e", m: "#5f7053", M: "#48563e" },
-      },
-      {
-        id: "maroon",
-        label: "Maroon tee",
-        colors: { t: "#7c3040", T: "#5d2430", m: "#7c3040", M: "#5d2430" },
-      },
-      {
-        id: "navy",
-        label: "Navy tee",
-        colors: { t: "#2e4568", T: "#23344d", m: "#2e4568", M: "#23344d" },
-      },
-      {
-        id: "white",
-        label: "White tee",
-        colors: { t: "#e2ddd0", T: "#bdb8a8", m: "#e2ddd0", M: "#bdb8a8" },
-      },
-      {
-        id: "hoodie-grey",
-        label: "Grey hoodie",
-        colors: { t: "#6d7278", T: "#565a60", m: "#7d828a", M: "#5d6266" },
-      },
-      {
-        id: "hoodie-black",
-        label: "Black hoodie",
-        colors: { t: "#26262c", T: "#17171b", m: "#33363a", M: "#232529" },
-      },
-      {
-        id: "sambo",
-        label: "Sambo kurtka",
-        colors: { t: "#a33a30", T: "#7d2820", m: "#a33a30", M: "#7d2820" },
-      },
+      { id: "default", label: "Black", colors: { t: "#1d1d24", T: "#0a0a0e" } },
+      { id: "white", label: "White", colors: { t: "#e2ddd0", T: "#bdb8a8" } },
+      { id: "grey", label: "Grey", colors: { t: "#6d7278", T: "#565a60" } },
+      { id: "olive", label: "Olive", colors: { t: "#5f7053", T: "#48563e" } },
+      { id: "navy", label: "Navy", colors: { t: "#2e4568", T: "#23344d" } },
+      { id: "maroon", label: "Maroon", colors: { t: "#7c3040", T: "#5d2430" } },
+      { id: "red", label: "Red", colors: { t: "#a33a30", T: "#7d2820" } },
+      { id: "brown", label: "Brown", colors: { t: "#6b4a30", T: "#4f3622" } },
+      { id: "cream", label: "Cream", colors: { t: "#d9c9a3", T: "#b3a480" } },
+      { id: "forest", label: "Forest", colors: { t: "#3b5540", T: "#2b3f30" } },
+      // legacy ids — kept so an old save resolves; they imply a cut (see LEGACY)
+      { id: "hoodie-grey", label: "Grey", colors: { t: "#6d7278", T: "#565a60" } },
+      { id: "hoodie-black", label: "Black", colors: { t: "#26262c", T: "#17171b" } },
+      { id: "sambo", label: "Red", colors: { t: "#a33a30", T: "#7d2820" } },
     ],
   },
   {
     key: "trousers",
     label: "LEGS",
-    group: "wear",
+    group: "colour",
     options: [
       { id: "default", label: "Navy", colors: { p: "#33415e", q: "#28344c", Q: "#1e2839" } },
       { id: "black", label: "Black", colors: { p: "#26262c", q: "#1a1a1f", Q: "#121216" } },
       { id: "khaki", label: "Khaki", colors: { p: "#7a6f52", q: "#615840", Q: "#4d4632" } },
-      { id: "grey", label: "Grey joggers", colors: { p: "#6d7278", q: "#565a60", Q: "#43464c" } },
-      { id: "sambo", label: "Sambo shorts", colors: { p: "#a33a30", q: "#7d2820", Q: "#601c16" } },
+      { id: "grey", label: "Grey", colors: { p: "#6d7278", q: "#565a60", Q: "#43464c" } },
+      { id: "denim", label: "Denim", colors: { p: "#4a5f86", q: "#3a4a6a", Q: "#2c3852" } },
+      { id: "brown", label: "Brown", colors: { p: "#5c4531", q: "#463424", Q: "#35271a" } },
+      { id: "sambo", label: "Red", colors: { p: "#a33a30", q: "#7d2820", Q: "#601c16" } },
     ],
   },
   {
     key: "shoes",
     label: "FEET",
-    group: "wear",
+    group: "colour",
     options: [
-      { id: "default", label: "White sneakers", colors: { b: "#d8d8d0", B: "#8f9089" } },
-      { id: "black", label: "Black boots", colors: { b: "#2e3033", B: "#1d1f22" } },
-      { id: "red", label: "Red runners", colors: { b: "#c94040", B: "#8f2f2f" } },
-      { id: "sambovki", label: "Sambovki", colors: { b: "#3a5a8c", B: "#2a4268" } },
+      { id: "default", label: "White", colors: { b: "#d8d8d0", B: "#8f9089" } },
+      { id: "black", label: "Black", colors: { b: "#2e3033", B: "#1d1f22" } },
+      { id: "red", label: "Red", colors: { b: "#c94040", B: "#8f2f2f" } },
+      { id: "brown", label: "Brown", colors: { b: "#6b4a30", B: "#4a3220" } },
+      { id: "sambovki", label: "Blue", colors: { b: "#3a5a8c", B: "#2a4268" } },
     ],
   },
 ];
+
+/** Legacy colour ids that used to carry a shape. Only consulted when the shape key is missing. */
+const LEGACY_TOP: Record<string, TorsoKind> = {
+  "hoodie-grey": "hoodie",
+  "hoodie-black": "hoodie",
+  sambo: "kurtka",
+};
+const LEGACY_BOTTOM: Record<string, BottomKind> = { grey: "joggers", sambo: "shorts" };
+const LEGACY_FEET: Record<string, FootKind> = { black: "boots" };
+
+const pick = <T extends string>(v: unknown, all: readonly T[], fallback: T): T =>
+  all.includes(v as T) ? (v as T) : fallback;
+
+const TOPS = Object.keys(TORSO_GARMENTS) as TorsoKind[];
+const BOTTOMS: BottomKind[] = ["trousers", "joggers", "shorts", "tracksuit"];
+const FEET: FootKind[] = ["sneakers", "boots", "sandals", "barefoot"];
+const HEADS: HeadKind[] = ["none", "cap", "beanie", "hood"];
+
+/**
+ * Every key present and valid. Old saves and URL params arrive partial; the
+ * game only ever reads a normalized appearance.
+ */
+export function normalizeAppearance(a: AppearanceInput | StoredAppearance | undefined): Appearance {
+  const src = (a ?? {}) as AppearanceInput;
+  const shirt = typeof src.shirt === "string" ? src.shirt : "default";
+  const trousers = typeof src.trousers === "string" ? src.trousers : "default";
+  const shoes = typeof src.shoes === "string" ? src.shoes : "default";
+  const hat = typeof src.hat === "string" ? src.hat : "none";
+  const top = pick(src.top, TOPS, LEGACY_TOP[shirt] ?? "tee");
+  let head = pick(src.head, HEADS, hat === "none" ? "none" : "cap");
+  // a hood needs a hoodie under it
+  if (head === "hood" && !TORSO_GARMENTS[top].hood) head = "none";
+  return {
+    skin: typeof src.skin === "string" ? src.skin : "default",
+    hair: typeof src.hair === "string" ? src.hair : "default",
+    beard: typeof src.beard === "string" ? src.beard : "default",
+    hat: hat === "none" ? "navy" : hat,
+    shirt,
+    trousers,
+    shoes,
+    head,
+    top,
+    bottom: pick(src.bottom, BOTTOMS, LEGACY_BOTTOM[trousers] ?? "trousers"),
+    feet: pick(src.feet, FEET, LEGACY_FEET[shoes] ?? "sneakers"),
+    build: pick(src.build, BUILDS, "athletic"),
+    height: pick(src.height, HEIGHTS, "average"),
+    neck: pick(src.neck, NECKS, "normal"),
+    posture: pick(src.posture, POSTURES, "upright"),
+  };
+}
 
 function findOption(slot: AppearanceSlot, id: string): SlotOption {
   return slot.options.find((o) => o.id === id) ?? slot.options[0];
 }
 
-function slotFor(key: keyof WorldState["appearance"]): AppearanceSlot {
+export function slotFor(key: keyof Appearance): AppearanceSlot {
   return APPEARANCE_SLOTS.find((s) => s.key === key) ?? APPEARANCE_SLOTS[0];
 }
 
 /**
  * How much darker a shaved scalp sits than the cheek below it. One factor
  * rather than a second hand-picked hex per skin, so a skin added tomorrow
- * arrives with its scalp already correct. On the default skin it lands within
- * four units of the tone that used to be typed in by hand.
+ * arrives with its scalp already correct.
  */
 const SCALP_SHADE = 0.84;
+/** A hood is the same cloth as the hoodie, catching a little more light. */
+const HOOD_LIFT = 1.18;
 
 const HEX_LENGTH = 7;
 
-function darken(hex: string, factor: number): string {
+function scale(hex: string, factor: number): string {
   if (hex.length !== HEX_LENGTH || hex[0] !== "#") return hex;
   const n = Number.parseInt(hex.slice(1), 16);
   if (Number.isNaN(n)) return hex;
@@ -192,12 +319,27 @@ function darken(hex: string, factor: number): string {
   return `#${rgb.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** Resolve the world's appearance ids into a full live palette. */
-export function paletteForAppearance(a: WorldState["appearance"]): SpritePalette {
+/** Resolve an appearance into the live palette. */
+export function paletteForAppearance(raw: StoredAppearance | AppearanceInput): SpritePalette {
+  const a = normalizeAppearance(raw);
   const out: Record<string, string> = { ...PLAYER_PALETTE };
   for (const slot of APPEARANCE_SLOTS) {
-    Object.assign(out, findOption(slot, a[slot.key]).colors);
+    if (slot.group === "person" || slot.group === "colour") {
+      Object.assign(out, findOption(slot, a[slot.key]).colors);
+    }
   }
+  // the hood zone: a hood on a hoodie, plain shirt on anything else
+  const top = TORSO_GARMENTS[a.top];
+  if (top.hood) {
+    out.m = scale(out.t, HOOD_LIFT);
+    out.M = out.t;
+  } else {
+    out.m = out.t;
+    out.M = out.T;
+  }
+  // a tracksuit's stripe is the shoe-white of the estate; a kurtka's belt is c
+  out.a = "#e2ddd0";
+  out.A = "#bdb8a8";
   // clean shave: the beard zone borrows whatever skin is wearing today
   if (a.beard === "none") {
     out.f = out.s;
@@ -206,28 +348,41 @@ export function paletteForAppearance(a: WorldState["appearance"]): SpritePalette
   // shaved: so does the scalp, or the head reads as a mask laid over the face
   if (a.hair === "shaved") {
     out.h = out.S;
-    out.H = darken(out.S, SCALP_SHADE);
+    out.H = scale(out.S, SCALP_SHADE);
   }
-  // "" means the garment isn't worn — delete the zone so it renders as nothing
-  for (const key of Object.keys(out)) {
-    if (out[key] === "") delete out[key];
+  // no cap, no beanie: the cap zone renders as nothing
+  if (a.head !== "cap" && a.head !== "beanie") {
+    delete out.k;
+    delete out.K;
   }
   return out;
 }
 
-const paletteCache = new WeakMap<WorldState["appearance"], SpritePalette>();
+const paletteCache = new WeakMap<StoredAppearance, SpritePalette>();
 
 /**
  * Cached resolver: unrelated world updates keep the same appearance object,
  * so the palette keeps its identity and the player sprite sheet stays memoized.
  */
-export function paletteForAppearanceCached(a: WorldState["appearance"]): SpritePalette {
+export function paletteForAppearanceCached(a: StoredAppearance): SpritePalette {
   let p = paletteCache.get(a);
   if (!p) {
     p = paletteForAppearance(a);
     paletteCache.set(a, p);
   }
   return p;
+}
+
+/** The engine spec — the shapes — for an appearance. */
+export function specForAppearance(raw: StoredAppearance | AppearanceInput): CharacterSpec {
+  const a = normalizeAppearance(raw);
+  const body: BodySpec = { build: a.build, height: a.height, neck: a.neck, posture: a.posture };
+  return { body, garments: { torso: a.top, bottom: a.bottom, feet: a.feet, head: a.head } };
+}
+
+/** The compiled player for an appearance — frames from the spec, palette from the colours. */
+export function playerForAppearance(a: StoredAppearance | AppearanceInput): PlayerConfig {
+  return compilePlayer(specForAppearance(a));
 }
 
 /** Cycle a slot's option id by delta, wrapping. */
@@ -238,10 +393,10 @@ export function cycleOption(slot: AppearanceSlot, currentId: string, delta: 1 | 
 }
 
 /**
- * The base and shade zone each slot speaks through, so a swatch can be lit the
- * way the sprite is lit rather than being one flat square.
+ * The base and shade zone each colour slot speaks through, so a swatch can be
+ * lit the way the sprite is lit rather than being one flat square.
  */
-const SLOT_ZONES: Record<keyof WorldState["appearance"], [string, string]> = {
+const SLOT_ZONES: Partial<Record<keyof Appearance, [string, string]>> = {
   skin: ["s", "S"],
   hair: ["h", "H"],
   beard: ["f", "F"],
@@ -258,24 +413,32 @@ export interface Swatch {
 
 /**
  * The colours an option would actually paint, resolved against the rest of the
- * look — so the Shaved swatch shows today's scalp rather than a stored guess,
- * and Clean shave shows today's jaw. Null when the option means "not worn"
- * and there is nothing to show.
+ * look — so the Shaved swatch shows today's scalp rather than a stored guess.
+ * Null for a cut (no colour of its own) or for an option that paints nothing.
  */
 export function swatchFor(
   slot: AppearanceSlot,
   optionId: string,
-  a: WorldState["appearance"],
+  raw: StoredAppearance,
 ): Swatch | null {
-  const palette = paletteForAppearance({ ...a, [slot.key]: optionId });
-  const [baseKey, shadeKey] = SLOT_ZONES[slot.key];
-  const base = palette[baseKey];
+  const a = normalizeAppearance(raw);
+  const zones = SLOT_ZONES[slot.key];
+  if (!zones) return null;
+  const palette = paletteForAppearance({
+    ...a,
+    [slot.key]: optionId,
+    head: slot.key === "hat" ? "cap" : a.head,
+  });
+  const base = palette[zones[0]];
   if (!base) return null;
-  return { base, shade: palette[shadeKey] ?? base };
+  return { base, shade: palette[zones[1]] ?? base };
 }
 
-/** The four slots an outfit owns. The other three are the man, not the clothes. */
-export type Wear = Pick<WorldState["appearance"], "hat" | "shirt" | "trousers" | "shoes">;
+/** The slots an outfit owns. The others are the man, not the clothes. */
+export type Wear = Pick<
+  Appearance,
+  "head" | "hat" | "top" | "shirt" | "bottom" | "trousers" | "feet" | "shoes"
+>;
 
 export interface Outfit {
   id: string;
@@ -286,81 +449,148 @@ export interface Outfit {
 }
 
 /**
- * Whole looks, one click each. Seven rails is a paint program; a wardrobe has
- * a few things in it that already go together, and most mornings you take one
- * of them off the rail and leave. Nothing here touches skin, hair or beard —
- * those are the man underneath, and an outfit has no opinion about him.
+ * Whole looks, one click each. A wardrobe has a few things in it that already
+ * go together, and most mornings you take one of them off the rail and leave.
+ * Nothing here touches skin, hair, beard or the body underneath.
  */
 export const OUTFITS: Outfit[] = [
   {
     id: "everyday",
     label: "EVERYDAY",
-    wear: { hat: "none", shirt: "default", trousers: "default", shoes: "default" },
+    wear: {
+      head: "none",
+      hat: "navy",
+      top: "tee",
+      shirt: "default",
+      bottom: "trousers",
+      trousers: "default",
+      feet: "sneakers",
+      shoes: "default",
+    },
     note: "Whatever was already on the chair.",
   },
   {
     id: "kiosk",
     label: "KIOSK RUN",
-    wear: { hat: "navy", shirt: "hoodie-grey", trousers: "grey", shoes: "red" },
+    wear: {
+      head: "hood",
+      hat: "navy",
+      top: "hoodie",
+      shirt: "grey",
+      bottom: "joggers",
+      trousers: "grey",
+      feet: "sneakers",
+      shoes: "red",
+    },
     note: "Down for cigarettes, back in four minutes.",
   },
   {
     id: "training",
     label: "TRAINING",
-    wear: { hat: "none", shirt: "sambo", trousers: "sambo", shoes: "sambovki" },
+    wear: {
+      head: "none",
+      hat: "navy",
+      top: "kurtka",
+      shirt: "red",
+      bottom: "shorts",
+      trousers: "sambo",
+      feet: "sneakers",
+      shoes: "sambovki",
+    },
     note: "Red kurtka, mat burn on both knees.",
   },
   {
     id: "nightshift",
     label: "NIGHT SHIFT",
-    wear: { hat: "black", shirt: "hoodie-black", trousers: "black", shoes: "black" },
+    wear: {
+      head: "beanie",
+      hat: "black",
+      top: "jacket",
+      shirt: "default",
+      bottom: "trousers",
+      trousers: "black",
+      feet: "boots",
+      shoes: "black",
+    },
     note: "Nobody looks twice at this after eleven.",
   },
   {
     id: "sunday",
     label: "SUNDAY",
-    wear: { hat: "none", shirt: "white", trousers: "khaki", shoes: "default" },
+    wear: {
+      head: "none",
+      hat: "navy",
+      top: "shirt",
+      shirt: "white",
+      bottom: "trousers",
+      trousers: "khaki",
+      feet: "sneakers",
+      shoes: "default",
+    },
     note: "Clean shirt, no plans, one coffee.",
   },
   {
     id: "yard",
     label: "THE YARD",
-    wear: { hat: "red", shirt: "olive", trousers: "khaki", shoes: "black" },
+    wear: {
+      head: "cap",
+      hat: "red",
+      top: "longsleeve",
+      shirt: "olive",
+      bottom: "tracksuit",
+      trousers: "khaki",
+      feet: "boots",
+      shoes: "black",
+    },
     note: "Warm enough for the bench by the bins.",
   },
 ];
 
 /** Put an outfit on without disturbing the man wearing it. */
-export function applyOutfit(a: WorldState["appearance"], outfit: Outfit): WorldState["appearance"] {
-  return { ...a, ...outfit.wear };
+export function applyOutfit(a: StoredAppearance, outfit: Outfit): Appearance {
+  return normalizeAppearance({ ...a, ...outfit.wear });
 }
 
 /**
- * Which outfit he is standing in, if any — the panel marks it. The hat does
- * not count: putting a cap on does not mean you changed out of your clothes,
- * and no two outfits here differ only by one.
+ * Which outfit he is standing in, if any — the panel marks it. Headwear does
+ * not count: putting a cap on does not mean you changed out of your clothes.
  */
-export function activeOutfit(a: WorldState["appearance"]): string | null {
+export function activeOutfit(a: StoredAppearance): string | null {
+  const n = normalizeAppearance(a);
   const match = OUTFITS.find(
-    (o) => o.wear.shirt === a.shirt && o.wear.trousers === a.trousers && o.wear.shoes === a.shoes,
+    (o) =>
+      o.wear.top === n.top &&
+      o.wear.shirt === n.shirt &&
+      o.wear.bottom === n.bottom &&
+      o.wear.trousers === n.trousers &&
+      o.wear.feet === n.feet &&
+      o.wear.shoes === n.shoes,
   );
   return match ? match.id : null;
 }
 
 /**
  * How often a head turns up on this estate. Chestnut and black are most of
- * the block; silver is a lifetime away and should stay rare, or every third
- * roll comes back sixty years old.
+ * the block; silver is a lifetime away and should stay rare.
  */
 const HAIR_ODDS: Record<string, number> = {
   default: 5,
   black: 4,
   copper: 2,
   blond: 2,
+  ash: 2,
   shaved: 2,
   silver: 1,
 };
-const BEARD_ODDS: Record<string, number> = { default: 5, none: 3, full: 2 };
+const BEARD_ODDS: Record<string, number> = { default: 5, none: 3, full: 2, grey: 1 };
+const BUILD_ODDS: Record<string, number> = {
+  slight: 1,
+  lean: 3,
+  athletic: 4,
+  heavy: 2,
+  powerlifter: 1,
+};
+const HEIGHT_ODDS: Record<string, number> = { short: 2, average: 4, tall: 3, towering: 1 };
 
 /** A cap is a decision taken at the door, not part of the outfit on the rail. */
 const HAT_KEPT_ODDS = 0.6;
@@ -381,19 +611,22 @@ function evenPick(slot: AppearanceSlot): string {
 }
 
 /**
- * A roll that comes back dressed. Picking all seven slots independently is
- * what makes a clown — a red cap over silver hair, maroon on top and sambo
- * shorts below. Clothes in a wardrobe were bought together, so the garments
- * come from one outfit and only the man underneath is rolled, weighted so the
- * rare heads stay rare.
+ * A roll that comes back dressed. Picking every slot independently is what
+ * makes a clown, so the garments come from one outfit and only the man
+ * underneath is rolled, weighted so the rare heads and bodies stay rare.
  */
-export function rollAppearance(): WorldState["appearance"] {
+export function rollAppearance(): Appearance {
   const outfit = OUTFITS[Math.floor(Math.random() * OUTFITS.length)];
-  return {
+  const keepHat = Math.random() < HAT_KEPT_ODDS;
+  return normalizeAppearance({
     skin: evenPick(slotFor("skin")),
     hair: weightedPick(slotFor("hair"), HAIR_ODDS),
     beard: weightedPick(slotFor("beard"), BEARD_ODDS),
+    build: weightedPick(slotFor("build"), BUILD_ODDS),
+    height: weightedPick(slotFor("height"), HEIGHT_ODDS),
+    neck: evenPick(slotFor("neck")),
+    posture: "upright",
     ...outfit.wear,
-    hat: Math.random() < HAT_KEPT_ODDS ? outfit.wear.hat : "none",
-  };
+    head: keepHat ? outfit.wear.head : "none",
+  });
 }

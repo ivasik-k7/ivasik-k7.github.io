@@ -74,6 +74,8 @@ export const PLAYER_PALETTE: Palette = {
   w: "#c9863f", // guitar top — the same honeyed spruce as the one on the wall
   W: "#8a5a28", // guitar rim / side shade
   n: "#3a2614", // guitar neck, fretboard, soundhole
+  a: "#e2ddd0", // accent — a tracksuit stripe, a trim
+  A: "#bdb8a8", // accent shade
 };
 
 // Rows 0–24: head, shoulders, full torso with arm definition, hips. Rows 25–37 are legs.

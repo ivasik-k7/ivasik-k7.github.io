@@ -19,6 +19,8 @@ export type SeqRun<W extends AnyWorld> = {
   enteredAt: number;
   deadline: number;
   cinematic: boolean;
+  /** Escape ends a cinematic run early (an intro the player has seen before). */
+  skippable: boolean;
   resolve: (ok: boolean) => void;
 };
 
@@ -26,6 +28,7 @@ export const newSeqRun = <W extends AnyWorld>(
   steps: SeqStep<W>[],
   cinematic: boolean,
   resolve: (ok: boolean) => void,
+  skippable = false,
 ): SeqRun<W> => ({
   steps,
   i: 0,
@@ -33,6 +36,7 @@ export const newSeqRun = <W extends AnyWorld>(
   enteredAt: 0,
   deadline: 0,
   cinematic,
+  skippable,
   resolve,
 });
 
@@ -42,8 +46,10 @@ export const newSeqRun = <W extends AnyWorld>(
  */
 export type SeqHost<W extends AnyWorld> = {
   showToast(text: string): void;
+  /** how long a shown line stays; falls back to a length curve when absent */
+  toastMs?(text: string): number;
   /** Cancel any current auto-walk and arm one toward x (and optional feet-y). */
-  startWalk(x: number, y: number | undefined, deadline: number): void;
+  startWalk(x: number, y: number | undefined, deadline: number, speed?: number): void;
   walking(): boolean;
   setFacing(facing: 1 | -1): void;
   /** Pin a player frame; null releases it. */
@@ -116,12 +122,14 @@ function enterStep<W extends AnyWorld>(
   } else if ("say" in step) {
     const text = String(step.say);
     host.showToast(text);
-    run.deadline = at + Math.min(3200, 1200 + text.length * 28);
+    // the beat holds for as long as the line is on screen, then a breath
+    run.deadline = at + (host.toastMs?.(text) ?? Math.min(3200, 1200 + text.length * 28)) + 150;
   } else if ("walkTo" in step) {
     host.startWalk(
       host.clampWalkX(Number(step.walkTo)),
       step.y === undefined ? undefined : host.clampWalkY(Number(step.y)),
       at + Number(step.timeoutMs ?? 8000),
+      step.speed === undefined ? undefined : Number(step.speed),
     );
   } else if ("face" in step) {
     host.setFacing(step.face === -1 ? -1 : 1);
@@ -165,7 +173,15 @@ function stepDone<W extends AnyWorld>(
   at: number,
 ): boolean {
   if ("walkTo" in step) return !host.walking();
-  if ("action" in step) return !host.actionRunning();
+  if ("action" in step) {
+    if (host.actionRunning()) return false;
+    const repeat = (step as { repeat?: () => boolean }).repeat;
+    if (repeat?.()) {
+      host.startAction(String(step.action));
+      return false;
+    }
+    return true;
+  }
   if ("dialogue" in step) return !host.dialogueOpen();
   if ("travel" in step) return !host.fading();
   if ("until" in step) {

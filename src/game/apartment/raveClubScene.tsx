@@ -2237,7 +2237,7 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
     { id: "club-sticky", kind: "flavor", x: Z.bar + 70, y: 164, range: 26 },
     { id: "club-pallet", kind: "flavor", x: BAR[0] + BAR[2] + 25, range: 16 },
     /* --- the corner --- */
-    { id: "club-sofa", kind: "sport", action: "sit", face: -1, x: SOFA_A[0] + 26, range: 24 },
+    { id: "club-sofa", kind: "sport", action: "sitSofa", face: -1, x: SOFA_A[0] + 26, range: 24 },
     {
       id: "club-couple",
       kind: "npc",

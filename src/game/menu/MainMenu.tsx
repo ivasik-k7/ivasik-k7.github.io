@@ -1,3 +1,4 @@
+import { t } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PixelLabel, playSfx } from "@/engine";
 import { buildStamp } from "@/lib/build";
@@ -110,19 +111,19 @@ function MainMenuInner({ onStart }: { onStart: (action: MenuAction) => void }) {
     () => [
       {
         id: "continue",
-        label: "CONTINUE",
-        note: save ? save.line : "nothing saved yet",
+        label: t("mainmenu.continue"),
+        note: save ? save.line : t("notes.continueNone"),
         detail: save?.detail,
         disabled: !save,
         run: () => save && begin({ kind: "continue", save }),
       },
       {
         id: "new",
-        label: "NEW GAME",
+        label: t("mainmenu.newGame"),
         // Not "a Wednesday in October" — that is the subtitle, 350 px directly
         // above, and printing the same sentence twice on one screen made the
         // subtitle read as a caption for this option.
-        note: save ? "start again — this replaces the save" : "block 14, the fourth floor",
+        note: save ? t("notes.newAgain") : t("notes.newFresh"),
         run: () => begin({ kind: "new" }),
       },
       {
@@ -131,14 +132,14 @@ function MainMenuInner({ onStart }: { onStart: (action: MenuAction) => void }) {
         // shown for the selected row, and a row with no note has no line to
         // reserve, so the rows below used to jump as the cursor passed.
         id: "settings",
-        label: "SETTINGS",
-        note: "sound, picture, reading",
+        label: t("mainmenu.settings"),
+        note: t("notes.settings"),
         run: () => setScreen("settings"),
       },
       {
         id: "credits",
-        label: "CREDITS",
-        note: "who made this, and what it owes",
+        label: t("mainmenu.credits"),
+        note: t("notes.credits"),
         run: () => setScreen("credits"),
       },
     ],
@@ -208,7 +209,7 @@ function MainMenuInner({ onStart }: { onStart: (action: MenuAction) => void }) {
         style={{ left: GUTTER, opacity: sub ? 0.4 : 1 }}
       >
         <PixelLabel text="OSIEDLE" px={scale.title} fill={PARCHMENT} opacity={0.92} />
-        <PixelLabel text="A WEDNESDAY IN OCTOBER" px={scale.sub} fill={PARCHMENT} opacity={0.5} />
+        <PixelLabel text={t("mainmenu.subtitle")} px={scale.sub} fill={PARCHMENT} opacity={0.5} />
       </div>
 
       {/* The nav and the sub-screens cross-fade instead of cutting. The content

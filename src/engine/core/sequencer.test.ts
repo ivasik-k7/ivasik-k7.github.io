@@ -16,9 +16,9 @@ function fakeHost() {
   };
   const host: SeqHost<W> = {
     showToast: (t) => calls.push(`toast:${t}`),
-    startWalk: (x, y, deadline) => {
+    startWalk: (x, y, deadline, speed) => {
       state.walking = true;
-      calls.push(`walk:${x},${y ?? "-"},${deadline}`);
+      calls.push(`walk:${x},${y ?? "-"},${deadline}${speed === undefined ? "" : `@${speed}`}`);
     },
     walking: () => state.walking,
     setFacing: (f) => calls.push(`face:${f}`),
@@ -85,9 +85,24 @@ describe("sequencer", () => {
     expect(stepSequence(run, host, 1000)).toBe(false);
     expect(stepSequence(run, host, 1400)).toBe(false); // wait not over
     expect(stepSequence(run, host, 1500)).toBe(false); // wait over, say entered
-    // "hi" = 1200 + 2*28 = 1256ms from entry at 1500
-    expect(stepSequence(run, host, 2700)).toBe(false);
-    expect(stepSequence(run, host, 2756)).toBe(true);
+    // "hi" = 1200 + 2*28 = 1256ms on screen, plus a 150ms breath, from entry at 1500
+    expect(stepSequence(run, host, 2900)).toBe(false);
+    expect(stepSequence(run, host, 2906)).toBe(true);
+  });
+
+  it("repeats an action while its condition holds", () => {
+    const { host, calls, state } = fakeHost();
+    let more = 2;
+    const run = newSeqRun<W>([{ action: "smoke", repeat: () => more-- > 0 }], false, () => {});
+    expect(stepSequence(run, host, 1000)).toBe(false); // started
+    state.action = false; // first cigarette done
+    expect(stepSequence(run, host, 1100)).toBe(false); // lit another
+    expect(calls.filter((c) => c === "action:smoke").length).toBe(2);
+    state.action = false;
+    expect(stepSequence(run, host, 1200)).toBe(false); // and another
+    state.action = false;
+    expect(stepSequence(run, host, 1300)).toBe(true); // condition spent
+    expect(calls.filter((c) => c === "action:smoke").length).toBe(3);
   });
 
   it("clamps a walk target and blocks until arrival", () => {

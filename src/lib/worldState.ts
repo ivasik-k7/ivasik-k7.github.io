@@ -31,6 +31,7 @@ export interface WorldState {
 
   // Who you look like today (option ids per wardrobe slot)
   appearance: {
+    // colours
     skin: string;
     hair: string;
     beard: string;
@@ -38,6 +39,16 @@ export interface WorldState {
     shirt: string;
     trousers: string;
     shoes: string;
+    // shapes — added with the parametric rig; absent in older saves and filled
+    // in by `normalizeAppearance`, so every reader sees all of them
+    head?: "none" | "cap" | "beanie" | "hood";
+    top?: "tee" | "tank" | "longsleeve" | "hoodie" | "jumper" | "jacket" | "kurtka" | "shirt";
+    bottom?: "trousers" | "joggers" | "shorts" | "tracksuit";
+    feet?: "sneakers" | "boots" | "sandals" | "barefoot";
+    build?: "slight" | "lean" | "athletic" | "heavy" | "powerlifter";
+    height?: "short" | "average" | "tall" | "towering";
+    neck?: "thin" | "normal" | "thick";
+    posture?: "upright" | "relaxed" | "slouched";
   };
 
   // The Golf, level -1
@@ -166,10 +177,18 @@ export const initialWorld: WorldState = {
     skin: "default",
     hair: "default",
     beard: "default",
-    hat: "none",
+    hat: "navy",
     shirt: "default",
     trousers: "default",
     shoes: "default",
+    head: "none",
+    top: "tee",
+    bottom: "trousers",
+    feet: "sneakers",
+    build: "athletic",
+    height: "average",
+    neck: "normal",
+    posture: "upright",
   },
   golfLocked: true,
   studio: { ...initialStudio },

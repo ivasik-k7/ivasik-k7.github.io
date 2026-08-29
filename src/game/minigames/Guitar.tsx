@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playSfx } from "@/engine";
 import {
@@ -211,11 +212,11 @@ export function Guitar({
         const line =
           tier === 2
             ? s.leanIn
-              ? "Пісня сама попросила ще. Сусіди не стукали — це овації. Gross підняв голову."
-              : "Сусіди не стукали. Це овації."
+              ? i18n.t("minigame.verdict.guitar.bestLean")
+              : i18n.t("minigame.verdict.guitar.best")
             : tier === 1
-              ? "Prawie melodia. Prawie — це вже щось. Gross ворухнув вухом."
-              : "The E string files a complaint. Gross удає, що спить.";
+              ? i18n.t("minigame.verdict.guitar.mid")
+              : i18n.t("minigame.verdict.guitar.low");
         setVerdict(line);
         setPhase("done");
         window.setTimeout(() => {
@@ -336,7 +337,7 @@ export function Guitar({
       bg="#14110d"
       stageRef={stageRef}
       verdict={verdict}
-      hint={phase === "done" ? "" : "a s d f струни · esc відкласти гітару"}
+      hint={phase === "done" ? "" : i18n.t("minigame.guitar")}
     >
       {/* -------------------------------------------------- wall, then floor */}
       <rect x={0} y={0} width={W} height={FLOOR_Y} fill="#171410" />
