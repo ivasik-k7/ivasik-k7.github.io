@@ -172,6 +172,7 @@ const AMBIENCE: Record<string, AmbienceName> = {
   parking: "parking",
   gym: "stairwell",
   district: "street",
+  forum: "street",
   /* the carriage had no bed at all and rode in silence */
   train: "train",
   elektrykow: "street",
@@ -189,6 +190,7 @@ const SCENE_STATION: Record<string, string> = {
   /* "station" is resolved from world.station.at at scene change — the one
      scene here that is more than one place */
   district: "oliwa",
+  forum: "gdansk",
   elektrykow: "stocznia",
   raveclub: "stocznia",
 };

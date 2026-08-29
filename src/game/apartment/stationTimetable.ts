@@ -152,7 +152,8 @@ export const kt = (seconds: number) => (seconds / CYCLE_S).toFixed(4);
  * STATIONS table — no new scene.
  */
 export const LINE = [
-  { id: "gdansk", name: "GDANSK GL.", scene: null as string | null, spawnX: 0 },
+  /* the terminus: up the tunnel stair onto Targ Sienny, the Forum across the water */
+  { id: "gdansk", name: "GDANSK GL.", scene: "forum" as string | null, spawnX: 170 },
   { id: "stocznia", name: "STOCZNIA", scene: "elektrykow" as string | null, spawnX: 120 },
   { id: "politechnika", name: "POLITECHNIKA", scene: null as string | null, spawnX: 0 },
   { id: "oliwa", name: "OLIWA", scene: "district" as string | null, spawnX: 250 },

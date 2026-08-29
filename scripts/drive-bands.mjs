@@ -37,6 +37,7 @@ const SCENES = [
   ["raveclub", 500, "deep"],
   ["station", 900, "deep"],
   ["train", 700, "deep"],
+  ["forum", 700, "deep"],
 ];
 
 const browser = await chromium.launch({

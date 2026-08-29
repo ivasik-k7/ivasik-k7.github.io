@@ -21,4 +21,5 @@ export const OUTSIDE_SCENES: Record<string, () => Promise<RuntimeSceneDef<WorldS
   train: () => import("./trainScene").then((m) => m.TRAIN_SCENE),
   elektrykow: () => import("./elektrykowScene").then((m) => m.ELEKTRYKOW_SCENE),
   raveclub: () => import("./raveClubScene").then((m) => m.RAVE_CLUB_SCENE),
+  forum: () => import("./forumScene").then((m) => m.FORUM_SCENE),
 };

@@ -372,6 +372,19 @@ export const resources = {
         "parter-window": "GROUND-FLOOR FLAT",
         /* --- Ulica Elektryków --- */
         "elektrykow-skm": "SKM STOCZNIA",
+        /* Targ Sienny / Forum Gdańsk */
+        "forum-station": "DWORZEC GŁÓWNY",
+        "forum-skm": "SKM GDAŃSK GŁÓWNY",
+        "forum-bench": "BENCH",
+        "forum-kiosk": "KIOSK",
+        "forum-pigeons": "PIGEONS",
+        "forum-canal": "RADUNIA",
+        "forum-bin": "BIN",
+        "forum-totem": "MALL MAP",
+        "forum-entrance": "FORUM GDAŃSK",
+        "forum-bikes": "MEVO",
+        "forum-tram": "TRAM STOP",
+        "forum-taxi": "TAXI RANK",
         "elektrykow-fence": "PALISADE FENCE",
         "trafo-kiosk": "SUBSTATION",
         "trafo-sign": "WARNING SIGN",
@@ -456,6 +469,26 @@ export const resources = {
         "club-fan": "WALL FAN",
       },
       flavor: {
+        /* Targ Sienny / Forum Gdańsk */
+        "forum-station":
+          "Gdańsk Główny. A hundred and twenty years of brick and a clock that has never once been right.",
+        "forum-bench":
+          "Somebody has carved a heart into the third slat. The initials have been sanded off.",
+        "forum-kiosk":
+          "Papers, gum, phone cards nobody buys, and a man who has seen everything twice.",
+        "forum-pigeons": "They are not afraid of you. They have never been afraid of anyone.",
+        "forum-canal":
+          "The Radunia, in its stone channel, going where it has gone since the mills.",
+        "forum-bin": "Full. It is always full. The one by the tram stop is always empty.",
+        "forum-totem":
+          "A map of the mall. You are here. Everything you want is on the other floor.",
+        "forum-entrance":
+          "Two storeys of glass behind a lattice of larch. Warm air comes out when the doors part.",
+        "forum-bikes":
+          "Blue city bikes, four of six docked. One has a flat, the way one always does.",
+        "forum-tram": "8 and 12. The 8 goes to Jelitkowo and the sea, eventually.",
+        "forum-taxi": "Three cabs, three drivers, one conversation about the price of fuel.",
+
         cabinet: "A grey utility cabinet, humming with the whole street's internet.",
         "hedge-16": "The hedge of block 16, trimmed by whoever gets angry about it first.",
         planter: "The council planter. Marigolds in summer, cigarette butts in every season.",
@@ -1035,6 +1068,7 @@ export const resources = {
         "station-zaspa": "GDAŃSK ZASPA",
         train: "SKM",
         elektrykow: "UL. ELEKTRYKÓW",
+        forum: "TARG SIENNY",
         raveclub: "TURBINA",
       },
       menu: {

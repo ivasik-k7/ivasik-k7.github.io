@@ -51,6 +51,7 @@ export const PLACE_NAME: Record<string, string> = {
   train: "the SKM",
   elektrykow: "Ulica Elektryków",
   raveclub: "Turbina",
+  forum: "Targ Sienny",
 };
 
 function ago(iso: string): string {
