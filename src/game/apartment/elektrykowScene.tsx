@@ -2,7 +2,9 @@ import {
   AOSet,
   aoPaths,
   Bev,
+  Bicycle,
   bevelPaths,
+  bicycle,
   bulbPaths,
   Contact,
   cableY,
@@ -1812,20 +1814,10 @@ const CRANE_LEG = pxPath([
   [Z.crane + 12, FLOOR - 4, 12, 4], // wheels on the rails
 ]);
 const CRANE_LEG_PLATE = pxPath([[Z.crane - 8, 96, 22, 12]]);
-/** The bike pile against the board's legs — nobody drives here. */
-const BIKES = pxPath([
-  // three overlapping frames, drawn as wheels + bars
-  [Z.board + 62, FLOOR - 22, 2, 8],
-  [Z.board + 56, FLOOR - 16, 14, 2],
-  [Z.board + 54, FLOOR - 14, 3, 12],
-  [Z.board + 70, FLOOR - 14, 3, 12],
-  [Z.board + 76, FLOOR - 20, 2, 8],
-  [Z.board + 71, FLOOR - 13, 14, 2],
-  [Z.board + 84, FLOOR - 13, 3, 11],
-  [Z.board + 92, FLOOR - 18, 12, 2],
-  [Z.board + 90, FLOOR - 12, 3, 10],
-  [Z.board + 102, FLOOR - 12, 3, 10],
-]);
+/** The bikes against the board's legs — nobody drives here. Two of them,
+ *  leaned into each other the way they get left, both from propKit. */
+const BOARD_BIKE_A = bicycle(Z.board + 50, FLOOR, 1);
+const BOARD_BIKE_B = bicycle(Z.board + 62, FLOOR, -1);
 
 /* ---- the queue, 1352..1478 ----------------------------------------------- */
 
@@ -2932,7 +2924,8 @@ function Furniture({ ph, s }: { ph: Ph; s: ElektrykowState }) {
       <BigText x={BOARD[0] + 12} y={BOARD[1] + 14} text="LATO NA" k={1} fill={K.white} op={0.9} />
       <BigText x={BOARD[0] + 12} y={BOARD[1] + 21} text="STOCZNI" k={1} fill={K.white} op={0.9} />
       <path d={BOARD_TEAR} fill={K.posterOld} />
-      <path d={BIKES} fill="#3f6f52" opacity={0.9} />
+      <Bicycle set={BOARD_BIKE_B} ph={ph} colour="#2b2b2b" />
+      <Bicycle set={BOARD_BIKE_A} ph={ph} colour="#3f6f52" />
 
       {/* ---- the queue and the loos ------------------------------------------- */}
       <path d={BARRIERS} fill={steel.base} />

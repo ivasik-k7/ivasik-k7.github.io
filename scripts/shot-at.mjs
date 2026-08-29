@@ -24,7 +24,7 @@ if (HOUR !== null) {
 const page = await ctx.newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
-await page.goto("http://localhost:5173/", { waitUntil: "networkidle" });
+await page.goto(process.env.BASE_URL ?? "http://localhost:5173/", { waitUntil: "networkidle" });
 await page.waitForTimeout(2200);
 for (let i = 0; i < 5; i++) {
   await page.keyboard.press("Enter");

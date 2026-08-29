@@ -3,7 +3,11 @@ import {
   AOSet,
   aoPaths,
   Bev,
+  Bicycle,
+  BikeRack,
   bevelPaths,
+  bicycle,
+  bikeRack,
   bulbPaths,
   Contact,
   contactPaths,
@@ -2792,14 +2796,14 @@ const TOTEM_YOU = pxPath([[TOTEM_X + 5, RAIL_Y - 35, 6, 3]]);
 /* at the very start of the platform, before the stair — you ride in, you
  * lock up, you go down; 250 put both hoops inside the timetable case */
 const BIKE_X = 40;
-const RACK = pxPath([
-  [BIKE_X, RAIL_Y - 14, 3, 14],
-  [BIKE_X + 14, RAIL_Y - 14, 3, 14],
-  [BIKE_X, RAIL_Y - 16, 17, 3],
-  [BIKE_X + 30, RAIL_Y - 14, 3, 14],
-  [BIKE_X + 44, RAIL_Y - 14, 3, 14],
-  [BIKE_X + 30, RAIL_Y - 16, 17, 3],
-]);
+/**
+ * The rack and the bike on it come from propKit now — the same Sheffield
+ * stands and the same bicycle every scene gets, instead of the third private
+ * copy of a six-pixel wheel. The lone wheel somebody left chained to the
+ * second stand is this platform's own detail and stays.
+ */
+const STATION_RACK = bikeRack(BIKE_X, RAIL_Y, 2, 30);
+const STATION_BIKE = bicycle(BIKE_X + 4, RAIL_Y, 1);
 function wheelRects(x: number, y: number): Rect[] {
   return [
     [x + 1, y, 4, 1],
@@ -2807,25 +2811,9 @@ function wheelRects(x: number, y: number): Rect[] {
     [x + 1, y + 5, 4, 1],
   ];
 }
-const BIKE_WHEELS = pxPath([
-  ...wheelRects(BIKE_X + 1, RAIL_Y - 7),
-  ...wheelRects(BIKE_X + 21, RAIL_Y - 7),
-]);
-const BIKE_HUBS = pxPath([
-  [BIKE_X + 3, RAIL_Y - 5, 2, 2],
-  [BIKE_X + 23, RAIL_Y - 5, 2, 2],
-]);
-const BIKE_FRAME = pxPath([
-  [BIKE_X + 5, RAIL_Y - 11, 18, 2],
-  [BIKE_X + 8, RAIL_Y - 14, 2, 3],
-  [BIKE_X + 19, RAIL_Y - 15, 2, 4],
-  [BIKE_X + 6, RAIL_Y - 15, 5, 2],
-  [BIKE_X + 18, RAIL_Y - 17, 5, 2],
-]);
-const BIKE_LOCK = pxPath([[BIKE_X + 12, RAIL_Y - 10, 4, 4]]);
 const LONE_WHEEL = pxPath([
-  ...wheelRects(BIKE_X + 32, RAIL_Y - 7),
-  [BIKE_X + 34, RAIL_Y - 9, 2, 2],
+  ...wheelRects(BIKE_X + 74, RAIL_Y - 7),
+  [BIKE_X + 76, RAIL_Y - 9, 2, 2],
 ]);
 
 /** The vending machine keeping the biletomat company — coffee and cans, the
@@ -3232,11 +3220,8 @@ function Furniture({
       <path d={TOTEM_YOU} fill={K.red} />
       {/* the bike rack: one bike locked properly, one hoop holding only a
           front wheel — the rest of that bike is somebody's bad morning */}
-      <path d={RACK} fill={galv.base} />
-      <path d={BIKE_WHEELS} fill="#23262b" />
-      <path d={BIKE_HUBS} fill={galv.hi} opacity={0.7} />
-      <path d={BIKE_FRAME} fill="#7a2f3a" />
-      <path d={BIKE_LOCK} fill={galv.lo} />
+      <BikeRack set={STATION_RACK} ph={ph} />
+      <Bicycle set={STATION_BIKE} ph={ph} colour="#7a2f3a" />
       <path d={LONE_WHEEL} fill="#23262b" opacity={0.9} />
 
       {/* the shelter */}
@@ -4623,7 +4608,7 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
       { x0: 1712, y0: 152, x1: 1758, y1: 158 },
       /* the v4 furniture is as solid as the rest: back lane only, and every
        * carriage-door approach point (DOOR_X at y=152) stays outside */
-      { x0: BIKE_X - 2, y0: 152, x1: BIKE_X + 49, y1: 158 },
+      { x0: BIKE_X - 2, y0: 152, x1: BIKE_X + 82, y1: 158 },
       { x0: TOTEM_X - 2, y0: 152, x1: TOTEM_X + 18, y1: 158 },
       { x0: VEND_X - 2, y0: 152, x1: VEND_X + 32, y1: 158 },
       { x0: PLANTER_X - 2, y0: 152, x1: PLANTER_X + 32, y1: 158 },

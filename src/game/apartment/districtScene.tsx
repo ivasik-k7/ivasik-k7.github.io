@@ -3,7 +3,10 @@ import {
   aoPaths,
   Bev,
   Bevel,
+  BikeRack,
   bevelPaths,
+  bicycle,
+  bikeRack,
   bulbPaths,
   Contact,
   contactPaths,
@@ -18,6 +21,7 @@ import {
   npcToActor,
   type Ph,
   PixelText,
+  Bicycle as PropBicycle,
   px,
   pxPath,
   type Rect,
@@ -649,18 +653,13 @@ const _PARKED_SHARED = {
 };
 
 /* --- street furniture, banked --- */
-/** Sheffield stands: 0.75 m tall, 1.00 m apart, which is what they actually are. */
-const BIKE_STANDS = pxPath(
-  bank(
-    [
-      [0, GROUND - m(0.75), 3, m(0.75)],
-      [m(0.7), GROUND - m(0.75), 3, m(0.75)],
-      [0, GROUND - m(0.75), m(0.7) + 3, 3],
-    ],
-    2,
-    m(1.0),
-  ).map(([x, y, w, h]) => [x + 90, y, w, h] as Rect),
-);
+/** Sheffield stands from propKit, and the one bike that is always locked to them. */
+const BIKE_STANDS = bikeRack(88, GROUND, 2, 38);
+const STAND_BIKE = bicycle(92, GROUND, -1);
+const STAND_BIKE_B = bicycle(120, GROUND, 1);
+/** The courier's bike, dumped on the kerb: propKit's, with the box on the back. */
+const COURIER_BIKE = bicycle(440, GROUND, 1);
+const COURIER_BOX = bevelPaths([[430, GROUND - 34, 14, 10]]);
 
 /* --- the SKM stair, up the end of the retaining wall ------------------------
  * The platform is on the viaduct and this is how you get to it: a granite
@@ -3009,9 +3008,9 @@ function StreetKit({ ph, s }: { ph: Ph; s: DistrictState }) {
       <path d={LAMP_COLUMNS} fill={COAT[ph].base} />
       <path d={pxPath(LAMP_X.map((x) => [x - 2, 0, 2, GROUND] as Rect))} fill={COAT[ph].hi} />
       {/* bike stands and the bikes on them: 1.75 m long, 1.05 m tall */}
-      <path d={BIKE_STANDS} fill={CHROME[ph].lo} />
-      {s.crowd >= 1 ? <Bicycle x={100} ph={ph} /> : null}
-      {s.crowd >= 3 ? <Bicycle x={176} ph={ph} /> : null}
+      <BikeRack set={BIKE_STANDS} ph={ph} />
+      {s.crowd >= 1 ? <PropBicycle set={STAND_BIKE} ph={ph} colour="#7a3a34" /> : null}
+      {s.crowd >= 3 ? <PropBicycle set={STAND_BIKE_B} ph={ph} colour="#2f5d8a" /> : null}
       {/* bollards along the kerb */}
       <path d={BOLLARDS.body} fill={COAT[ph].base} />
       <path d={BOLLARDS.hi} fill={K.white} opacity={0.5} />
@@ -3126,56 +3125,15 @@ function StreetKit({ ph, s }: { ph: Ph; s: DistrictState }) {
       {/* the courier's bike, dumped on the kerb because he is inside */}
       {s.delivery === "courier" ? (
         <g>
-          <Bicycle x={452} ph={ph} cargo />
+          <PropBicycle set={COURIER_BIKE} ph={ph} colour="#1a1d22" />
+          <Bev
+            set={COURIER_BOX}
+            mat={{ hi: "#ffe27a", base: "#f2c218", mid: "#dcae12", lo: "#c2990c", deep: "#8a6c06" }}
+          />
         </g>
       ) : null}
       {/* the Friday food truck, when it is Friday */}
       {s.market ? <FoodTruck x={1180} ph={ph} /> : null}
-    </g>
-  );
-}
-
-/** 1.75 m long, 1.05 m tall, and the wheels are 0.67 m, which is a 700c. */
-function Bicycle({ x, ph, cargo }: { x: number; ph: Ph; cargo?: boolean }) {
-  const wheel = m(0.67);
-  const hub = GROUND - wheel / 2;
-  return (
-    <g>
-      <path
-        d={pxPath([
-          [x, GROUND - wheel, wheel, wheel],
-          [x + m(1.05), GROUND - wheel, wheel, wheel],
-        ])}
-        fill={COAT[ph].deep}
-      />
-      <path
-        d={pxPath([
-          [x + 4, GROUND - wheel + 4, wheel - 8, wheel - 8],
-          [x + m(1.05) + 4, GROUND - wheel + 4, wheel - 8, wheel - 8],
-        ])}
-        fill="none"
-      />
-      <path
-        d={pxPath([
-          [x + 10, hub - m(0.35), 3, m(0.35)],
-          [x + 12, GROUND - m(0.95), m(0.85), 3],
-          [x + m(0.62), hub - m(0.3), 3, m(0.3)],
-          [x + m(1.0), hub - m(0.4), 3, m(0.4)],
-        ])}
-        fill={cargo ? K.brand : "#2f6a9e"}
-      />
-      <path d={pxPath([[x + 8, GROUND - m(1.02), m(0.42), 3]])} fill={COAT[ph].base} />
-      <path d={pxPath([[x + m(0.58), GROUND - m(0.9), m(0.24), 4]])} fill={COAT[ph].base} />
-      {cargo ? (
-        <g>
-          {/* the insulated box, which is 0.45 m cubed and always slightly open */}
-          <Bevel
-            boxes={[[x + m(0.5), GROUND - m(1.4), m(0.45), m(0.45)]]}
-            mat={{ ...COAT[ph], base: K.brand, hi: K.brandHi }}
-          />
-          <path d={pxPath([[x + m(0.52), GROUND - m(1.4), 13, 3]])} fill={K.brandLo} />
-        </g>
-      ) : null}
     </g>
   );
 }
