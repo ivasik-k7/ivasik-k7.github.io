@@ -657,10 +657,52 @@ const BIKE_STANDS = pxPath(
       [m(0.7), GROUND - m(0.75), 3, m(0.75)],
       [0, GROUND - m(0.75), m(0.7) + 3, 3],
     ],
-    4,
+    2,
     m(1.0),
-  ).map(([x, y, w, h]) => [x + 96, y, w, h] as Rect),
+  ).map(([x, y, w, h]) => [x + 90, y, w, h] as Rect),
 );
+
+/* --- the SKM stair, up the end of the retaining wall ------------------------
+ * The platform is on the viaduct and this is how you get to it: a granite
+ * flight climbing the end of the wall, a landing, and the second flight going
+ * on up inside the wall behind a portal. Eight risers of 175 mm on a 250 mm
+ * going, which is what the DB standard says and what your knees say too. */
+const SKM = { foot: 194, top: 138, landY: 96 } as const;
+const SKM_STEPS = Array.from({ length: 8 }, (_, i) => {
+  const x = SKM.foot - (i + 1) * 7;
+  const y = GROUND - (i + 1) * 7;
+  return [x, y, SKM.foot - x, 7] as Rect;
+});
+/** The flight as a solid mass, then the treads, then the nosings that catch the light. */
+const SKM_MASS = pxPath(SKM_STEPS);
+const SKM_TREADS = pxPath(SKM_STEPS.map(([x, y, w]) => [x, y, w, 2] as Rect));
+const SKM_NOSINGS = pxPath(SKM_STEPS.map(([x, y]) => [x, y, 7, 1] as Rect));
+const SKM_RISERS = pxPath(SKM_STEPS.map(([x, y, , h]) => [x + 6, y + 2, 1, h - 2] as Rect));
+/** The cheek wall the flight is cut into, and the portal the second flight goes up through. */
+const SKM_CHEEK = bevelPaths([[SKM.top - 22, SKM.landY, 22, GROUND - SKM.landY]]);
+const SKM_PORTAL = pxPath([[SKM.top - 20, SKM.landY + 4, 18, GROUND - SKM.landY - 4 - 54]]);
+const SKM_INNER_FLIGHT = pxPath(
+  Array.from({ length: 5 }, (_, i) => [SKM.top - 18, SKM.landY + 34 - i * 6, 14, 2] as Rect),
+);
+/** Balustrade: a galvanised handrail up the open side, on three standards. */
+const SKM_RAIL = pxPath([
+  ...Array.from({ length: 8 }, (_, i) => [SKM.foot - 4 - i * 7, GROUND - 40 - i * 7, 7, 3] as Rect),
+  [SKM.foot - 2, GROUND - 40, 3, 40],
+  [SKM.foot - 30, GROUND - 68, 3, 40],
+  [SKM.top, GROUND - 96 + 4, 3, 36],
+  [SKM.top - 22, SKM.landY - 6, 24, 3],
+]);
+const SKM_RAIL_HI = pxPath(
+  Array.from({ length: 8 }, (_, i) => [SKM.foot - 4 - i * 7, GROUND - 40 - i * 7, 7, 1] as Rect),
+);
+/** The SKM sign, on a post at the head of the flight where it clears everything. */
+const SKM_SIGN_POST = pxPath([[SKM.top - 4, 58, 3, SKM.landY - 58]]);
+const SKM_SIGN = bevelPaths([[SKM.top - 26, 60, 62, 16]]);
+const SKM_SIGN_BAND = pxPath([[SKM.top - 26, 73, 62, 3]]);
+/** The flight's own shadow on the wall behind it, which is what lifts it off the wall. */
+const SKM_WALL_SHADOW = pxPath(SKM_STEPS.map(([x, y, w]) => [x - 3, y - 3, w + 3, 3] as Rect));
+/** The shadow the flight throws onto the pavement, and the AO in the portal. */
+const SKM_FOOT_AO = aoPaths([[SKM.top - 22, GROUND, SKM.foot - SKM.top + 22]]);
 /** Bollards: 0.90 m, at 1.50 m centres along the kerb. */
 const BOLLARDS = (() => {
   const shape: Rect[] = [[0, GROUND - m(0.9), m(0.16), m(0.9)]];
@@ -1011,6 +1053,34 @@ function StopEnd({ ph, s }: { ph: Ph; s: DistrictState }) {
       />
       {px(20, 108, 64, 22, GRANITE[ph].hi)}
       <rect x={20} y={108} width={64} height={22} fill="url(#px-grain)" opacity={0.7} />
+      {/* the SKM stair: how you actually get up to the platform */}
+      <AOSet set={SKM_FOOT_AO} op={0.6} />
+      <Bev set={SKM_CHEEK} mat={GRANITE[ph]} />
+      <path d={SKM_PORTAL} fill={ph === "night" ? "#10121a" : "#2a2d34"} />
+      <path d={SKM_INNER_FLIGHT} fill={GRANITE[ph].lo} opacity={0.7} />
+      <path d={SKM_WALL_SHADOW} fill="#000" opacity={0.28} />
+      <path d={SKM_MASS} fill={GRANITE[ph].lo} />
+      <path d={SKM_TREADS} fill={GRANITE[ph].hi} />
+      <path d={SKM_NOSINGS} fill="#ffffff" opacity={0.35} />
+      <path d={SKM_RISERS} fill={GRANITE[ph].deep} />
+      <path d={SKM_RAIL} fill={CHROME[ph].base} />
+      <path d={SKM_RAIL_HI} fill={CHROME[ph].hi} />
+      <path d={SKM_SIGN_POST} fill={CHROME[ph].lo} />
+      <Bev
+        set={SKM_SIGN}
+        mat={{ hi: "#2b6aa8", base: "#12447c", mid: "#0f3b6c", lo: "#0c325c", deep: "#081f3c" }}
+      />
+      <path d={SKM_SIGN_BAND} fill="#f2c218" />
+      <PixelText x={SKM.top - 20} y={64} text="SKM" fill="#f4f4f0" gap={1} />
+      {/* the arrow: up, and in */}
+      <path
+        d={pxPath([
+          [SKM.top + 16, 62, 2, 9],
+          [SKM.top + 13, 65, 8, 2],
+          [SKM.top + 15, 63, 4, 2],
+        ])}
+        fill="#f4f4f0"
+      />
       {/* the tram shelter: 2.50 m to the underside of the canopy */}
       <Bev set={SHELTER_SET} mat={COAT[ph]} />
       <rect x={204} y={GROUND - m(2.3)} width={112} height={m(1.9)} fill="#c2d6da" opacity={0.24} />
@@ -1041,14 +1111,14 @@ function StopEnd({ ph, s }: { ph: Ph; s: DistrictState }) {
         <g>
           <path
             d={pxPath([
-              [110, GROUND - m(1.05), 3, m(1.0)],
-              [104, GROUND - m(1.1), m(0.4), 3],
-              [110, GROUND - m(0.1), m(0.9), 3],
-              [140, GROUND - m(0.24), m(0.24), m(0.24)],
+              [94, GROUND - m(1.05), 3, m(1.0)],
+              [88, GROUND - m(1.1), m(0.4), 3],
+              [94, GROUND - m(0.1), m(0.9), 3],
+              [124, GROUND - m(0.24), m(0.24), m(0.24)],
             ])}
             fill={COAT[ph].base}
           />
-          <path d={pxPath([[104, GROUND - m(1.1), m(0.4), 1]])} fill={K.brand} />
+          <path d={pxPath([[88, GROUND - m(1.1), m(0.4), 1]])} fill={K.brand} />
         </g>
       ) : null}
     </g>
@@ -3812,7 +3882,11 @@ export const DISTRICT_SCENE: RuntimeSceneDef<WorldState> = {
       { x0: 0, x1: W, y0: KERB - 5, y1: KERB - 2, kind: "kerb" },
       { x0: 0, x1: W, kind: "slabs" },
     ],
-    blockers: LAMP_X.map((x) => ({ x0: x - 5, y0: GROUND, x1: x + 8, y1: GROUND + 5 })),
+    blockers: [
+      ...LAMP_X.map((x) => ({ x0: x - 5, y0: GROUND, x1: x + 8, y1: GROUND + 5 })),
+      /* the SKM flight and its cheek wall stand on the pavement */
+      { x0: 114, y0: GROUND, x1: 196, y1: GROUND + 3 },
+    ],
   },
   /**
    * Somebody actually walking across the square, stepped in the game loop
@@ -3838,7 +3912,7 @@ export const DISTRICT_SCENE: RuntimeSceneDef<WorldState> = {
       range: 30,
       to: { scene: "outside", spawnX: 1240 },
     },
-    { id: "district-bikes", kind: "flavor", x: 130, range: 22 },
+    { id: "district-bikes", kind: "flavor", x: 110, range: 20 },
     { id: "district-shelter", kind: "flavor", x: 234, range: 28 },
     /**
      * Up onto the SKM platform. The viaduct is already drawn overhead in the
@@ -3849,8 +3923,9 @@ export const DISTRICT_SCENE: RuntimeSceneDef<WorldState> = {
       id: "district-skm",
       kind: "stairs",
       priority: 2,
-      x: 250,
-      range: 26,
+      x: 166,
+      range: 30,
+      approachY: GROUND + 7,
       to: { scene: "station", spawnX: 150 },
     },
     { id: "district-ticket", kind: "flavor", x: 274, range: 10 },

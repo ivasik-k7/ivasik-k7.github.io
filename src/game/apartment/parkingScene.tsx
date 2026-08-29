@@ -1727,6 +1727,144 @@ const EXHAUST_PUFFS = [3, 6, 10].map((r) =>
 const DYING_LAMP = 717;
 const GOLF_CX = 1109;
 
+/**
+ * A car in the near lane, seen from behind and slightly above, close enough to
+ * the camera to be cropped by the bottom of the frame.
+ *
+ * The near lane used to be two black slabs with a strip of glass on them —
+ * "out of focus" was the excuse, and it read as a rendering bug. These are
+ * cars: a roof with its rails and the light down its centre line, a rear
+ * screen with the demister lines and the tube reflected in it, a tailgate
+ * with a badge and a plate, two tail lamps that are lit because the ceiling
+ * lights are on them, the bumper with its reflectors and exhaust, and the
+ * rear tyres with a sliver of tread. Everything bevelled off one body colour,
+ * so a white one and a dark one are built from the same rects.
+ */
+function CarRear({
+  cx,
+  y,
+  w,
+  body,
+  bodyHi,
+  bodyLo,
+  bodyDeep,
+  estate = false,
+}: {
+  cx: number;
+  /** the roof line; the car is cropped by the frame below it */
+  y: number;
+  w: number;
+  body: string;
+  bodyHi: string;
+  bodyLo: string;
+  bodyDeep: string;
+  estate?: boolean;
+}) {
+  const left = Math.round(cx - w / 2);
+  const right = left + w;
+  const roofH = estate ? 14 : 11;
+  const glassY = y + roofH;
+  const glassH = estate ? 14 : 12;
+  const tailY = glassY + glassH;
+  const mat: Mat = { hi: bodyHi, base: body, mid: body, lo: bodyLo, deep: bodyDeep };
+  return (
+    <g>
+      {/* the shadow under it, on the deck */}
+      <path d={pxPath([[left - 4, tailY + 26, w + 8, 4]])} fill="#000" opacity={0.35} />
+      {/* rear tyres, tread face, a sliver of sidewall */}
+      <path
+        d={pxPath([
+          [left + 4, tailY + 16, 16, 14],
+          [right - 20, tailY + 16, 16, 14],
+        ])}
+        fill={CAR.tyre}
+      />
+      <path
+        d={pxPath([
+          [left + 6, tailY + 17, 12, 1],
+          [right - 18, tailY + 17, 12, 1],
+        ])}
+        fill={CAR.tyreHi}
+      />
+      {/* the roof: rails at both edges, the light along the centre line */}
+      <Bev set={bevelPaths([[left + 6, y, w - 12, roofH]])} mat={mat} />
+      <path
+        d={pxPath([
+          [left + 8, y + 1, 2, roofH - 2],
+          [right - 10, y + 1, 2, roofH - 2],
+        ])}
+        fill={bodyLo}
+      />
+      <path d={pxPath([[left + 14, y + 2, w - 28, 1]])} fill="#ffffff" opacity={0.35} />
+      {/* rear screen: dark glass, the demister lines, the tube across it */}
+      <path d={pxPath([[left + 8, glassY, w - 16, glassH]])} fill={CAR.dark} />
+      <path d={pxPath([[left + 10, glassY + 1, w - 20, glassH - 2]])} fill={CAR.glass} />
+      <path
+        d={pxPath(repeat(4, 3, [left + 12, glassY + 3, w - 24, 1] as Rect, "y"))}
+        fill="#33383d"
+        opacity={0.7}
+      />
+      <path
+        d={screenGlint(left + 12, glassY + 1, glassY + glassH - 1, 10)}
+        fill="#ffffff"
+        opacity={0.14}
+      />
+      <path d={pxPath([[left + 10, glassY + 1, w - 20, 1]])} fill={CAR.glassHi} opacity={0.6} />
+      {/* the wiper, parked */}
+      {estate ? <path d={pxPath([[cx - 8, glassY + glassH - 3, 16, 1]])} fill="#22262b" /> : null}
+      {/* tailgate: badge, plate, the crease that catches the light */}
+      <Bev set={bevelPaths([[left + 2, tailY, w - 4, 14]])} mat={mat} />
+      <path d={pxPath([[left + 4, tailY + 1, w - 8, 1]])} fill="#ffffff" opacity={0.25} />
+      <path d={pxPath([[cx - 3, tailY + 3, 6, 3]])} fill={CAR.chrome} />
+      <path d={pxPath([[cx - 12, tailY + 7, 24, 6]])} fill={CAR.plate} />
+      <path d={pxPath([[cx - 12, tailY + 7, 3, 6]])} fill={CAR.plateEU} />
+      <path d={pxPath([[cx - 7, tailY + 9, 14, 2]])} fill="#5d6266" />
+      {/* tail lamps: lit red under the tubes, with the amber indicator segment */}
+      <path
+        d={pxPath([
+          [left + 3, tailY + 2, 12, 6],
+          [right - 15, tailY + 2, 12, 6],
+        ])}
+        fill="#5a1414"
+      />
+      <path
+        d={pxPath([
+          [left + 4, tailY + 3, 10, 3],
+          [right - 14, tailY + 3, 10, 3],
+        ])}
+        fill="#b8302a"
+      />
+      <path
+        d={pxPath([
+          [left + 4, tailY + 3, 10, 1],
+          [right - 14, tailY + 3, 10, 1],
+        ])}
+        fill="#e0524a"
+      />
+      <path
+        d={pxPath([
+          [left + 11, tailY + 6, 3, 2],
+          [right - 14, tailY + 6, 3, 2],
+        ])}
+        fill="#d98a2a"
+      />
+      {/* bumper: reflectors, the exhaust, the underside going into shadow */}
+      <Bev set={bevelPaths([[left, tailY + 14, w, 8]])} mat={mat} />
+      <path
+        d={pxPath([
+          [left + 4, tailY + 17, 8, 2],
+          [right - 12, tailY + 17, 8, 2],
+        ])}
+        fill="#a83a30"
+      />
+      <path d={pxPath([[right - 24, tailY + 20, 8, 3]])} fill="#3a3f45" />
+      <path d={pxPath([[right - 23, tailY + 21, 6, 1]])} fill="#14171a" />
+      <path d={pxPath([[left, tailY + 22, w, 4]])} fill={bodyDeep} />
+      <path d={pxPath([[left + 2, tailY + 26, w - 4, 2]])} fill="#0d0c0b" />
+    </g>
+  );
+}
+
 /* The Foreground's geometry, precomputed. */
 const FRONT_COLUMNS = bevelPaths([580, 1229].map((cx) => [cx, 0, 28, 180] as Rect));
 const FRONT_COLUMN_TEX = pxPath([580, 1229].map((cx) => [cx, 0, 28, 180] as Rect));
@@ -1735,22 +1873,6 @@ const FRONT_STRIPES = pxPath(
   [580, 1229].flatMap((cx) => [[cx, 116, 28, 8] as Rect, [cx, 132, 28, 8] as Rect]),
 );
 const FRONT_FEET = pxPath([580, 1229].map((cx) => [cx, 148, 28, 12] as Rect));
-const NEAR_CARS = bevelPaths([
-  [150, 162, 190, 18],
-  [1300, 166, 210, 14],
-]);
-const NEAR_ROOFS = pxPath([
-  [184, 152, 124, 12],
-  [1336, 156, 140, 12],
-]);
-const NEAR_GLASS = pxPath([
-  [196, 154, 100, 6],
-  [1348, 158, 116, 6],
-]);
-const NEAR_GLASS_HI = pxPath([
-  [200, 154, 40, 1],
-  [1352, 158, 46, 1],
-]);
 const PARKING_VIGNETTE = vignettePaths(W, 180);
 
 const MAREK_MONOLOGUES = [
@@ -2140,16 +2262,28 @@ export const PARKING_SCENE: RuntimeSceneDef<WorldState> = {
         <Bev set={FRONT_HAZARD} mat={HAZARD} />
         <path d={FRONT_STRIPES} fill={HAZARD.deep} />
         <path d={FRONT_FEET} fill="#b8933f" />
-        {/* the near lane: two roofs and a windscreen edge, out of focus */}
-        <Bev
-          set={NEAR_CARS}
-          mat={{ hi: "#1f1d1a", base: "#12100f", mid: "#100e0d", lo: "#0d0b0a", deep: "#070605" }}
+        {/* the near lane: two cars backed in, close enough to be cropped by the
+            frame. Dark ones, because the near lane is under the camera and out
+            of every tube's cone — but dark cars, not dark shapes. */}
+        <CarRear
+          cx={245}
+          y={140}
+          w={92}
+          body="#3a4048"
+          bodyHi="#525a64"
+          bodyLo="#2b3037"
+          bodyDeep="#1a1d22"
+          estate
         />
-        <path d={NEAR_ROOFS} fill="#1a1816" />
-        <path d={NEAR_GLASS} fill="#232a30" />
-        <path d={NEAR_GLASS_HI} fill="#3a4550" opacity={0.6} />
-        {px(238, 166, 14, 5, "#3a3f45")}
-        {px(1360, 169, 14, 5, "#5a2a30")}
+        <CarRear
+          cx={1405}
+          y={144}
+          w={86}
+          body="#6b2a2e"
+          bodyHi="#8a3c40"
+          bodyLo="#4e1e21"
+          bodyDeep="#2e1214"
+        />
         {/* the ramp's light spilling onto the last few metres */}
         {px(1470, 172, 130, 8, "#6b675f")}
         <Vignette set={PARKING_VIGNETTE} strength={1.1} />
