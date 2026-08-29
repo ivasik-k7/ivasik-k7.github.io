@@ -1,12 +1,29 @@
 import { useEffect, useState } from "react";
 import {
+  AOSet,
+  aoPaths,
+  Bev,
+  bevelPaths,
+  Contact,
+  contactPaths,
+  dth,
   ElevatorDoors,
   LayeredScene,
+  Light,
+  type Mat,
   Monologue,
   NpcActor,
   px,
+  pxPath,
+  type Rect,
   type RuntimeSceneDef,
-  stripes,
+  repeat,
+  SharedDefs,
+  steppedCone,
+  steppedEllipse,
+  tiers,
+  Vignette,
+  vignettePaths,
 } from "@/engine";
 import {
   bandShade,
@@ -68,6 +85,77 @@ const P = {
   skinShade: "#c79a72",
   shadow: "#00000055",
   shadowSoft: "#00000022",
+};
+
+/**
+ * MATERIALS, five tones each, lit top-left like everything else in the game.
+ *
+ * This level was drawn in single hexes — one grey for wall, one for column,
+ * one for floor — and a surface with one colour has no shape. Every box down
+ * here is bevelled now: a highlight along the top and left where the tubes
+ * catch it, a shade down the right, a deep line at the foot. The concrete is
+ * the corridor's concrete a shade dirtier, the steel is the engine's steel,
+ * and the hazard paint is a real enamel with a real dark stripe.
+ *
+ * Underground, the hour does not reach — the tubes are on by contract — so
+ * these are flat across the phases. The one thing the clock touches is the
+ * daylight at the top of the ramp, which is handled in `Ramp`.
+ */
+const CONC: Mat = {
+  hi: "#7d7970",
+  base: "#6b675f",
+  mid: "#615d56",
+  lo: "#57534c",
+  deep: "#3f3d39",
+};
+const CONC_COL: Mat = {
+  hi: "#8f8a7c",
+  base: "#7a766c",
+  mid: "#6f6b62",
+  lo: "#605c55",
+  deep: "#45423d",
+};
+const CEIL_MAT: Mat = {
+  hi: "#5a5750",
+  base: "#4d4a45",
+  mid: "#45423d",
+  lo: "#3f3d39",
+  deep: "#2b2926",
+};
+const STEEL: Mat = {
+  hi: "#aeb8be",
+  base: "#8a8f96",
+  mid: "#7d8288",
+  lo: "#6a6f75",
+  deep: "#4a4f55",
+};
+const PIPE_MAT: Mat = {
+  hi: "#b4bac2",
+  base: "#9aa0a8",
+  mid: "#8a9098",
+  lo: "#7d8288",
+  deep: "#5d6266",
+};
+const HAZARD: Mat = {
+  hi: "#dcb35a",
+  base: "#c9a24b",
+  mid: "#b8933f",
+  lo: "#9c7c33",
+  deep: "#5a4a22",
+};
+const RED_MAT: Mat = {
+  hi: "#c9463c",
+  base: "#a33a30",
+  mid: "#93342b",
+  lo: "#7d2820",
+  deep: "#4a1812",
+};
+const KERB: Mat = {
+  hi: "#6b675f",
+  base: "#57534c",
+  mid: "#4f4b45",
+  lo: "#45423d",
+  deep: "#2b2926",
 };
 
 const CAR = {
@@ -175,6 +263,21 @@ const SPEC: Record<
   van: { w: 90, roofY: 78, beltY: 110, bumperY: 126, inset: 6 },
 };
 
+/**
+ * A ceiling tube reflected across a windscreen: a diagonal band, stepped in
+ * whole pixels. It was a <polygon>, which antialiases and lands off the grid —
+ * the one thing in a car park that is never pixel art.
+ */
+function screenGlint(x0: number, yTop: number, yBot: number, w: number): string {
+  const out: Rect[] = [];
+  const h = yBot - yTop;
+  for (let y = yTop; y < yBot; y += 2) {
+    const t = (yBot - y) / h;
+    out.push([x0 + Math.round(t * 14), y, w, 2]);
+  }
+  return pxPath(out);
+}
+
 interface CarProps {
   cx: number;
   type?: CarType;
@@ -225,8 +328,9 @@ function CarFront({
       {px(left + s.inset, s.roofY, glassW, 2, bodyHi)}
       {px(left + s.inset + 3, s.roofY + 4, glassW - 6, glassH - 6, CAR.glass)}
       {px(left + s.inset + 3, s.roofY + 4, glassW - 6, 2, CAR.glassLo)}
-      <polygon
-        points={`${left + s.inset + 4},${s.beltY - 4} ${left + s.inset + 18},${s.roofY + 5} ${left + s.inset + 26},${s.roofY + 5} ${left + s.inset + 12},${s.beltY - 4}`}
+      {/* the tube laid diagonally across the screen, in whole-pixel steps */}
+      <path
+        d={screenGlint(left + s.inset + 4, s.roofY + 5, s.beltY - 4, 8)}
         fill="#ffffff"
         opacity={0.11}
       />
@@ -355,8 +459,14 @@ function GolfFront({ cx, locked }: { cx: number; locked: boolean }) {
       {/* puddle lights, when it's expecting you */}
       {locked ? null : (
         <g>
-          <ellipse cx={left - 4} cy={151} rx={16} ry={5} fill="#ffb340" opacity={0.22} />
-          <ellipse cx={right + 4} cy={151} rx={16} ry={5} fill="#ffb340" opacity={0.22} />
+          <path d={pxPath(steppedEllipse(left - 4, 151, 16, 5, 2))} fill="#ffb340" opacity={0.18} />
+          <path d={pxPath(steppedEllipse(left - 4, 151, 9, 3, 1))} fill="#ffb340" opacity={0.16} />
+          <path
+            d={pxPath(steppedEllipse(right + 4, 151, 16, 5, 2))}
+            fill="#ffb340"
+            opacity={0.18}
+          />
+          <path d={pxPath(steppedEllipse(right + 4, 151, 9, 3, 1))} fill="#ffb340" opacity={0.16} />
         </g>
       )}
       {/* 19" wheels: tread face, two-tone spoke behind, blue caliper */}
@@ -379,11 +489,7 @@ function GolfFront({ cx, locked }: { cx: number; locked: boolean }) {
       {px(left + 9, roofY + 3, w - 18, 1, "#2b2b2b")}
       {px(left + 10, roofY + 4, w - 20, beltY - roofY - 10, CAR.glass)}
       {px(left + 10, roofY + 4, w - 20, 2, CAR.glassLo)}
-      <polygon
-        points={`${left + 12},${beltY - 6} ${left + 26},${roofY + 5} ${left + 34},${roofY + 5} ${left + 20},${beltY - 6}`}
-        fill="#ffffff"
-        opacity={0.13}
-      />
+      <path d={screenGlint(left + 12, roofY + 5, beltY - 6, 8)} fill="#ffffff" opacity={0.13} />
       {px(left + 12, roofY + 6, 7, 2, CAR.glassHi)}
       {px(cx - 4, roofY + 5, 8, 3, black)}
       {px(left + 12, beltY - 8, w - 26, 1, "#33383d")}
@@ -493,6 +599,10 @@ function CoveredCar({ cx }: { cx: number }) {
   );
 }
 
+/** The work lamp's pool, quantized, built per bonnet position. */
+const WORK_LAMP_AT = (cx: number) =>
+  tiers((k) => steppedEllipse(cx, 122, Math.round(24 * k), Math.round(12 * k), 2), "w", 1.2);
+
 /** The Octavia with the bonnet up and a work lamp hooked under it. */
 function BonnetUpCar({ cx }: { cx: number }) {
   const body = "#c9c4b6";
@@ -521,14 +631,17 @@ function BonnetUpCar({ cx }: { cx: number }) {
       {px(right - 22, 120, 10, 2, "#5d6266")}
       {px(left + 34, 108, 10, 6, "#e8c445")}
       {px(left + 36, 114, 6, 3, "#fff6d8")}
-      <ellipse cx={left + 39} cy={122} rx={24} ry={12} fill="#ffe6a8" opacity={0.24}>
+      <g>
+        <Light set={WORK_LAMP_AT(left + 39)} op={1.1} />
         <animate
           attributeName="opacity"
-          values="0.24;0.3;0.24"
+          values="1;1.25;1"
           dur="5.5s"
           repeatCount="indefinite"
+          calcMode="discrete"
+          keyTimes="0;0.5;1"
         />
-      </ellipse>
+      </g>
       {px(left - 1, 132, w + 2, 16, body)}
       {px(left - 1, 132, w + 2, 2, bodyHi)}
       {px(left + 8, 137, w - 16, 7, "#12100f")}
@@ -723,42 +836,67 @@ function occupancy(ph: Ph): Record<number, boolean> {
   return occupied;
 }
 
+/* ---- the soffit and what hangs off it -------------------------------------
+ * Precomputed: the shutter-board joints in the ceiling, the two service runs
+ * as three-tone cylinders, the hangers that carry them, and the sprinkler main. */
+const CEIL_JOINTS = pxPath(repeat(Math.ceil(W / 118), 118, [0, 0, 1, 40] as Rect));
+const CEIL_AO = aoPaths([[0, 34, W]]);
+const HANGER_X = [110, 222, 334, 446, 558, 670, 782, 894, 1006, 1118, 1230, 1342, 1454, 1566];
+const HANGERS = bevelPaths(HANGER_X.map((cx) => [cx, 4, 4, 22] as Rect));
+const HANGER_FEET = pxPath(HANGER_X.map((cx) => [cx - 1, 3, 6, 2] as Rect));
+const HANGER_DROPS = pxPath(HANGER_X.map((cx) => [cx + 1, 26, 2, 14] as Rect));
+const DUCT_SET = bevelPaths([[0, 6, W, 8]]);
+const CABLE_TRAY = bevelPaths([[0, 17, W, 7]]);
+const TRAY_SLOTS = pxPath(repeat(Math.ceil(W / 12), 12, [3, 19, 6, 1] as Rect));
+const SPRINKLER_MAIN = bevelPaths([[0, 30, W, 3]]);
+const SPRINKLER_DROPS = [200, 600, 1000, 1400];
+const CONDUIT = bevelPaths([[0, 50, W, 4]]);
+const CONDUIT_CLIPS = pxPath(
+  [80, 260, 440, 620, 800, 980, 1160, 1340, 1520].map((x) => [x, 54, 4, 4] as Rect),
+);
+const HAZARD_RAIL = pxPath([[0, 58, W, 3]]);
+const HAZARD_RAIL_TICKS = pxPath(repeat(Math.ceil(W / 24), 24, [0, 58, 12, 3] as Rect));
+
 function Services() {
   return (
     <g>
-      {px(0, 0, W, 40, P.ceil)}
-      {px(0, 38, W, 2, "#3f3d39")}
-      {px(0, 6, W, 8, P.pipe)}
-      {px(0, 6, W, 1, "#b4bac2")}
-      {px(0, 12, W, 2, P.pipeLo)}
-      {px(0, 17, W, 7, "#8f959c")}
-      {px(0, 22, W, 2, "#70757c")}
-      {[110, 222, 334, 446, 558, 670, 782, 894, 1006, 1118, 1230, 1342, 1454, 1566].map((cx) => (
-        <g key={`clamp${cx}`}>
-          {px(cx, 5, 4, 20, P.steelDark)}
-          {px(cx + 1, 25, 2, 15, "#5d6266")}
-          {px(cx - 1, 4, 6, 2, "#7d8288")}
-        </g>
-      ))}
-      {px(818, 14, 12, 12, "#8a3a34")}
-      {px(822, 10, 4, 4, "#8a3a34")}
-      {px(821, 17, 6, 6, "#5d2c27")}
-      {px(816, 26, 16, 3, P.steelDark)}
-      {px(0, 30, W, 3, "#8a3a34")}
-      {px(0, 30, W, 1, "#a04a44")}
-      {px(0, 44, W, 2, "#8a3a34")}
-      {[200, 600, 1000, 1400].map((x) => (
+      <SharedDefs />
+      {/* the soffit: shuttered concrete, dark, with the board joints still in it */}
+      <Bev set={bevelPaths([[0, 0, W, 40]])} mat={CEIL_MAT} />
+      <rect x={0} y={0} width={W} height={40} fill={dth("n", "06")} opacity={0.35} />
+      <path d={CEIL_JOINTS} fill={CEIL_MAT.deep} opacity={0.6} />
+      {/* the two service runs, round enough to read as pipe at this size */}
+      <Bev set={DUCT_SET} mat={PIPE_MAT} />
+      {px(0, 7, W, 1, "#c4cad0")}
+      {px(0, 12, W, 2, PIPE_MAT.deep)}
+      <Bev set={CABLE_TRAY} mat={STEEL} />
+      <path d={TRAY_SLOTS} fill={STEEL.deep} opacity={0.7} />
+      {/* the hangers, with the feet they bolt to and the drops to the tray */}
+      <path d={HANGER_FEET} fill={STEEL.mid} />
+      <Bev set={HANGERS} mat={STEEL} />
+      <path d={HANGER_DROPS} fill={STEEL.deep} />
+      {/* the sprinkler main, red, with its valve and its heads */}
+      <Bev set={SPRINKLER_MAIN} mat={RED_MAT} />
+      <Bev set={bevelPaths([[818, 14, 12, 12]])} mat={RED_MAT} />
+      {px(822, 10, 4, 4, RED_MAT.base)}
+      {px(821, 17, 6, 6, RED_MAT.deep)}
+      {px(816, 26, 16, 3, STEEL.deep)}
+      {px(0, 44, W, 2, RED_MAT.base)}
+      {px(0, 44, W, 1, RED_MAT.hi)}
+      {SPRINKLER_DROPS.map((x) => (
         <g key={`spr${x}`}>
-          {px(x, 46, 3, 4, "#8a3a34")}
-          {px(x - 2, 50, 7, 2, "#b8bfc6")}
+          {px(x, 46, 3, 4, RED_MAT.base)}
+          {px(x - 2, 50, 7, 2, STEEL.hi)}
         </g>
       ))}
-      {px(0, 50, W, 4, "#8f8a7c")}
-      {[80, 260, 440, 620, 800, 980, 1160, 1340, 1520].map((x) =>
-        px(x, 54, 4, 4, "#7a766c", `tb${x}`),
-      )}
-      {px(0, 58, W, 3, "#c9a24b")}
-      {px(0, 64, W, 2, "#5d6266")}
+      {/* the conduit, and the hazard rail under the services */}
+      <Bev set={CONDUIT} mat={CONC_COL} />
+      <path d={CONDUIT_CLIPS} fill={CONC_COL.lo} />
+      <path d={HAZARD_RAIL} fill={HAZARD.base} />
+      <path d={HAZARD_RAIL_TICKS} fill={HAZARD.deep} opacity={0.8} />
+      {px(0, 64, W, 2, STEEL.deep)}
+      {/* the soffit throws its own shadow onto the wall under it */}
+      <AOSet set={CEIL_AO} op={0.9} />
       {/* condensation, dripping on its own schedule */}
       {[318, 958, 1284].map((x, i) => (
         <g key={`drip${x}`}>
@@ -770,6 +908,8 @@ function Services() {
               dur={`${2.6 + i * 0.7}s`}
               begin={`${i * 1.4}s`}
               repeatCount="indefinite"
+              calcMode="discrete"
+              keyTimes="0;1"
             />
             <animate
               attributeName="opacity"
@@ -800,31 +940,90 @@ function Services() {
   );
 }
 
+/* ---- the back wall ----------------------------------------------------------
+ * Shuttered concrete in 3.1 m pours, the board lines still in it, tie holes on
+ * a grid, damp coming through where the deck above leaks, and forty winters
+ * of tyre-splash climbing the bottom half-metre. */
+const WALL_SET = bevelPaths([[0, 40, W, 110]]);
+const WALL_POURS = pxPath(repeat(Math.ceil(W / 118), 118, [0, 40, 1, 110] as Rect));
+const WALL_BOARDS = pxPath(repeat(9, 12, [0, 44, W, 1] as Rect));
+/** Which pours came out darker: the same seeded pick as the deck, so they line up. */
+const WALL_TONE = (() => {
+  const dark: Rect[] = [];
+  for (let i = 0; i < Math.ceil(W / 118); i++) {
+    const r = Math.sin((i * 17 + 2) * 127.1) * 43758.5453;
+    if (r - Math.floor(r) > 0.66) dark.push([i * 118 + 1, 40, 117, 110]);
+  }
+  return pxPath(dark);
+})();
+const TIE_HOLES = bevelPaths(
+  [70, 188, 306, 424, 542, 660, 778, 896, 1014, 1132, 1250, 1368, 1486].flatMap((x) => [
+    [x, 74, 3, 3] as Rect,
+    [x, 108, 3, 3] as Rect,
+  ]),
+);
+/** The damp: where the deck above leaks, a bloom, and the salt it leaves. */
+const WALL_DAMP = pxPath([
+  [300, 42, 44, 22],
+  [308, 64, 28, 14],
+  [930, 42, 70, 30],
+  [946, 72, 38, 18],
+  [1280, 42, 30, 16],
+]);
+const WALL_SALT = pxPath([
+  [304, 62, 36, 1],
+  [312, 76, 20, 1],
+  [940, 70, 50, 1],
+  [950, 88, 28, 1],
+]);
+/** Tyre-splash and rising grime along the bottom of the wall. */
+const WALL_SPLASH = pxPath([[0, 118, W, 12]]);
+const WALL_SPLASH_HI = pxPath([[0, 108, W, 10]]);
+/** The low kerb along the back of the bays, and the shadow it stands in. */
+const KERB_SET = bevelPaths([[0, 130, W, 4]]);
+const KERB_CHIPS = pxPath([
+  [212, 130, 6, 2],
+  [738, 130, 9, 2],
+  [1162, 130, 5, 2],
+]);
+const WALL_AO = aoPaths([[0, 134, W]]);
+
 function Walls({ ph }: { ph: Ph }) {
   return (
     <g>
-      {px(0, 40, W, 110, P.wall)}
-      {stripes(W, 40, 110, 82, P.wallLo, 40)}
-      {px(0, 40, W, 2, P.wallHi)}
-      {[
-        [70, 74],
-        [70, 108],
-        [640, 74],
-        [1210, 74],
-      ].map(([x, y]) => (
-        <g key={`tie${x}${y}`}>
-          {px(x, y, 3, 3, "#57534c")}
-          {px(x, y, 3, 1, "#3f3d39")}
-        </g>
-      ))}
-      {px(470, 118, 60, 30, "#5f5c55")}
-      {px(482, 124, 34, 12, "#78746b")}
-      {px(1240, 116, 44, 34, "#5f5c55")}
+      <Bev set={WALL_SET} mat={CONC} />
+      <path d={WALL_TONE} fill="#000" opacity={0.07} />
+      <rect x={0} y={40} width={W} height={110} fill="url(#px-agg)" opacity={0.16} />
+      <rect x={0} y={40} width={W} height={110} fill={dth("n", "06")} opacity={0.25} />
+      <path d={WALL_BOARDS} fill={CONC.lo} opacity={0.35} />
+      <path d={WALL_POURS} fill={CONC.deep} opacity={0.7} />
+      <Bev
+        set={TIE_HOLES}
+        mat={{
+          ...CONC,
+          hi: CONC.deep,
+          base: CONC.deep,
+          mid: CONC.lo,
+          lo: CONC.base,
+          deep: CONC.base,
+        }}
+      />
+      {/* the damp, and the efflorescence drying out of it */}
+      <path d={WALL_DAMP} fill="#2b2926" opacity={0.22} />
+      <path d={WALL_DAMP} fill={dth("n", "25")} opacity={0.4} />
+      <path d={WALL_SALT} fill="#a8a49a" opacity={0.5} />
+      {/* the bottom half-metre, which is a different colour on every car park on earth */}
+      <path d={WALL_SPLASH_HI} fill={dth("n", "12")} opacity={0.6} />
+      <path d={WALL_SPLASH} fill={dth("n", "25")} opacity={0.7} />
+      {/* the old repairs: a rendered patch, and the panel behind the cabinet */}
+      <Bev set={bevelPaths([[470, 118, 60, 30]])} mat={KERB} />
+      {px(482, 124, 34, 12, CONC.hi)}
+      <Bev set={bevelPaths([[1240, 116, 44, 34]])} mat={KERB} />
       {/* bay numbers, stencilled above each space */}
       {BAYS.map((b) => (
         <PixelText key={`bn${b.cx}`} x={b.cx - 4} y={70} text={b.label} fill={P.paintLo} />
       ))}
-      {/* P -1 painted big at the lift end */}
+      {/* P -1 painted big at the lift end, and the shadow it has worn into the wall */}
       {px(30, 76, 8, 26, P.paint)}
       {px(38, 76, 10, 5, P.paint)}
       {px(38, 88, 10, 5, P.paint)}
@@ -832,25 +1031,38 @@ function Walls({ ph }: { ph: Ph }) {
       {px(58, 86, 10, 4, P.paint)}
       {px(74, 76, 5, 26, P.paint)}
       {/* the low kerb along the back of the bays */}
-      {px(0, 130, W, 4, "#57534c")}
-      {px(0, 130, W, 1, "#6b675f")}
+      <Bev set={KERB_SET} mat={KERB} />
+      <path d={KERB_CHIPS} fill={KERB.deep} />
+      <AOSet set={WALL_AO} op={0.7} />
       {/* WYJŚCIE, and the convex mirror in its corner */}
-      {px(1488, 60, 74, 16, P.greenDark)}
+      <Bev
+        set={bevelPaths([[1488, 60, 74, 16]])}
+        mat={{ hi: "#1a6b3e", base: P.greenDark, mid: "#0b3520", lo: "#082a19", deep: "#041a0e" }}
+      />
       {px(1490, 62, 70, 12, "#0f4a2c")}
       {px(1492, 64, 66, 8, P.green)}
-      {px(1452, 54, 24, 22, "#3a3833")}
-      {px(1454, 56, 20, 18, "#aebfc9")}
-      {px(1456, 58, 16, 14, "#c2d2dc")}
+      <Bev set={bevelPaths([[1452, 54, 24, 22]])} mat={STEEL} />
+      <path d={pxPath(steppedEllipse(1464, 65, 10, 9, 1))} fill="#aebfc9" />
+      <path d={pxPath(steppedEllipse(1464, 65, 8, 7, 1))} fill="#c2d2dc" />
       {px(1458, 60, 6, 5, "#dfe8ee")}
       <rect x={1462} y={66} width={5} height={4} fill="#6d7a84" opacity={0.7}>
-        <animate attributeName="x" values="1457;1468;1457" dur="19s" repeatCount="indefinite" />
+        <animate
+          attributeName="x"
+          values="1457;1468;1457"
+          dur="19s"
+          repeatCount="indefinite"
+          calcMode="discrete"
+          keyTimes="0;0.5;1"
+        />
       </rect>
       {/* CCTV panning the aisle */}
       <g>
         {px(430, 48, 4, 8, "#3a3833")}
         <g>
-          {px(424, 54, 16, 9, "#22201e")}
-          {px(424, 54, 16, 2, "#3a3833")}
+          <Bev
+            set={bevelPaths([[424, 54, 16, 9]])}
+            mat={{ hi: "#3a3833", base: "#22201e", mid: "#1d1b19", lo: "#17150f", deep: "#0d0c0b" }}
+          />
           {px(438, 56, 4, 4, "#4a4844")}
           {px(440, 57, 2, 2, "#6d7278")}
           <animateTransform
@@ -868,8 +1080,10 @@ function Walls({ ph }: { ph: Ph }) {
       {/* ventilation, fans turning */}
       {[340, 1140].map((vx) => (
         <g key={`vent${vx}`}>
-          {px(vx, 44, 38, 20, "#3a3833")}
-          {px(vx, 44, 38, 2, "#4d4a45")}
+          <Bev
+            set={bevelPaths([[vx, 44, 38, 20]])}
+            mat={{ hi: "#4d4a45", base: "#3a3833", mid: "#333130", lo: "#2b2926", deep: "#1d1b19" }}
+          />
           {px(vx + 2, 46, 34, 16, "#1d1b19")}
           <g>
             {px(vx + 10, 52, 18, 3, "#5d5a52")}
@@ -886,8 +1100,11 @@ function Walls({ ph }: { ph: Ph }) {
         </g>
       ))}
       {/* the parking rules, high enough to clear the roofs */}
-      {px(464, 62, 34, 2, "#8a8f96")}
-      {px(466, 64, 30, 36, P.paper)}
+      {px(464, 62, 34, 2, STEEL.base)}
+      <Bev
+        set={bevelPaths([[466, 64, 30, 36]])}
+        mat={{ hi: P.paperHi, base: P.paper, mid: "#d4d1c4", lo: "#c4c1b4", deep: "#9a978c" }}
+      />
       {px(466, 64, 30, 4, "#2b4f9e")}
       {px(470, 72, 22, 2, "#5d6266")}
       {px(470, 77, 18, 1, "#8a8f96")}
@@ -926,11 +1143,8 @@ function BaySensors({ occupied }: { occupied: Record<number, boolean> }) {
                 repeatCount="indefinite"
               />
             </rect>
-            <ellipse
-              cx={b.cx + 3}
-              cy={48}
-              rx={9}
-              ry={4}
+            <path
+              d={pxPath(steppedEllipse(b.cx + 3, 48, 9, 4, 2))}
               fill={taken ? "#ff4040" : P.green}
               opacity={0.12}
             />
@@ -941,6 +1155,13 @@ function BaySensors({ occupied }: { occupied: Record<number, boolean> }) {
   );
 }
 
+/** The headlights of whoever is coming down: two quantized pools on the ramp wall. */
+const RAMP_HEADLIGHTS = tiers(
+  (k) => steppedEllipse(1560, 120, Math.round(40 * k), Math.round(26 * k), 3),
+  "w",
+  1.4,
+);
+
 /** The ramp up to the street, its barrier, its control pillar. */
 function Ramp({ ph }: { ph: Ph }) {
   const night = ph === "night";
@@ -948,33 +1169,35 @@ function Ramp({ ph }: { ph: Ph }) {
   const daylightHi = night ? "#4a5262" : ph === "dusk" ? "#dcbc90" : "#d0dcbe";
   return (
     <g>
-      {px(1496, 70, 104, 80, "#8a8578")}
-      {px(1496, 70, 104, 2, "#9a9488")}
+      <Bev set={bevelPaths([[1496, 70, 104, 80]])} mat={CONC_COL} />
+      <rect x={1496} y={70} width={104} height={80} fill="url(#px-agg)" opacity={0.2} />
       {px(1512, 70, 88, 64, daylight)}
       {px(1512, 70, 88, 8, daylightHi)}
       {px(1496, 104, 104, 6, "#7a766c")}
       {px(1496, 124, 104, 6, "#7a766c")}
       {px(1496, 140, 104, 5, "#6f6b62")}
       {/* someone comes down every so often, headlights first */}
-      <ellipse cx={1560} cy={120} rx={40} ry={26} fill="#fff0c8" opacity={0}>
+      <g opacity={0}>
+        <Light set={RAMP_HEADLIGHTS} />
         <animate
           attributeName="opacity"
-          values="0;0;0.55;0.3;0"
+          values="0;0;1;0.6;0"
           keyTimes="0;0.72;0.84;0.92;1"
           dur="66s"
           repeatCount="indefinite"
         />
-        <animate
-          attributeName="cx"
-          values="1596;1596;1540;1500;1470"
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="36 0;36 0;-20 0;-60 0;-90 0"
           keyTimes="0;0.72;0.84;0.92;1"
           dur="66s"
           repeatCount="indefinite"
+          calcMode="discrete"
         />
-      </ellipse>
+      </g>
       {/* the control pillar: card reader, keypad, intercom button */}
-      {px(1478, 96, 14, 54, P.steel)}
-      {px(1478, 96, 14, 2, "#a0a5ac")}
+      <Bev set={bevelPaths([[1478, 96, 14, 54]])} mat={STEEL} />
       {px(1480, 100, 10, 12, "#1b2026")}
       <rect x={1482} y={103} width={6} height={2} fill={P.green}>
         <animate attributeName="opacity" values="1;0.2;1" dur="2.2s" repeatCount="indefinite" />
@@ -986,10 +1209,7 @@ function Ramp({ ph }: { ph: Ph }) {
       {px(1483, 132, 4, 2, "#3a3833")}
       {px(1476, 148, 18, 2, P.shadowSoft)}
       {/* the barrier, which lifts for them and comes back down */}
-      <g>
-        {px(1492, 92, 8, 58, "#8f8a7c")}
-        {px(1492, 92, 8, 2, "#a39d8c")}
-      </g>
+      <Bev set={bevelPaths([[1492, 92, 8, 58]])} mat={CONC_COL} />
       <g style={{ transformOrigin: "1498px 96px" }}>
         {px(1498, 94, 70, 5, P.redHi)}
         {px(1498, 94, 70, 1, "#e05a50")}
@@ -1183,14 +1403,34 @@ function AisleProps({ ph, fed }: { ph: Ph; fed: boolean }) {
       ))}
       {px(610, 106, 12, 4, "#c9c4b6")}
       {px(602, 146, 42, 3, P.shadow)}
-      {/* the drain, the puddle, and the ring the bucket has left */}
-      {px(946, 156, 28, 5, "#2e2c29")}
+      {/* the drain grate — the standing water round it is in the deck now */}
+      <Bev
+        set={bevelPaths([[946, 156, 28, 5]])}
+        mat={{ hi: "#57534c", base: "#2e2c29", mid: "#282623", lo: "#222020", deep: "#151412" }}
+      />
       {[948, 953, 958, 963, 968].map((gx) => px(gx, 157, 2, 3, "#57534c", `dg${gx}`))}
-      <ellipse cx={952} cy={160} rx={26} ry={6} fill="#5d7a8a" opacity={0.28} />
-      <ellipse cx={956} cy={159} rx={10} ry={2} fill="#8fa8b8" opacity={0.22}>
-        <animate attributeName="rx" values="4;16;4" dur="7s" repeatCount="indefinite" />
-        <animate attributeName="opacity" values="0.3;0.05;0.3" dur="7s" repeatCount="indefinite" />
-      </ellipse>
+      {/* one ring, in three discrete widths, off the drip that keeps landing in it */}
+      <g opacity={0.3}>
+        {[4, 10, 16].map((rx, i) => (
+          <path
+            key={`ring${rx}`}
+            d={pxPath(steppedEllipse(956, 160, rx, Math.max(1, Math.round(rx / 4)), 1))}
+            fill="none"
+            stroke="#8fa8b8"
+            strokeWidth={0}
+            opacity={0}
+          >
+            <animate
+              attributeName="opacity"
+              values={i === 0 ? "1;0;0;0" : i === 1 ? "0;1;0;0" : "0;0;1;0"}
+              keyTimes="0;0.33;0.66;1"
+              dur="7s"
+              repeatCount="indefinite"
+              calcMode="discrete"
+            />
+          </path>
+        ))}
+      </g>
       {px(938, 128, 20, 20, "#8fa0ad")}
       {px(937, 127, 22, 3, P.steelHi)}
       {px(940, 132, 16, 3, P.water)}
@@ -1231,6 +1471,26 @@ function AisleProps({ ph, fed }: { ph: Ph; fed: boolean }) {
 // ---------------------------------------------------------------------------
 
 const COLUMNS = [307, 678, 1059, 1309];
+/* The columns: a bevelled shaft, its flank turned from the light, a capital
+ * where it meets the soffit, hazard paint knocked off at the corners where
+ * bumpers have found it, and the shadow it throws on the wall behind. */
+const COLUMN_SET = bevelPaths(COLUMNS.map((mid) => [mid - 9, 20, 18, 130] as Rect));
+const COLUMN_FLANK = pxPath(COLUMNS.map((mid) => [mid + 5, 21, 3, 128] as Rect));
+const COLUMN_CAP = pxPath(COLUMNS.map((mid) => [mid - 11, 18, 22, 3] as Rect));
+const COLUMN_TEX = pxPath(COLUMNS.map((mid) => [mid - 9, 20, 18, 130] as Rect));
+const COLUMN_HAZARD = bevelPaths(COLUMNS.map((mid) => [mid - 9, 124, 18, 26] as Rect));
+const COLUMN_STRIPES = pxPath(
+  COLUMNS.flatMap((mid) => [[mid - 9, 124, 18, 5] as Rect, [mid - 9, 136, 18, 5] as Rect]),
+);
+const COLUMN_CHIPS = pxPath(
+  COLUMNS.flatMap((mid, i) => [
+    [mid - 9, 131 + (i % 2) * 8, 3, 2] as Rect,
+    [mid + 6, 128 + (i % 3) * 6, 3, 3] as Rect,
+  ]),
+);
+const COLUMN_SCUFF = pxPath(COLUMNS.map((mid) => [mid - 9, 142, 18, 8] as Rect));
+const COLUMN_WALL_SHADOW = pxPath(COLUMNS.map((mid) => [mid + 9, 40, 8, 110] as Rect));
+const COLUMN_CONTACT = contactPaths(COLUMNS.map((mid) => [mid - 11, 22, 149] as const));
 /** Where the sump patches are. Shared with the ground zones, so the stain the
  *  player can see and the stain the terrain knows about are the same stain. */
 const OIL_AT = [210, 448, 760, 1010, 1240, 1350];
@@ -1402,21 +1662,16 @@ function ParkingScene({ world, phase }: { world: WorldState; phase?: string }) {
           <AisleProps ph={ph} fed={x.catFed} />
           {/* Pan Marek is an NpcActor in the Effects plane now */}
           {/* columns on the bay lines, hazard-striped at the base */}
-          {COLUMNS.map((mid) => {
-            const colX = mid - 9;
-            return (
-              <g key={`col${mid}`}>
-                {px(colX, 20, 18, 130, P.column)}
-                {px(colX, 20, 4, 130, P.columnHi)}
-                {px(colX + 14, 20, 4, 130, P.columnLo)}
-                {px(colX, 124, 18, 26, P.hazard)}
-                {px(colX, 124, 18, 5, P.hazardDark)}
-                {px(colX, 136, 18, 5, P.hazardDark)}
-                {px(colX - 2, 148, 22, 3, P.shadow)}
-                {px(colX + 2, 130, 8, 2, "#8a8578")}
-              </g>
-            );
-          })}
+          <path d={COLUMN_WALL_SHADOW} fill="#000" opacity={0.18} />
+          <Bev set={COLUMN_SET} mat={CONC_COL} />
+          <path d={COLUMN_FLANK} fill={CONC_COL.deep} opacity={0.5} />
+          <path d={COLUMN_CAP} fill={CONC_COL.hi} />
+          <path d={COLUMN_TEX} fill={dth("n", "06")} opacity={0.3} />
+          <Bev set={COLUMN_HAZARD} mat={HAZARD} />
+          <path d={COLUMN_STRIPES} fill={HAZARD.deep} />
+          <path d={COLUMN_CHIPS} fill={CONC_COL.lo} />
+          <path d={COLUMN_SCUFF} fill="#000" opacity={0.25} />
+          <Contact set={COLUMN_CONTACT} />
           {/* the tag on the first column, and the one under it that got scrubbed */}
           {px(298, 78, 18, 26, "#00000018")}
           {px(300, 82, 3, 16, "#2b5aa8")}
@@ -1436,9 +1691,67 @@ function ParkingScene({ world, phase }: { world: WorldState; phase?: string }) {
 // ---------------------------------------------------------------------------
 
 const PARKING_LAMPS = [177, 447, 717, 987, 1257, 1497];
+/**
+ * The light, quantized. Each tube gets a stepped cone of four solid tiers —
+ * the honest pixel-art gradient — and a pool where it lands on the deck. It
+ * was a <linearGradient> polygon, which is the one thing in this scene that
+ * could never have been pixel art, and which read as a projector beam rather
+ * than a fluorescent tube in a car park.
+ */
+const LAMP_CONES = PARKING_LAMPS.map((x) =>
+  tiers((k) => steppedCone(x, 40, Math.round(24 * k), 150, Math.round(78 * k), 6), "w", 0.7),
+);
+const LAMP_POOLS = PARKING_LAMPS.map((x) =>
+  tiers((k) => steppedEllipse(x, 151, Math.round(80 * k), Math.round(8 * k), 3), "w", 0.6),
+);
+/** The two emergency fittings, which are cold and small and never off. */
+const EMERGENCY_POOL = (x: number) =>
+  tiers((k) => steppedCone(x, 41, Math.round(6 * k), 150, Math.round(30 * k), 6), "c", 0.5);
+/** The work lamp under the Octavia's bonnet, spilling onto the aisle. */
+const BONNET_SPILL = tiers(
+  (k) => steppedEllipse(905, 124, Math.round(54 * k), Math.round(30 * k), 3),
+  "w",
+  0.8,
+);
+/** The fob's indicators flashing off the deck. */
+const FOB_FLASH = tiers(
+  (k) => steppedEllipse(1109, 152, Math.round(70 * k), Math.round(10 * k), 2),
+  "e",
+  1,
+);
+/** Three exhaust puffs, each a little bigger than the last. */
+const EXHAUST_PUFFS = [3, 6, 10].map((r) =>
+  pxPath(steppedEllipse(1153, 146, r, Math.round(r * 0.8), 1)),
+);
 /** The one over bay 17 has been going for months. */
 const DYING_LAMP = 717;
 const GOLF_CX = 1109;
+
+/* The Foreground's geometry, precomputed. */
+const FRONT_COLUMNS = bevelPaths([580, 1229].map((cx) => [cx, 0, 28, 180] as Rect));
+const FRONT_COLUMN_TEX = pxPath([580, 1229].map((cx) => [cx, 0, 28, 180] as Rect));
+const FRONT_HAZARD = bevelPaths([580, 1229].map((cx) => [cx, 116, 28, 44] as Rect));
+const FRONT_STRIPES = pxPath(
+  [580, 1229].flatMap((cx) => [[cx, 116, 28, 8] as Rect, [cx, 132, 28, 8] as Rect]),
+);
+const FRONT_FEET = pxPath([580, 1229].map((cx) => [cx, 148, 28, 12] as Rect));
+const NEAR_CARS = bevelPaths([
+  [150, 162, 190, 18],
+  [1300, 166, 210, 14],
+]);
+const NEAR_ROOFS = pxPath([
+  [184, 152, 124, 12],
+  [1336, 156, 140, 12],
+]);
+const NEAR_GLASS = pxPath([
+  [196, 154, 100, 6],
+  [1348, 158, 116, 6],
+]);
+const NEAR_GLASS_HI = pxPath([
+  [200, 154, 40, 1],
+  [1352, 158, 46, 1],
+]);
+const PARKING_VIGNETTE = vignettePaths(W, 180);
 
 const MAREK_MONOLOGUES = [
   "Kurwa, znowu ktoś mi drzwiami przywalił...",
@@ -1521,19 +1834,14 @@ function ParkingEffects({
         preserveAspectRatio="none"
         className="pointer-events-none absolute inset-0"
       >
-        <defs>
-          <linearGradient id="lightcone" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fff3cf" stopOpacity="0.55" />
-            <stop offset="70%" stopColor="#ffecb0" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#ffe6a8" stopOpacity="0.05" />
-          </linearGradient>
-        </defs>
+        {/* the dark the tubes push back: a level with the sensor timed out is
+            not black, it is the emergency fittings and the exit sign */}
         <rect
           width={W}
           height="180"
           fill="#04050a"
-          opacity={lit ? 0.62 : 0.87}
-          style={{ transition: "opacity 900ms ease" }}
+          opacity={lit ? 0.5 : 0.8}
+          style={{ transition: "opacity 900ms steps(4, end)" }}
         />
         {/* the tubes come up in sequence, the way a whole level of them does */}
         {PARKING_LAMPS.map((x, i) => {
@@ -1542,24 +1850,28 @@ function ParkingEffects({
             <g
               key={x}
               opacity={lit ? 1 : 0}
-              style={{ transition: `opacity ${500 + i * 180}ms ease` }}
+              style={{ transition: `opacity ${500 + i * 180}ms steps(3, end)` }}
             >
               <g>
+                {/* the fitting: diffuser, its bright core, the end caps */}
                 <rect x={x - 27} y={36} width={54} height={4} fill="#fff8e0" opacity={0.9} />
-                <polygon
-                  points={`${x - 24},40 ${x + 24},40 ${x + 78},150 ${x - 78},150`}
-                  fill="url(#lightcone)"
-                />
-                <ellipse cx={x} cy={151} rx={80} ry={7} fill="#ffe6a8" opacity={0.1} />
+                <rect x={x - 22} y={37} width={44} height={2} fill="#ffffff" opacity={0.9} />
+                <rect x={x - 29} y={36} width={2} height={4} fill="#5d6266" />
+                <rect x={x + 27} y={36} width={2} height={4} fill="#5d6266" />
+                {/* the cone, in four quantized tiers, and the pool where it lands */}
+                <Light set={LAMP_CONES[i]} />
+                <Light set={LAMP_POOLS[i]} />
                 {dying ? (
                   <animate
                     attributeName="opacity"
                     values="1;0.15;1;1;0.4;1;0.1;0.9;1;1"
                     dur="6.2s"
                     repeatCount="indefinite"
+                    calcMode="discrete"
                   />
                 ) : null}
               </g>
+              {/* dust turning over in the cone */}
               {[0, 1, 2].map((k) => (
                 <rect
                   key={k}
@@ -1587,10 +1899,19 @@ function ParkingEffects({
             </g>
           );
         })}
+        {/* emergency fittings: the two that stay on when the sensor gives up */}
+        {[447, 1257].map((x) => (
+          <g
+            key={`em${x}`}
+            opacity={lit ? 0 : 1}
+            style={{ transition: "opacity 600ms steps(3, end)" }}
+          >
+            <rect x={x - 6} y={38} width={12} height={3} fill="#c9e8d8" opacity={0.9} />
+            <Light set={EMERGENCY_POOL(x)} op={0.8} />
+          </g>
+        ))}
         {/* the work lamp under the Octavia's bonnet doesn't need the sensor */}
-        {mode === "bonnet" ? (
-          <ellipse cx={905} cy={124} rx={54} ry={30} fill="#ffe6a8" opacity={0.16} />
-        ) : null}
+        {mode === "bonnet" ? <Light set={BONNET_SPILL} op={0.9} /> : null}
         {/* something crosses the aisle at night, quickly, near the wall */}
         {ph === "night" ? (
           <g>
@@ -1625,15 +1946,17 @@ function ParkingEffects({
                 />
               </rect>
             ))}
-            <ellipse cx={GOLF_CX} cy={152} rx={70} ry={10} fill="#ffb340" opacity={0}>
+            <g opacity={0}>
+              <Light set={FOB_FLASH} op={1.6} />
               <animate
                 attributeName="opacity"
-                values="0;0.22;0;0;0.22;0"
+                values="0;1;0;0;1;0"
                 dur="1.3s"
                 repeatCount="1"
                 fill="freeze"
+                calcMode="discrete"
               />
-            </ellipse>
+            </g>
           </g>
         ))}
         {/* a cold start: the exhaust comes round the flanks and hangs there */}
@@ -1648,54 +1971,36 @@ function ParkingEffects({
                 fill="freeze"
               />
             </rect>
-            {[0, 0.5, 1].map((delay) => (
-              <circle
-                key={`${f.id}:${delay}`}
-                cx={GOLF_CX + 44}
-                cy={146}
-                r={4}
-                fill="#aeb4ba"
-                opacity={0}
-              >
+            {[0, 0.5, 1].map((delay, k) => (
+              <g key={`${f.id}:${delay}`} opacity={0}>
+                <path d={EXHAUST_PUFFS[k]} fill="#aeb4ba" />
                 <animate
                   attributeName="opacity"
-                  values="0;0.45;0"
+                  values="0;0.45;0.2;0"
                   begin={`${delay}s`}
                   dur="1.8s"
                   repeatCount="1"
                   fill="freeze"
                 />
-                <animate
-                  attributeName="cy"
-                  values="146;128"
+                <animateTransform
+                  attributeName="transform"
+                  type="translate"
+                  values="0 0;8 -6;16 -12;24 -18"
                   begin={`${delay}s`}
                   dur="1.8s"
                   repeatCount="1"
                   fill="freeze"
+                  calcMode="discrete"
+                  keyTimes="0;0.33;0.66;1"
                 />
-                <animate
-                  attributeName="cx"
-                  values={`${GOLF_CX + 44};${GOLF_CX + 68}`}
-                  begin={`${delay}s`}
-                  dur="1.8s"
-                  repeatCount="1"
-                  fill="freeze"
-                />
-                <animate
-                  attributeName="r"
-                  values="3;11"
-                  begin={`${delay}s`}
-                  dur="1.8s"
-                  repeatCount="1"
-                  fill="freeze"
-                />
-              </circle>
+              </g>
             ))}
           </g>
         ))}
         {/* the exit sign and the ramp daylight burn through any darkness */}
         <rect x={1492} y={64} width={66} height={8} fill={P.green} opacity={0.9} />
-        <ellipse cx={1525} cy={72} rx={50} ry={16} fill={P.green} opacity={0.07} />
+        <path d={pxPath(steppedEllipse(1525, 72, 50, 16, 3))} fill={P.green} opacity={0.05} />
+        <path d={pxPath(steppedEllipse(1525, 72, 30, 9, 3))} fill={P.green} opacity={0.05} />
         <rect
           x={1512}
           y={70}
@@ -1825,29 +2130,29 @@ export const PARKING_SCENE: RuntimeSceneDef<WorldState> = {
       className="pointer-events-none absolute inset-0"
     >
       <g shapeRendering="crispEdges">
-        {/* columns passing between the camera and the row */}
-        {[580, 1229].map((cx) => (
-          <g key={`fc${cx}`}>
-            {px(cx, 0, 28, 180, "#57534c")}
-            {px(cx, 0, 7, 180, "#6b675f")}
-            {px(cx + 24, 0, 4, 180, "#484540")}
-            {px(cx, 116, 28, 44, "#c9a24b")}
-            {px(cx, 116, 28, 8, "#3a3833")}
-            {px(cx, 132, 28, 8, "#3a3833")}
-            {px(cx, 148, 28, 12, "#b8933f")}
-          </g>
-        ))}
+        {/* columns passing between the camera and the row: darker than the
+            far ones because they are out of every tube's cone */}
+        <Bev
+          set={FRONT_COLUMNS}
+          mat={{ hi: "#6b675f", base: "#57534c", mid: "#4f4b45", lo: "#484540", deep: "#33312d" }}
+        />
+        <path d={FRONT_COLUMN_TEX} fill={dth("n", "06")} opacity={0.18} />
+        <Bev set={FRONT_HAZARD} mat={HAZARD} />
+        <path d={FRONT_STRIPES} fill={HAZARD.deep} />
+        <path d={FRONT_FEET} fill="#b8933f" />
         {/* the near lane: two roofs and a windscreen edge, out of focus */}
-        {px(150, 162, 190, 18, "#12100f")}
-        {px(184, 152, 124, 12, "#1a1816")}
-        {px(196, 154, 100, 6, "#232a30")}
+        <Bev
+          set={NEAR_CARS}
+          mat={{ hi: "#1f1d1a", base: "#12100f", mid: "#100e0d", lo: "#0d0b0a", deep: "#070605" }}
+        />
+        <path d={NEAR_ROOFS} fill="#1a1816" />
+        <path d={NEAR_GLASS} fill="#232a30" />
+        <path d={NEAR_GLASS_HI} fill="#3a4550" opacity={0.6} />
         {px(238, 166, 14, 5, "#3a3f45")}
-        {px(1300, 166, 210, 14, "#12100f")}
-        {px(1336, 156, 140, 12, "#1a1816")}
-        {px(1348, 158, 116, 6, "#232a30")}
         {px(1360, 169, 14, 5, "#5a2a30")}
         {/* the ramp's light spilling onto the last few metres */}
         {px(1470, 172, 130, 8, "#6b675f")}
+        <Vignette set={PARKING_VIGNETTE} strength={1.1} />
       </g>
     </svg>
   ),
