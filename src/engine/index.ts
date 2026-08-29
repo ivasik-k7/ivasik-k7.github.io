@@ -90,6 +90,7 @@ export { GameRuntime } from "./runtime/GameRuntime";
 export * from "./scene/artkit";
 export * from "./scene/groundKit";
 export * from "./scene/layers";
+export * from "./scene/lightKit";
 export * from "./scene/pixelKit";
 export {
   BANDS,

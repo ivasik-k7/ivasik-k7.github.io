@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 /**
  * pixelKit — the primitives every scene is built from.
  *
@@ -188,6 +189,8 @@ const TINTS = {
   c: "#e4eaec",
   /** low sun */
   e: "#ffa25e",
+  /** moonlight, cold LED, a phone screen — the one blue light this game has */
+  b: "#9fb8ff",
 } as const;
 
 export type Tint = keyof typeof TINTS;
@@ -272,6 +275,43 @@ export function SharedDefs() {
       <DitherSet k="w" tint={TINTS.w} />
       <DitherSet k="c" tint={TINTS.c} />
       <DitherSet k="e" tint={TINTS.e} />
+      <DitherSet k="b" tint={TINTS.b} />
+      {/* --- surface patterns, second set: the ones the ground and the walls
+          asked for once each scene grew a floor. All 4–12 px pitch, all under
+          10% so they read as material and never as a print. --- */}
+      <pattern id="px-brick" width="12" height="6" patternUnits="userSpaceOnUse">
+        <rect x="0" y="5" width="12" height="1" fill="#000000" opacity="0.12" />
+        <rect x="5" y="0" width="1" height="5" fill="#000000" opacity="0.1" />
+        <rect x="0" y="0" width="5" height="1" fill="#ffffff" opacity="0.06" />
+      </pattern>
+      <pattern id="px-tile" width="10" height="10" patternUnits="userSpaceOnUse">
+        <rect x="0" y="0" width="10" height="1" fill="#000000" opacity="0.1" />
+        <rect x="0" y="0" width="1" height="10" fill="#000000" opacity="0.1" />
+        <rect x="1" y="1" width="8" height="1" fill="#ffffff" opacity="0.05" />
+      </pattern>
+      <pattern id="px-asphalt" width="5" height="5" patternUnits="userSpaceOnUse">
+        <rect x="1" y="0" width="1" height="1" fill="#ffffff" opacity="0.07" />
+        <rect x="3" y="3" width="1" height="1" fill="#000000" opacity="0.1" />
+        <rect x="0" y="2" width="1" height="1" fill="#000000" opacity="0.05" />
+      </pattern>
+      <pattern id="px-cobble" width="8" height="6" patternUnits="userSpaceOnUse">
+        <rect x="0" y="0" width="8" height="1" fill="#000000" opacity="0.14" />
+        <rect x="3" y="1" width="1" height="5" fill="#000000" opacity="0.1" />
+        <rect x="0" y="1" width="3" height="1" fill="#ffffff" opacity="0.08" />
+      </pattern>
+      <pattern id="px-water" width="12" height="4" patternUnits="userSpaceOnUse">
+        <rect x="0" y="1" width="6" height="1" fill="#ffffff" opacity="0.08" />
+        <rect x="7" y="3" width="4" height="1" fill="#000000" opacity="0.08" />
+      </pattern>
+      <pattern id="px-rust" width="7" height="7" patternUnits="userSpaceOnUse">
+        <rect x="1" y="2" width="2" height="1" fill="#8a4a2a" opacity="0.18" />
+        <rect x="4" y="5" width="1" height="1" fill="#8a4a2a" opacity="0.14" />
+        <rect x="5" y="1" width="1" height="1" fill="#c26a3a" opacity="0.08" />
+      </pattern>
+      <pattern id="px-corrugated" width="6" height="3" patternUnits="userSpaceOnUse">
+        <rect x="0" y="0" width="6" height="1" fill="#ffffff" opacity="0.07" />
+        <rect x="0" y="2" width="6" height="1" fill="#000000" opacity="0.09" />
+      </pattern>
     </defs>
   );
 }
@@ -766,4 +806,499 @@ export function PixelText({
   op?: number;
 }) {
   return <path d={textPath(text, x, y, gap)} fill={fill} opacity={op} />;
+}
+
+/* ================================================================== *
+ * noise — deterministic, so nothing ever crawls between frames
+ * ================================================================== */
+
+/** Per-position noise in [0,1). Same input, same output, every frame, every load. */
+export function hash(n: number): number {
+  const x = Math.sin(n * 127.1) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/** Two-dimensional noise in [0,1), seeded. For anything laid out on a grid. */
+export function noise2(x: number, y: number, seed = 0): number {
+  return hash(x * 12.9898 + y * 78.233 + seed * 37.719);
+}
+
+/** Pick one of `n` off a seed — a colour from a palette, a variant from a set. */
+export function pick(seed: number, n: number): number {
+  return Math.min(n - 1, Math.floor(hash(seed) * n));
+}
+
+/* ================================================================== *
+ * geometry — every shape a diagonal or a curve wants, on the grid
+ * ================================================================== */
+
+/** A hollow rectangle: frames, plates, bezels, window reveals. */
+export function outline(x: number, y: number, w: number, h: number, t = 1): Rect[] {
+  return [
+    [x, y, w, t],
+    [x, y + h - t, w, t],
+    [x, y + t, t, h - 2 * t],
+    [x + w - t, y + t, t, h - 2 * t],
+  ];
+}
+
+/**
+ * A straight line between two points, as whole pixels — Bresenham, with the
+ * horizontal runs merged so a shallow line is a handful of rects and not a
+ * pixel each. THE way to draw a diagonal here: a stroked <line> antialiases and
+ * lands off the grid. `thick` widens it downward.
+ */
+export function steppedLine(x0: number, y0: number, x1: number, y1: number, thick = 1): Rect[] {
+  const out: Rect[] = [];
+  let x = Math.round(x0);
+  let y = Math.round(y0);
+  const ex = Math.round(x1);
+  const ey = Math.round(y1);
+  const dx = Math.abs(ex - x);
+  const dy = -Math.abs(ey - y);
+  const sx = x < ex ? 1 : -1;
+  const sy = y < ey ? 1 : -1;
+  let err = dx + dy;
+  let runX = x;
+  let runW = 0;
+  for (;;) {
+    runW++;
+    const atEnd = x === ex && y === ey;
+    const e2 = 2 * err;
+    let stepY = false;
+    if (e2 <= dx) {
+      stepY = true;
+    }
+    if (atEnd || stepY) {
+      out.push([Math.min(runX, runX + (runW - 1) * sx), y, runW, thick]);
+      runW = 0;
+    }
+    if (atEnd) break;
+    if (e2 >= dy) {
+      err += dy;
+      x += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y += sy;
+    }
+    if (runW === 0) runX = x;
+  }
+  return out;
+}
+
+/** A ring: the band between two stepped ellipses, `t` pixels thick. */
+export function steppedRing(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  t = 1,
+  step = 1,
+): Rect[] {
+  const outer = steppedEllipse(cx, cy, rx, ry, step);
+  const inner = steppedEllipse(cx, cy, rx - t, ry - t, step);
+  const byY = new Map<number, Rect>();
+  for (const r of inner) byY.set(r[1], r);
+  const out: Rect[] = [];
+  for (const [x, y, w, h] of outer) {
+    const i = byY.get(y);
+    if (!i) {
+      out.push([x, y, w, h]);
+      continue;
+    }
+    const [ix, , iw] = i;
+    if (ix > x) out.push([x, y, ix - x, h]);
+    if (ix + iw < x + w) out.push([ix + iw, y, x + w - ix - iw, h]);
+  }
+  return out;
+}
+
+/**
+ * The cap of an arch over an opening `w` wide: the semicircle (or the segment
+ * when `rise` is less than half the width), as rows. For station windows,
+ * cellar doors, the tunnel mouth.
+ */
+export function steppedArch(x: number, yBase: number, w: number, rise: number, step = 1): Rect[] {
+  const cx = x + w / 2;
+  const out: Rect[] = [];
+  const rx = w / 2;
+  for (let dy = 0; dy < rise; dy += step) {
+    const t = 1 - (dy / rise) ** 2;
+    const hw = Math.round(rx * Math.sqrt(Math.max(0, t)));
+    if (hw > 0) out.push([Math.round(cx - hw), yBase - dy - step, hw * 2, step]);
+  }
+  return out;
+}
+
+/**
+ * A pictogram written as rows of `#`, run-length encoded into rects. The one
+ * place where legibility of the SOURCE beats terseness — you have to be able
+ * to see the wheelchair in the code.
+ */
+export function glyphRects(rows: readonly string[], ox = 0, oy = 0): Rect[] {
+  const out: Rect[] = [];
+  rows.forEach((row, ry) => {
+    let x = 0;
+    while (x < row.length) {
+      if (row[x] === "#") {
+        let w = 1;
+        while (row[x + w] === "#") w++;
+        out.push([ox + x, oy + ry, w, 1]);
+        x += w;
+      } else x++;
+    }
+  });
+  return out;
+}
+
+/** Mirror about a vertical axis. How a double-ended thing is built once. */
+export function mirrorX(rects: readonly Rect[], axis: number): Rect[] {
+  return rects.map(([x, y, w, h]) => [Math.round(2 * axis - x - w), y, w, h] as Rect);
+}
+
+/** Mirror about a horizontal axis: reflections in water, in wet stone. */
+export function mirrorY(rects: readonly Rect[], axis: number): Rect[] {
+  return rects.map(([x, y, w, h]) => [x, Math.round(2 * axis - y - h), w, h] as Rect);
+}
+
+/** Scale about the origin, rounding to whole pixels. */
+export function scaleRects(rects: readonly Rect[], k: number): Rect[] {
+  return rects.map(
+    ([x, y, w, h]) =>
+      [
+        Math.round(x * k),
+        Math.round(y * k),
+        Math.max(1, Math.round(w * k)),
+        Math.max(1, Math.round(h * k)),
+      ] as Rect,
+  );
+}
+
+/** Clip a rect list to a box. Anything wholly outside is dropped. */
+export function clipRects(rects: readonly Rect[], box: Rect): Rect[] {
+  const [bx, by, bw, bh] = box;
+  const out: Rect[] = [];
+  for (const [x, y, w, h] of rects) {
+    const x0 = Math.max(x, bx);
+    const y0 = Math.max(y, by);
+    const x1 = Math.min(x + w, bx + bw);
+    const y1 = Math.min(y + h, by + bh);
+    if (x1 > x0 && y1 > y0) out.push([x0, y0, x1 - x0, y1 - y0]);
+  }
+  return out;
+}
+
+/** The bounding box of a rect list, or null for none. */
+export function boundsOf(rects: readonly Rect[]): Rect | null {
+  if (!rects.length) return null;
+  let x0 = Number.POSITIVE_INFINITY;
+  let y0 = Number.POSITIVE_INFINITY;
+  let x1 = Number.NEGATIVE_INFINITY;
+  let y1 = Number.NEGATIVE_INFINITY;
+  for (const [x, y, w, h] of rects) {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x + w);
+    y1 = Math.max(y1, y + h);
+  }
+  return [x0, y0, x1 - x0, y1 - y0];
+}
+
+/* ================================================================== *
+ * volume — boxes that have a top and a side, cylinders that turn
+ * ================================================================== */
+
+export type BoxSet = {
+  /** the front face, as a bevel set */
+  face: BevelSet;
+  /** the top face, `depth` tall, lit */
+  top: string;
+  /** the right side face, `depth` wide, turned from the light */
+  side: string;
+  /** the shadow the box throws on whatever is behind it */
+  cast: string;
+};
+
+/**
+ * A box in the game's fixed three-quarter view: the front face you already
+ * had, plus a lit top face and a shaded right side `depth` pixels deep, and
+ * the shadow it throws on the wall behind. This is what turns a rectangle into
+ * a container, a cabinet, a bin, a parapet — anything that occupies space.
+ *
+ *   const CRATE = boxPaths([[100, 120, 30, 20]], 4);
+ *   <Box set={CRATE} mat={M.wood} />
+ */
+export function boxPaths(boxes: readonly Rect[], depth = 3): BoxSet {
+  const top: Rect[] = [];
+  const side: Rect[] = [];
+  const cast: Rect[] = [];
+  for (const [x, y, w, h] of boxes) {
+    top.push([x + depth, y - depth, w, depth]);
+    for (let i = 0; i < depth; i++) top.push([x + i + 1, y - i - 1, depth - i - 1 + 1, 1]);
+    side.push([x + w, y - depth, depth, h]);
+    for (let i = 0; i < depth; i++) side.push([x + w + i, y - depth + i, 1, 1]);
+    cast.push([x + w + depth, y + 2, 2, h - depth]);
+  }
+  return { face: bevelPaths(boxes), top: pxPath(top), side: pxPath(side), cast: pxPath(cast) };
+}
+
+export function Box({ set, mat, op }: { set: BoxSet; mat: Mat; op?: number }) {
+  return (
+    <g opacity={op}>
+      <path d={set.cast} fill="#171009" opacity={0.2} />
+      <path d={set.side} fill={mat.lo} />
+      <path d={set.top} fill={mat.hi} />
+      <Bev set={set.face} mat={mat} />
+    </g>
+  );
+}
+
+export type CylinderSet = { hi: string; base: string; lo: string; deep: string };
+
+/**
+ * A cylinder seen side-on — a pipe, a column, a drum, a bottle. Four bands
+ * across the width (or the height, for a horizontal run): a highlight a fifth
+ * in from the lit edge, the body, the turn into shade, and the deep edge. Reads
+ * as round at any size from 4 px up.
+ */
+export function cylinderPaths(rects: readonly Rect[], horizontal = false): CylinderSet {
+  const hi: Rect[] = [];
+  const base: Rect[] = [];
+  const lo: Rect[] = [];
+  const deep: Rect[] = [];
+  for (const [x, y, w, h] of rects) {
+    if (horizontal) {
+      const a = Math.max(1, Math.round(h * 0.18));
+      const b = Math.max(1, Math.round(h * 0.34));
+      const c = Math.max(1, Math.round(h * 0.28));
+      hi.push([x, y + a, w, Math.max(1, Math.round(h * 0.16))]);
+      base.push([x, y, w, a + b]);
+      lo.push([x, y + a + b, w, c]);
+      deep.push([x, y + a + b + c, w, Math.max(1, h - a - b - c)]);
+    } else {
+      const a = Math.max(1, Math.round(w * 0.18));
+      const b = Math.max(1, Math.round(w * 0.34));
+      const c = Math.max(1, Math.round(w * 0.28));
+      hi.push([x + a, y, Math.max(1, Math.round(w * 0.16)), h]);
+      base.push([x, y, a + b, h]);
+      lo.push([x + a + b, y, c, h]);
+      deep.push([x + a + b + c, y, Math.max(1, w - a - b - c), h]);
+    }
+  }
+  return { hi: pxPath(hi), base: pxPath(base), lo: pxPath(lo), deep: pxPath(deep) };
+}
+
+export function Cylinder({ set, mat, op }: { set: CylinderSet; mat: Mat; op?: number }) {
+  return (
+    <g opacity={op}>
+      <path d={set.base} fill={mat.base} />
+      <path d={set.hi} fill={mat.hi} />
+      <path d={set.lo} fill={mat.lo} />
+      <path d={set.deep} fill={mat.deep} />
+    </g>
+  );
+}
+
+/* ================================================================== *
+ * materials — make a ramp from one colour, mix two, age one
+ * ================================================================== */
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function rgbToHex(r: number, g: number, b: number): string {
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return `#${((1 << 24) | (c(r) << 16) | (c(g) << 8) | c(b)).toString(16).slice(1)}`;
+}
+/** Mix two hexes: k=0 is a, k=1 is b. */
+export function mixHex(a: string, b: string, k: number): string {
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  return rgbToHex(ar + (br - ar) * k, ag + (bg - ag) * k, ab + (bb - ab) * k);
+}
+
+/**
+ * A five-tone ramp from one base colour. The highlight goes toward a warm
+ * white and the shadows toward the game's warm black, which is what keeps a
+ * generated material in the same family as the hand-picked ones in `M`.
+ *
+ *   const TEAL = matFrom("#3a7d84");
+ */
+export function matFrom(base: string, contrast = 1): Mat {
+  return {
+    hi: mixHex(base, "#fff4e0", 0.22 * contrast),
+    base,
+    mid: mixHex(base, "#171009", 0.08 * contrast),
+    lo: mixHex(base, "#171009", 0.18 * contrast),
+    deep: mixHex(base, "#171009", 0.38 * contrast),
+  };
+}
+
+/** Mix two materials tone by tone. */
+export function mixMat(a: Mat, b: Mat, k: number): Mat {
+  return {
+    hi: mixHex(a.hi, b.hi, k),
+    base: mixHex(a.base, b.base, k),
+    mid: mixHex(a.mid, b.mid, k),
+    lo: mixHex(a.lo, b.lo, k),
+    deep: mixHex(a.deep, b.deep, k),
+  };
+}
+
+/** Brighten (k>0) or darken (k<0) a whole ramp, keeping its relationships. */
+export function shade(mat: Mat, k: number): Mat {
+  const to = k > 0 ? "#fff4e0" : "#171009";
+  const a = Math.abs(k);
+  return {
+    hi: mixHex(mat.hi, to, a),
+    base: mixHex(mat.base, to, a),
+    mid: mixHex(mat.mid, to, a),
+    lo: mixHex(mat.lo, to, a),
+    deep: mixHex(mat.deep, to, a),
+  };
+}
+
+/** The four phases of one material, on the game's standard casts. */
+export function phased(mat: Mat): Record<Ph, Mat> {
+  return {
+    dawn: dim(mat, "#8c86a8", 0.14),
+    day: mat,
+    dusk: dim(mat, "#c98a52", 0.16),
+    night: dim(mat, "#141a24", 0.58),
+  };
+}
+
+/* ================================================================== *
+ * weathering — what time does to a surface
+ * ================================================================== */
+
+/** Water streaks running down from a line: under a sill, a gutter, a sign. */
+export function streaks(x: number, y: number, w: number, n: number, seed = 1, maxLen = 12): Rect[] {
+  const out: Rect[] = [];
+  for (let i = 0; i < n; i++) {
+    const sx = x + Math.round(hash(seed + i * 13) * (w - 1));
+    out.push([sx, y, 1, 3 + Math.round(hash(seed * 3 + i) * maxLen)]);
+  }
+  return out;
+}
+
+/** Chips out of an edge: the corners bumpers and trolleys find. */
+export function chips(x: number, y: number, w: number, n: number, seed = 2): Rect[] {
+  const out: Rect[] = [];
+  for (let i = 0; i < n; i++) {
+    const sx = x + Math.round(hash(seed + i * 7) * (w - 4));
+    out.push([sx, y, 2 + pick(seed + i, 3), 1 + pick(seed * 2 + i, 2)]);
+  }
+  return out;
+}
+
+/** Rust blooming out of fixings: a spot, and the run below it. */
+export function rustRuns(points: readonly (readonly [x: number, y: number])[], len = 6): Rect[] {
+  return points.flatMap(([x, y], i) => [
+    [x - 1, y, 3, 2] as Rect,
+    [x, y + 2, 1, 2 + pick(i * 11, len)] as Rect,
+  ]);
+}
+
+/** A damp bloom on a wall: a body and a darker heart, stepped. */
+export function dampBloom(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+): { body: Rect[]; heart: Rect[] } {
+  return {
+    body: steppedEllipse(cx, cy, rx, ry, 2),
+    heart: steppedEllipse(cx, cy + 2, Math.round(rx * 0.5), Math.round(ry * 0.5), 2),
+  };
+}
+
+/** Efflorescence: the salt line a damp patch leaves as it dries. */
+export function saltLine(x: number, y: number, w: number, seed = 4): Rect[] {
+  const out: Rect[] = [];
+  for (let sx = x; sx < x + w; sx += 3 + pick(seed + sx, 4))
+    out.push([sx, y + pick(seed * 2 + sx, 2), 2 + pick(sx, 3), 1]);
+  return out;
+}
+
+/* ================================================================== *
+ * SMIL — discrete animation, the only kind that stays pixel art
+ * ================================================================== */
+
+export type Flicker = { values: string; keyTimes?: string; dur: string };
+
+/**
+ * The flickers this game knows. All `calcMode="discrete"` — the value snaps,
+ * it never eases — because a light that fades smoothly over 400 ms is a light
+ * that spends 400 ms not being pixel art.
+ */
+export type FlickerKind = "dying" | "tube" | "flame" | "neon" | "crt" | "breathe" | "data";
+export const FLICKER: Record<FlickerKind, Flicker> = {
+  /** a fluorescent tube on its way out */
+  dying: { values: "1;0.15;1;1;0.4;1;0.1;0.9;1;1", dur: "6.2s" },
+  /** a healthy tube's barely-there mains hum */
+  tube: { values: "1;0.94;1;0.97;1", dur: "3.4s" },
+  /** a candle, a lighter, a match */
+  flame: { values: "1;0.8;0.92;0.7;1;0.85;0.95;0.75;1", dur: "1.9s" },
+  /** a neon letter with a bad transformer */
+  neon: { values: "1;1;0.3;1;1;1;0.6;1", dur: "4.7s" },
+  /** a CRT: a slow roll, then steady */
+  crt: { values: "0.92;1;0.94;1;0.9;1", dur: "0.9s" },
+  /** the standby LED on everything */
+  breathe: { values: "1;0.55;1", keyTimes: "0;0.5;1", dur: "2.6s" },
+  /** a router, a modem, a charger: irregular, busy */
+  data: { values: "1;0;1;1;0;1;0;0;1", dur: "1.3s" },
+};
+
+/** Wrap anything in a discrete opacity flicker. */
+export function Flick({
+  kind,
+  children,
+  begin,
+}: {
+  kind: keyof typeof FLICKER | Flicker;
+  children: ReactNode;
+  begin?: string;
+}) {
+  const f = typeof kind === "string" ? FLICKER[kind] : kind;
+  return (
+    <g>
+      {children}
+      <animate
+        attributeName="opacity"
+        calcMode="discrete"
+        values={f.values}
+        keyTimes={f.keyTimes}
+        dur={f.dur}
+        begin={begin}
+        repeatCount="indefinite"
+      />
+    </g>
+  );
+}
+
+/**
+ * A stepped translate: `frames` positions held in turn, the way a pigeon hops
+ * or a leaf skitters. Returns the attribute props for an <animateTransform>.
+ */
+export function stepTranslate(
+  frames: readonly (readonly [x: number, y: number])[],
+  dur: string,
+  holds?: readonly number[],
+) {
+  const values = frames.map(([x, y]) => `${x} ${y}`).join(";");
+  const keyTimes = holds
+    ? holds.map((t) => t.toFixed(3)).join(";")
+    : frames.map((_, i) => (i / (frames.length - 1)).toFixed(3)).join(";");
+  return {
+    attributeName: "transform" as const,
+    type: "translate" as const,
+    calcMode: "discrete" as const,
+    values,
+    keyTimes,
+    dur,
+    repeatCount: "indefinite" as const,
+  };
 }

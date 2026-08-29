@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EngineRouteImport } from './routes/engine'
 import { Route as ExampleRouteImport } from './routes/example'
+import { Route as KitRouteImport } from './routes/kit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const ExampleRoute = ExampleRouteImport.update({
   path: '/example',
   getParentRoute: () => rootRouteImport,
 } as any)
+const KitRoute = KitRouteImport.update({
+  id: '/kit',
+  path: '/kit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/engine': typeof EngineRoute
   '/example': typeof ExampleRoute
+  '/kit': typeof KitRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/engine': typeof EngineRoute
   '/example': typeof ExampleRoute
+  '/kit': typeof KitRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/engine': typeof EngineRoute
   '/example': typeof ExampleRoute
+  '/kit': typeof KitRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/engine' | '/example'
+  fullPaths: '/' | '/engine' | '/example' | '/kit'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/engine' | '/example'
-  id: '__root__' | '/' | '/engine' | '/example'
+  to: '/' | '/engine' | '/example' | '/kit'
+  id: '__root__' | '/' | '/engine' | '/example' | '/kit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EngineRoute: typeof EngineRoute
   ExampleRoute: typeof ExampleRoute
+  KitRoute: typeof KitRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExampleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/kit': {
+      id: '/kit'
+      path: '/kit'
+      fullPath: '/kit'
+      preLoaderRoute: typeof KitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EngineRoute: EngineRoute,
   ExampleRoute: ExampleRoute,
+  KitRoute: KitRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
