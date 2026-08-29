@@ -105,7 +105,23 @@ export {
   TierLight,
 } from "./scene/pixelLight";
 export * from "./scene/propKit";
-export * from "./scene/props";
+/* the old flat-style props: three of them share names with propKit's painters,
+   so they go out under Legacy* and the rest by name */
+export {
+  Bench as LegacyBench,
+  DrinkFridge,
+  ElevatorDoors,
+  Kiosk as LegacyKiosk,
+  Mailboxes,
+  NoticeBoard as LegacyNoticeBoard,
+  PanelBlock,
+  ShopCounter,
+  ShopShelf,
+  StreetLamp,
+  TrashContainer,
+  ZabkaFront,
+  Zhiguli,
+} from "./scene/props";
 export {
   ANIMAL_FURS,
   ANIMAL_TRIM,
