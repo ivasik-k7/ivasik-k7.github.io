@@ -88,6 +88,7 @@ export type {
 export { GameRuntime } from "./runtime/GameRuntime";
 // scene composition & art kit
 export * from "./scene/artkit";
+export * from "./scene/groundKit";
 export * from "./scene/layers";
 export * from "./scene/pixelKit";
 export {

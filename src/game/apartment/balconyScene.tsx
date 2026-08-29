@@ -34,6 +34,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { plates, scatter, wearLane } from "@/engine/scene/groundKit";
 import type { WorldState } from "@/lib/worldState";
 
 // --- BALKON / flat 14, klatka B, fourth floor -------------------------------------
@@ -746,6 +747,20 @@ const SLAB_PAINT = pxPath([
 ]);
 /** The doormat, its ribs, and the boot-scraper edge. */
 const MAT = bevelPaths([[18, FLOOR, 36, 9]]);
+/** The slab is one pour, but forty winters have not weathered it evenly. */
+const SLAB_TONE = plates(0, W, FLOOR, 164, {
+  far: 7,
+  near: 7,
+  unit: 62,
+  seed: 27,
+  dark: 0.2,
+  pale: 0.1,
+});
+/** Door to rail, which is the only walk there is out here. */
+const SLAB_WEAR = wearLane(40, 130, FLOOR + 5, 3, 28);
+/** Grit off the boots, soil off the seedling tray. */
+const BOOT_GRIT = scatter(4, 60, FLOOR + 2, 162, 8, 29, 1, 1);
+const SLAB_SOIL = scatter(206, 232, FLOOR + 3, 160, 6, 30, 1, 1);
 const MAT_RIBS = pxPath(bank([[22, 152, 2, 6]], 6, 6));
 
 /* --- contact shadows and occlusion, one pass each --- */
@@ -1361,7 +1376,12 @@ function Slab({ ph, o, s }: { ph: Ph; o: Outside; s: BalconyState }) {
       {px(0, FLOOR, W, H - FLOOR, c.base)}
       <rect x={0} y={FLOOR} width={W} height={H - FLOOR} fill="url(#px-agg)" />
       <rect x={0} y={FLOOR} width={W} height={H - FLOOR} fill="url(#px-satin)" opacity={0.5} />
+      <path d={SLAB_TONE.dark} fill={c.lo} opacity={0.35} />
+      <path d={SLAB_TONE.pale} fill={c.hi} opacity={0.3} />
       <path d={SLAB_JOINTS} fill={c.lo} />
+      <path d={SLAB_WEAR} fill="#fff" opacity={0.08} />
+      <path d={BOOT_GRIT} fill="#171009" opacity={0.3} />
+      <path d={SLAB_SOIL} fill="#3a2a18" opacity={0.6} />
       {px(0, FLOOR, W, 2, c.deep)}
       {px(0, FLOOR + 2, W, 1, c.mid)}
       <AOSet set={SLAB_AO} op={0.8} />

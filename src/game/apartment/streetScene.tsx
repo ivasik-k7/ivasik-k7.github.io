@@ -39,6 +39,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { bandShade, courses, plates } from "@/engine/scene/groundKit";
 import type { WorldState } from "@/lib/worldState";
 import { NPCS } from "./npcs";
 
@@ -479,23 +480,22 @@ function BigText({
  * ================================================================== */
 
 /** The pavement: 500 mm slabs, two courses in frame, and the worn tracks. */
-const PAVING = (() => {
-  const face: Rect[] = [];
-  const hi: Rect[] = [];
-  const slab = m(0.5);
-  let row = 0;
-  for (let y = GROUND; y < KERB; y += 8, row++) {
-    const stagger = row % 2 === 1 ? Math.round(slab / 2) : 0;
-    for (let x = -slab + stagger; x < STREET_W; x += slab) {
-      const x0 = Math.max(0, x + 1);
-      const x1 = Math.min(STREET_W, x + slab - 1);
-      if (x1 <= x0) continue;
-      face.push([x0, y, x1 - x0, 7]);
-      hi.push([x0, y, x1 - x0, 1]);
-    }
-  }
-  return { face: pxPath(face), hi: pxPath(hi) };
-})();
+/**
+ * Half-metre slabs in stretcher bond, foreshortening toward the kerb. They were
+ * on a fixed 8 px pitch and the pavement stood up like a wall; the near course
+ * is taller now and the slabs lie down.
+ */
+const PAVING = courses(0, STREET_W, GROUND, KERB, { far: 6, near: 9, unit: m(0.5), stagger: true });
+const PAVING_TONE = plates(0, STREET_W, GROUND, KERB, {
+  far: 6,
+  near: 9,
+  unit: m(0.5),
+  stagger: true,
+  seed: 31,
+  dark: 0.12,
+  pale: 0.07,
+});
+const GROUND_SHADE = bandShade(0, STREET_W, GROUND, H);
 /** Where everybody actually walks: klatka to Żabka, Żabka to the stop, and the
  *  diagonal from the passage to the bins. Worn a shade lighter than the rest. */
 const TRACKS = pxPath([
@@ -3902,7 +3902,10 @@ function Pavement({ ph, s }: { ph: Ph; s: StreetState }) {
     <g>
       {px(0, GROUND, STREET_W, KERB - GROUND, walk.deep)}
       <path d={PAVING.face} fill={walk.base} />
+      <path d={PAVING_TONE.dark} fill={walk.lo} opacity={0.45} />
+      <path d={PAVING_TONE.pale} fill={walk.hi} opacity={0.4} />
       <path d={PAVING.hi} fill={walk.hi} />
+      <path d={PAVING.joints} fill={walk.deep} opacity={0.5} />
       <rect x={0} y={GROUND} width={STREET_W} height={KERB - GROUND} fill="url(#px-agg)" />
       <path d={TRACKS} fill={walk.hi} opacity={0.7} />
       {/* kerb, gutter, asphalt, and the patches in it */}
@@ -3911,6 +3914,8 @@ function Pavement({ ph, s }: { ph: Ph; s: StreetState }) {
       {px(0, ROAD, STREET_W, 1, ROADM[ph].hi)}
       <rect x={0} y={ROAD} width={STREET_W} height={H - ROAD} fill="url(#px-agg)" />
       <path d={ASPHALT_WEAR} fill={ROADM[ph].lo} />
+      <path d={GROUND_SHADE.footSoft} fill="#171009" opacity={0.1} />
+      <path d={GROUND_SHADE.foot} fill="#171009" opacity={0.18} />
       {/* covers, the manhole, the drain */}
       <path d={MANHOLE} fill="#6d6a62" />
       <path d={pxPath([[920, 158, 22, 1]])} fill="#7d7a72" />

@@ -35,6 +35,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { bandShade, courses, plates, scatter, wearLane } from "@/engine/scene/groundKit";
 import type { DayPhase, WorldState } from "@/lib/worldState";
 import { NPCS } from "./npcs";
 
@@ -369,31 +370,44 @@ function bank(shape: readonly Rect[], n: number, pitch: number): Rect[] {
 }
 
 /** A floor: base course plus a lighter top edge, batched to two paths. */
-function floorField(x0: number, x1: number, pitch: number, courseY: readonly number[]) {
-  const face: Rect[] = [];
-  const hi: Rect[] = [];
-  for (const y of courseY) {
-    for (let x = x0; x < x1; x += pitch) {
-      const w = Math.min(pitch - 2, x1 - x - 1);
-      if (w <= 0) continue;
-      face.push([x + 1, y, w, 12]);
-      hi.push([x + 1, y, w, 2]);
-    }
-  }
-  return { face: pxPath(face), hi: pxPath(hi) };
+/**
+ * One floor per zone, all laid the same way: courses that foreshorten toward
+ * the camera (12 px by the wall, 16 at the frame), on the tile pitch of
+ * whatever that trade put down.
+ */
+function floorField(x0: number, x1: number, pitch: number) {
+  return courses(x0, x1, FLOOR, H, { far: 12, near: 16, unit: pitch });
 }
 
-/* ================================================================== *
- * precomputed geometry — nothing below allocates at render time
- * ================================================================== */
-
 /* --- floors, one per zone --- */
-const FLOOR_ENTRY = floorField(0, Z.stairEnd, 22, [152, 166]);
-const FLOOR_RECEPTION = floorField(Z.stairEnd, Z.receptionEnd, 22, [152, 166]);
-const FLOOR_CARDIO = floorField(Z.receptionEnd, Z.cardioEnd, 34, [152, 166]);
+const FLOOR_ENTRY = floorField(0, Z.stairEnd, 22);
+const FLOOR_RECEPTION = floorField(Z.stairEnd, Z.receptionEnd, 22);
+const FLOOR_CARDIO = floorField(Z.receptionEnd, Z.cardioEnd, 34);
 /** The weights floor is 1m interlocking rubber, so the grid is square and big. */
-const FLOOR_WEIGHTS = floorField(Z.cardioEnd, Z.weightsEnd, 30, [152, 166]);
-const FLOOR_LOCKERS = floorField(Z.weightsEnd, W, 16, [152, 166]);
+const FLOOR_WEIGHTS = floorField(Z.cardioEnd, Z.weightsEnd, 30);
+/** Interlocking rubber mats never all come from the same batch. */
+const WEIGHTS_TONE = plates(Z.cardioEnd, Z.weightsEnd, FLOOR, H, {
+  far: 12,
+  near: 16,
+  unit: 30,
+  seed: 19,
+  dark: 0.18,
+  pale: 0.05,
+});
+const ENTRY_TONE = plates(0, Z.receptionEnd, FLOOR, H, {
+  far: 12,
+  near: 16,
+  unit: 22,
+  seed: 20,
+  dark: 0.08,
+  pale: 0.1,
+});
+const FLOOR_SHADE = bandShade(0, W, FLOOR, H);
+/** Stair to turnstile to the cardio row: the one line everybody takes. */
+const FLOOR_WEAR = [wearLane(90, 700, FLOOR + 10, 3, 22), wearLane(760, 1000, FLOOR + 12, 2, 23)];
+/** Chalk around the platform and the rack, which no gym has ever swept up. */
+const CHALK_DUST = scatter(780, 1030, FLOOR + 4, H - 4, 26, 24, 1, 1);
+const FLOOR_LOCKERS = floorField(Z.weightsEnd, W, 16);
 /** The platform inside the weights floor: two-tone timber, and it sounds different. */
 const PLATFORM_D = pxPath([[936, 150, 88, 30]]);
 const PLATFORM_BOARDS = pxPath(repeat(11, 8, [940, 150, 6, 30] as Rect));
@@ -1339,10 +1353,26 @@ function Ground({ s }: { s: GymState }) {
       {px(Z.weightsEnd, FLOOR, W - Z.weightsEnd, H - FLOOR, WETTILE.deep)}
       <path d={FLOOR_LOCKERS.face} fill={WETTILE.base} />
       <path d={FLOOR_LOCKERS.hi} fill={WETTILE.hi} />
+      {/* the batches that did not match, and the joints between everything */}
+      <path d={ENTRY_TONE.dark} fill={PORCELAIN.lo} opacity={0.4} />
+      <path d={ENTRY_TONE.pale} fill={PORCELAIN.hi} opacity={0.4} />
+      <path d={WEIGHTS_TONE.dark} fill="#000" opacity={0.14} />
+      <path d={WEIGHTS_TONE.pale} fill={RUBBER.hi} opacity={0.35} />
+      <path d={FLOOR_ENTRY.joints} fill={PORCELAIN.deep} opacity={0.6} />
+      <path d={FLOOR_RECEPTION.joints} fill={PORCELAIN.deep} opacity={0.6} />
+      <path d={FLOOR_CARDIO.joints} fill={VINYL.deep} opacity={0.5} />
+      <path d={FLOOR_WEIGHTS.joints} fill={RUBBER.deep} opacity={0.7} />
+      <path d={FLOOR_LOCKERS.joints} fill={WETTILE.deep} opacity={0.6} />
+      {FLOOR_WEAR.map((d) => (
+        <path key={d.slice(0, 12)} d={d} fill="#fff" opacity={0.07} />
+      ))}
+      <path d={CHALK_DUST} fill="#e8e6df" opacity={0.45} />
       {/* the lifting platform, which is timber and sounds completely different */}
       <path d={PLATFORM_D} fill={M.oak.lo} />
       <path d={PLATFORM_BOARDS} fill={M.oak.base} />
       <path d={pxPath([[936, 150, 88, 2]])} fill={M.oak.hi} />
+      <path d={FLOOR_SHADE.footSoft} fill="#171009" opacity={0.08} />
+      <path d={FLOOR_SHADE.foot} fill="#171009" opacity={0.14} />
       <path d={SIGNS.platformMark} fill={M.oak.deep} opacity={0.55} />
       {/* the drop marks on the rubber either side of it, from years of bars */}
       <path

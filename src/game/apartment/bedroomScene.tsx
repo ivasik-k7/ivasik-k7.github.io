@@ -31,6 +31,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { bandShade, courses, plates, scatter, wearLane } from "@/engine/scene/groundKit";
 import { type DayPhase, roomDarkness, type WorldState } from "@/lib/worldState";
 
 // --- SYPIALNIA / the bedroom, floor 4 -----------------------------------------------
@@ -376,11 +377,8 @@ const BOARDS = (() => {
   return {
     alt: pxPath(alt),
     edge: pxPath(repeat(19, 30, [15, FLOOR, 1, H - FLOOR] as Rect)),
-    seam: pxPath([
-      [0, 158, W, 1],
-      [0, 168, W, 1],
-      [0, 176, W, 1],
-    ]),
+    /* board-end joints across the run, foreshortening toward the camera */
+    seam: courses(0, W, FLOOR, H, { far: 7, near: 11 }).joints,
     joint: pxPath([
       [78, 150, 1, 8],
       [212, 158, 1, 10],
@@ -390,6 +388,22 @@ const BOARDS = (() => {
     ]),
   };
 })();
+
+/** No two boards came off the same tree. */
+const BOARD_TONE = plates(0, W, FLOOR, H, {
+  far: 7,
+  near: 11,
+  unit: 30,
+  seed: 6,
+  dark: 0.15,
+  pale: 0.06,
+});
+const FLOOR_SHADE = bandShade(0, W, FLOOR, H);
+/** Door to bed, and the short line from the desk to the weights. */
+const FLOOR_WEAR = [wearLane(60, 380, FLOOR + 10, 3, 12), wearLane(200, 300, FLOOR + 15, 2, 13)];
+/** The dust that lives under a bed, and the chalk that lives near a kettlebell. */
+const UNDER_BED = scatter(320, 450, 170, 178, 9, 14, 1, 1);
+const CHALK = scatter(258, 306, 164, 176, 6, 15, 1, 1);
 
 /** The rug, and the nine diamonds worn into it. */
 const RUG_MOTIF = (() => {
@@ -1256,8 +1270,17 @@ function Ground({ ph, s }: { ph: Ph; s: BedroomState }) {
       <path d={BOARDS.edge} fill={board.deep} opacity={0.7} />
       <path d={BOARDS.seam} fill={board.deep} opacity={0.5} />
       <path d={BOARDS.joint} fill={board.deep} opacity={0.6} />
+      <path d={BOARD_TONE.dark} fill={board.lo} opacity={0.5} />
+      <path d={BOARD_TONE.pale} fill={board.hi} opacity={0.3} />
       <rect x={0} y={FLOOR} width={W} height={H - FLOOR} fill="url(#px-wood)" />
       {px(0, FLOOR, W, 1, board.deep)}
+      {FLOOR_WEAR.map((d) => (
+        <path key={d.slice(0, 12)} d={d} fill="#fff" opacity={0.07} />
+      ))}
+      <path d={CHALK} fill="#e8e4dc" opacity={0.5} />
+      <path d={UNDER_BED} fill="#171009" opacity={0.25} />
+      <path d={FLOOR_SHADE.footSoft} fill="#171009" opacity={0.08} />
+      <path d={FLOOR_SHADE.foot} fill="#171009" opacity={0.14} />
       {/* the rug: faded kilim, fringe at both ends, worn through in the middle */}
       {px(292, 152, 160, 26, rug.base)}
       {px(292, 152, 160, 2, rug.hi)}

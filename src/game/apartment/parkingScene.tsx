@@ -8,6 +8,15 @@ import {
   type RuntimeSceneDef,
   stripes,
 } from "@/engine";
+import {
+  bandShade,
+  courses,
+  cracks,
+  plates,
+  puddle,
+  scatter,
+  wearLane,
+} from "@/engine/scene/groundKit";
 import type { WorldState } from "@/lib/worldState";
 import { NPCS } from "./npcs";
 
@@ -1229,6 +1238,44 @@ const OIL_AT = [210, 448, 760, 1010, 1240, 1350];
 const BACK = GROUND + 2;
 const CAR_Y = GROUND + 6;
 
+/* ------------------------------------------------------------ the deck ----
+ * A car-park deck is one pour per structural bay, 3.1 m between joints,
+ * ground smooth and then abused: tyres polish two dark lanes down the aisle,
+ * the bays behind the cars collect oil, the joints crack, and the whole slab
+ * is out of the light at the front of the frame. All of it precomputed. */
+const DECK_H = 30;
+const DECK = courses(0, W, GROUND, GROUND + DECK_H, { far: 5, near: 9, unit: 118 });
+const DECK_TONE = plates(0, W, GROUND, GROUND + DECK_H, {
+  far: 5,
+  near: 9,
+  unit: 118,
+  seed: 4,
+  dark: 0.2,
+  pale: 0.05,
+});
+const DECK_SHADE = bandShade(0, W, GROUND, GROUND + DECK_H);
+/** The two tyre lanes down the aisle: rubber, not wear, so they run dark. */
+const TYRE_LANES = [
+  wearLane(30, W - 40, GROUND + 9, 2, 8),
+  wearLane(30, W - 40, GROUND + 17, 2, 9),
+];
+/** Everything that has ever dripped into a bay, and the drain that never quite copes. */
+const OIL_STAINS = OIL_AT.map((ox) => puddle(ox, GROUND + 10, 18, 4));
+const DRAIN_PUDDLE = puddle(950, GROUND + 12, 26, 5);
+const DECK_CRACKS = cracks(
+  [
+    [276, GROUND + 3],
+    [612, GROUND + 5],
+    [1004, GROUND + 2],
+    [1328, GROUND + 4],
+  ],
+  GROUND + DECK_H,
+  11,
+);
+/** Grit tracked in off the ramp, thickest by the ramp and thinning left. */
+const DECK_GRIT = scatter(1100, W, GROUND + 4, GROUND + DECK_H - 3, 34, 6, 1, 1);
+const DECK_GRIT_FAR = scatter(0, 1100, GROUND + 4, GROUND + DECK_H - 3, 22, 7, 1, 1);
+
 function ParkingScene({ world, phase }: { world: WorldState; phase?: string }) {
   const ph = toPhase(phase);
   const occupied = occupancy(ph);
@@ -1255,9 +1302,23 @@ function ParkingScene({ world, phase }: { world: WorldState; phase?: string }) {
       }
       ground={
         <g>
-          {px(0, 150, W, 30, P.floor)}
-          {px(0, 150, W, 3, "#00000044")}
-          {stripes(W, 150, 30, 120, "#3f3d39", 60)}
+          {/* the slab, poured bay by bay: base, the ground-smooth face of every
+              plate, the joints between them and the pours that did not match */}
+          {px(0, GROUND, W, DECK_H, P.floorLo)}
+          <path d={DECK.face} fill={P.floor} />
+          <path d={DECK_TONE.dark} fill="#000" opacity={0.12} />
+          <path d={DECK_TONE.pale} fill={P.floorHi} opacity={0.35} />
+          <rect x={0} y={GROUND} width={W} height={DECK_H} fill="url(#px-agg)" opacity={0.7} />
+          <rect x={0} y={GROUND} width={W} height={DECK_H} fill="url(#px-satin)" opacity={0.4} />
+          <path d={DECK.hi} fill={P.floorHi} opacity={0.35} />
+          <path d={DECK.joints} fill={P.floorLo} opacity={0.8} />
+          <path d={DECK_CRACKS} fill={P.floorLo} />
+          {/* the aisle: two lanes of rubber, and the grit off the ramp */}
+          <path d={TYRE_LANES[0]} fill="#000" opacity={0.16} />
+          <path d={TYRE_LANES[1]} fill="#000" opacity={0.14} />
+          <path d={DECK_GRIT} fill={P.floorHi} opacity={0.5} />
+          <path d={DECK_GRIT_FAR} fill={P.floorHi} opacity={0.3} />
+          {/* the bay line, the bay markings, the arrows nobody follows */}
           {px(0, 166, W, 2, P.paint)}
           {px(0, 168, W, 1, P.paintLo)}
           {lines}
@@ -1270,16 +1331,27 @@ function ParkingScene({ world, phase }: { world: WorldState; phase?: string }) {
           ))}
           {px(1430, 150, 36, 5, P.hazard)}
           {[1434, 1444, 1454].map((sx) => px(sx, 150, 6, 5, P.hazardDark, `sb${sx}`))}
-          {OIL_AT.map((ox) => (
-            <g key={`oil${ox}`}>
-              <ellipse cx={ox} cy={160} rx={18} ry={5} fill={P.oil} opacity={0.5} />
-              <ellipse cx={ox + 6} cy={163} rx={7} ry={2} fill="#3a3833" opacity={0.5} />
+          {/* what has dripped: a fringe of damp, then the oil, then its sheen */}
+          {OIL_STAINS.map((o, i) => (
+            <g key={`oil${OIL_AT[i]}`}>
+              <path d={o.fringe} fill="#000" opacity={0.12} />
+              <path d={o.water} fill={P.oil} opacity={0.6} />
+              <path d={o.rim} fill="#5a5750" opacity={0.5} />
             </g>
           ))}
+          {/* the drain by bay 230, and the water that has stood in front of it
+              since the building was handed over */}
+          <path d={DRAIN_PUDDLE.fringe} fill="#000" opacity={0.18} />
+          <path d={DRAIN_PUDDLE.water} fill="#2f3438" opacity={0.85} />
+          <path d={DRAIN_PUDDLE.rim} fill="#6d7680" opacity={0.6} />
           {px(500, 172, 70, 2, "#3a3833")}
           {px(1300, 174, 90, 2, "#3a3833")}
           {px(660, 154, 40, 1, "#3a3833")}
           {px(662, 155, 24, 1, "#3a3833")}
+          {/* the slab is under the bottom of the frame and out of the light */}
+          <path d={DECK_SHADE.footSoft} fill="#000" opacity={0.1} />
+          <path d={DECK_SHADE.foot} fill="#000" opacity={0.2} />
+          <path d={DECK_SHADE.lip} fill="#000" opacity={0.22} />
         </g>
       }
       staticObjects={<WallProps ph={ph} x={x} />}

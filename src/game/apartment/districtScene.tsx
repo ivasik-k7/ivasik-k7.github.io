@@ -35,6 +35,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { bandShade, courses, plates } from "@/engine/scene/groundKit";
 import type { WorldState } from "@/lib/worldState";
 import { NPCS } from "./npcs";
 
@@ -452,23 +453,22 @@ function BigText({
  * ================================================================== */
 
 /** The pavement: 500 mm slabs in a stretcher bond, two courses in frame. */
-const PAVING = (() => {
-  const face: Rect[] = [];
-  const hi: Rect[] = [];
-  const slab = m(0.5);
-  let row = 0;
-  for (let y = GROUND; y < KERB; y += 9, row++) {
-    const stagger = row % 2 === 1 ? Math.round(slab / 2) : 0;
-    for (let x = -slab + stagger; x < W; x += slab) {
-      const x0 = Math.max(0, x + 1);
-      const x1 = Math.min(W, x + slab - 1);
-      if (x1 <= x0) continue;
-      face.push([x0, y, x1 - x0, 8]);
-      hi.push([x0, y, x1 - x0, 1]);
-    }
-  }
-  return { face: pxPath(face), hi: pxPath(hi) };
-})();
+/**
+ * Half-metre slabs in stretcher bond, foreshortening toward the kerb — the
+ * same idiom as Słoneczna, on a slightly larger pitch because the square is
+ * newer and its slabs are bigger.
+ */
+const PAVING = courses(0, W, GROUND, KERB, { far: 7, near: 10, unit: m(0.5), stagger: true });
+const PAVING_TONE = plates(0, W, GROUND, KERB, {
+  far: 7,
+  near: 10,
+  unit: m(0.5),
+  stagger: true,
+  seed: 33,
+  dark: 0.1,
+  pale: 0.08,
+});
+const GROUND_SHADE = bandShade(0, W, GROUND, H);
 
 /** Tactile paving at the crossing: 25 mm blisters, 65 mm centres. Two paths. */
 const TACTILE = (() => {
@@ -2784,7 +2784,10 @@ function Pavement({ ph, s }: { ph: Ph; s: DistrictState }) {
     <g>
       {px(0, GROUND, W, H - GROUND, slab.deep)}
       <path d={PAVING.face} fill={slab.base} />
+      <path d={PAVING_TONE.dark} fill={slab.lo} opacity={0.4} />
+      <path d={PAVING_TONE.pale} fill={slab.hi} opacity={0.4} />
       <path d={PAVING.hi} fill={slab.hi} />
+      <path d={PAVING.joints} fill={slab.deep} opacity={0.45} />
       <rect x={0} y={GROUND} width={W} height={KERB - GROUND} fill="url(#px-agg)" />
       {/* the banded course along the kerb, which is always a different stone */}
       <path d={pxPath([[0, KERB - 6, W, 6]])} fill={BAND[ph].base} />
@@ -2793,6 +2796,8 @@ function Pavement({ ph, s }: { ph: Ph; s: DistrictState }) {
       <path d={KERB_LINE} fill={BAND[ph].hi} />
       <path d={pxPath([[0, KERB + m(0.12), W, 3]])} fill={ROADMAT[ph].base} />
       <path d={GULLIES} fill={ROADMAT[ph].deep} />
+      <path d={GROUND_SHADE.footSoft} fill="#171009" opacity={0.1} />
+      <path d={GROUND_SHADE.foot} fill="#171009" opacity={0.18} />
       {/* tactile paving at the crossing, and the covers, and the gum */}
       <path d={TACTILE} fill={s.weather === "clear" ? "#c9a24b" : "#a8883f"} opacity={0.85} />
       <path d={COVERS} fill={BAND[ph].mid} />

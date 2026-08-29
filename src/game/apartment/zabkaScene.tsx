@@ -30,6 +30,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { bandShade, courses, plates, wearLane } from "@/engine/scene/groundKit";
 import type { WorldState } from "@/lib/worldState";
 import { NPCS } from "./npcs";
 
@@ -432,22 +433,24 @@ const BAND_FROGS = pxPath(
  * ================================================================== */
 
 /** 40x wide porcelain, staggered every other course, 2px joints. */
-const TILE_FIELD = (() => {
-  const face: Rect[] = [];
-  const joint: Rect[] = [];
-  let row = 0;
-  for (let y = FLOOR; y < H; y += 15, row++) {
-    const stagger = row % 2 === 1 ? 20 : 0;
-    for (let x = -20 + stagger; x < W; x += 40) {
-      const x0 = Math.max(0, x + 1);
-      const x1 = Math.min(W, x + 39);
-      if (x1 <= x0) continue;
-      face.push([x0, y + 1, x1 - x0, Math.min(13, H - y - 1)]);
-      joint.push([x0, y + 1, x1 - x0, 1]);
-    }
-  }
-  return { face: pxPath(face), joint: pxPath(joint) };
-})();
+/**
+ * The shop floor: 40 cm porcelain in stretcher bond, foreshortening toward the
+ * camera, with the odd tile from a different box. It was one fixed 15 px pitch
+ * and read as a wall the shelves were standing against.
+ */
+const TILE_FIELD = courses(0, W, FLOOR, H, { far: 11, near: 15, unit: 40, stagger: true });
+const TILE_TONE = plates(0, W, FLOOR, H, {
+  far: 11,
+  near: 15,
+  unit: 40,
+  stagger: true,
+  seed: 3,
+  dark: 0.1,
+  pale: 0.08,
+});
+const FLOOR_SHADE = bandShade(0, W, FLOOR, H);
+/** The aisle everybody walks: door, coffee, till. Polished a shade paler. */
+const AISLE_WEAR = [wearLane(64, 560, FLOOR + 9, 3, 16), wearLane(120, 480, FLOOR + 14, 2, 17)];
 
 /** The suspended grid: T-bars across and down, and the tile field between. */
 const CEIL_GRID = {
@@ -951,9 +954,17 @@ function Ground({ ph: _ph, s }: { ph: Ph; s: ZabkaState }) {
     <g>
       {px(0, FLOOR, W, H - FLOOR, SHOPFLOOR.mid)}
       <path d={TILE_FIELD.face} fill={SHOPFLOOR.base} />
-      <path d={TILE_FIELD.joint} fill={SHOPFLOOR.hi} />
+      <path d={TILE_TONE.dark} fill={SHOPFLOOR.lo} opacity={0.4} />
+      <path d={TILE_TONE.pale} fill={SHOPFLOOR.hi} opacity={0.45} />
       <rect x={0} y={FLOOR} width={W} height={H - FLOOR} fill="url(#zb-speck)" />
+      <path d={TILE_FIELD.hi} fill={SHOPFLOOR.hi} opacity={0.7} />
+      <path d={TILE_FIELD.joints} fill={SHOPFLOOR.lo} opacity={0.6} />
       {px(0, FLOOR, W, 1, SHOPFLOOR.deep)}
+      {AISLE_WEAR.map((d) => (
+        <path key={d.slice(0, 12)} d={d} fill="#fff" opacity={0.09} />
+      ))}
+      <path d={FLOOR_SHADE.footSoft} fill="#171009" opacity={0.08} />
+      <path d={FLOOR_SHADE.foot} fill="#171009" opacity={0.14} />
       {/* the entrance mat, and the anti-slip strip in front of it */}
       {px(6, 152, 52, 12, "#3f4448")}
       {px(6, 152, 52, 1, "#4f545a")}

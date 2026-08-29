@@ -35,6 +35,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { bandShade, courses, plates, scatter, wearLane } from "@/engine/scene/groundKit";
 import { type DayPhase, roomDarkness, studioState, type WorldState } from "@/lib/worldState";
 import { ANIMALS } from "./animals";
 
@@ -635,26 +636,51 @@ const SHELF_SET = bevelPaths([[676, 90, 44, 58]]);
 const FLAGSHELF_SET = bevelPaths([[846, 96, 44, 4]]);
 
 // the floor, in a handful of paths
-const FLOOR_TILE = (() => {
-  const rows: Rect[] = [];
-  for (let y = 158; y < H; y += 12) rows.push([0, y, 406, 1]);
-  const cols: Rect[] = [];
-  for (let x = 13; x < 406; x += 26) cols.push([x, FLOOR, 1, H - FLOOR]);
-  return { rows: pxPath(rows), cols: pxPath(cols) };
-})();
-const FLOOR_BOARDS = (() => {
-  const seams: Rect[] = [];
-  for (const y of [158, 166, 174]) seams.push([406, y, W - 406, 1]);
-  const joints = pxPath([
-    [470, 150, 1, 8],
-    [548, 158, 1, 8],
-    [618, 150, 1, 8],
-    [694, 166, 1, 8],
-    [742, 150, 1, 8],
-    [858, 158, 1, 8],
-  ]);
-  return { seams: pxPath(seams), joints };
-})();
+/* ---- the floor, laid so it lies down --------------------------------------
+ * Stone tile as far as the bathroom door, oak boards after it. Both foreshorten
+ * toward the camera — a course by the wall is 7 px, a course at the frame is 11
+ * — and both vary in tone tile by tile and board by board, which is the whole
+ * difference between a floor and wallpaper with a floor printed on it. */
+const TILE_X1 = 406;
+const FLOOR_TILE = courses(0, TILE_X1, FLOOR, H, { far: 7, near: 11, unit: 26 });
+const FLOOR_TILE_TONE = plates(0, TILE_X1, FLOOR, H, {
+  far: 7,
+  near: 11,
+  unit: 26,
+  seed: 2,
+  dark: 0.12,
+  pale: 0.07,
+});
+const FLOOR_BOARDS = courses(408, W, FLOOR, H, { far: 6, near: 9 });
+/** Board ends, scattered where the joiner cut them. */
+const BOARD_JOINTS = pxPath([
+  [470, 150, 1, 6],
+  [548, 156, 1, 8],
+  [618, 150, 1, 6],
+  [694, 164, 1, 8],
+  [742, 150, 1, 6],
+  [858, 156, 1, 8],
+  [512, 172, 1, 8],
+  [790, 172, 1, 8],
+]);
+const BOARD_TONE = plates(408, W, FLOOR, H, {
+  far: 6,
+  near: 9,
+  unit: 74,
+  seed: 9,
+  dark: 0.16,
+  pale: 0.06,
+});
+const FLOOR_SHADE = bandShade(0, W, FLOOR, H);
+/** Where the flat is walked: door to kitchen, kitchen to sofa, and to the dog. */
+const FLOOR_WEAR = [
+  wearLane(70, 400, FLOOR + 9, 3, 1),
+  wearLane(440, 900, FLOOR + 11, 3, 2),
+  wearLane(560, 660, FLOOR + 6, 2, 3),
+];
+/** Kibble that missed the bowl, and the grit under the door. */
+const FLOOR_CRUMBS = scatter(572, 616, 154, 168, 7, 4, 1, 1);
+const DOOR_GRIT = scatter(4, 70, 152, 176, 8, 5, 1, 1);
 
 const VIG = vignettePaths(W, H);
 
@@ -1438,12 +1464,19 @@ function Floor({ ph, s }: { ph: Ph; s: StudioSt }) {
   return (
     <g>
       {/* stone tile from the door to the nook, oak boards beyond */}
-      {px(0, FLOOR, 406, H - FLOOR, STONE[ph].base)}
-      <rect x={0} y={FLOOR} width={406} height={H - FLOOR} fill="url(#px-agg)" opacity={0.4} />
-      <path d={FLOOR_TILE.rows} fill={STONE[ph].lo} opacity={0.7} />
-      <path d={FLOOR_TILE.cols} fill={STONE[ph].lo} opacity={0.5} />
+      {/* stone tile from the door to the nook: grout first, then the tiles */}
+      {px(0, FLOOR, TILE_X1, H - FLOOR, STONE[ph].lo)}
+      <path d={FLOOR_TILE.face} fill={STONE[ph].base} />
+      <path d={FLOOR_TILE_TONE.dark} fill={STONE[ph].lo} opacity={0.45} />
+      <path d={FLOOR_TILE_TONE.pale} fill={STONE[ph].hi} opacity={0.4} />
+      <rect x={0} y={FLOOR} width={TILE_X1} height={H - FLOOR} fill="url(#px-agg)" opacity={0.4} />
+      <path d={FLOOR_TILE.hi} fill={STONE[ph].hi} opacity={0.45} />
+      <path d={FLOOR_TILE.joints} fill={STONE[ph].lo} opacity={0.7} />
+      {/* the threshold strip, and the oak beyond it */}
       {px(402, FLOOR, 6, H - FLOOR, OAK[ph].lo)}
       {px(408, FLOOR, W - 408, H - FLOOR, BOARD[ph].base)}
+      <path d={BOARD_TONE.dark} fill={BOARD[ph].lo} opacity={0.5} />
+      <path d={BOARD_TONE.pale} fill={BOARD[ph].hi} opacity={0.35} />
       <rect
         x={408}
         y={FLOOR}
@@ -1452,8 +1485,18 @@ function Floor({ ph, s }: { ph: Ph; s: StudioSt }) {
         fill="url(#px-wood)"
         opacity={0.5}
       />
-      <path d={FLOOR_BOARDS.seams} fill={BOARD[ph].lo} />
-      <path d={FLOOR_BOARDS.joints} fill={BOARD[ph].deep} opacity={0.7} />
+      <path d={FLOOR_BOARDS.hi} fill={BOARD[ph].hi} opacity={0.3} />
+      <path d={FLOOR_BOARDS.joints} fill={BOARD[ph].lo} />
+      <path d={BOARD_JOINTS} fill={BOARD[ph].deep} opacity={0.7} />
+      {/* the walked lines, the crumbs, and the grit that comes in on shoes */}
+      {FLOOR_WEAR.map((d) => (
+        <path key={d.slice(0, 12)} d={d} fill="#fff" opacity={0.08} />
+      ))}
+      <path d={FLOOR_CRUMBS} fill={K.kibble} opacity={0.8} />
+      <path d={DOOR_GRIT} fill="#171009" opacity={0.3} />
+      {/* the slab is out of the light at the foot of the frame */}
+      <path d={FLOOR_SHADE.footSoft} fill="#171009" opacity={0.08} />
+      <path d={FLOOR_SHADE.foot} fill="#171009" opacity={0.14} />
       {/* the doormat, ribbed, older than the door */}
       {px(14, 152, 48, 14, pcol("#6f5e48", ph))}
       <path d={pxPath(repeat(6, 8, [16, 154, 4, 10] as Rect))} fill={pcol("#5e4e3a", ph)} />

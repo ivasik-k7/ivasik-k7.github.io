@@ -30,6 +30,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { bandShade, courses, plates, scatter } from "@/engine/scene/groundKit";
 import { type DayPhase, roomDarkness, type WorldState } from "@/lib/worldState";
 
 // --- ŁAZIENKA / the bathroom, floor 4 -----------------------------------------------
@@ -325,18 +326,24 @@ const TILE_FIELD = (() => {
   return { face: pxPath(face), hi: pxPath(hi) };
 })();
 
-/** Anthracite floor, two courses of big tiles, cut off by the frame. */
-const FLOOR_FIELD = (() => {
-  const face: Rect[] = [];
-  const hi: Rect[] = [];
-  for (let x = 0; x < W; x += 26) {
-    const w = Math.min(24, W - x - 1);
-    if (w <= 0) continue;
-    face.push([x + 1, 152, w, 12], [x + 1, 166, w, 12]);
-    hi.push([x + 1, 152, w, 2], [x + 1, 166, w, 2]);
-  }
-  return { face: pxPath(face), hi: pxPath(hi) };
-})();
+/**
+ * Anthracite floor: big tiles on a two-pixel grout, foreshortening toward the
+ * camera. Two courses used to sit on a fixed 14 px pitch and the floor read as
+ * a wall; the near course is taller now, and the room has a floor you look
+ * down at.
+ */
+const FLOOR_FIELD = courses(0, W, FLOOR, H, { far: 10, near: 14, unit: 26, grout: 2 });
+const FLOOR_TONE = plates(0, W, FLOOR, H, {
+  far: 10,
+  near: 14,
+  unit: 26,
+  seed: 8,
+  dark: 0.1,
+  pale: 0.08,
+});
+const FLOOR_SHADE = bandShade(0, W, FLOOR, H);
+/** Hair by the basin. It is always by the basin. */
+const FLOOR_HAIR = scatter(86, 130, 154, 168, 5, 21, 2, 1);
 
 /** The mirror: a stepped octagon. Ring, glass, and the halo behind it. */
 const MIRROR_RING: Rect[] = [
@@ -777,10 +784,16 @@ function Ground({ ph, s }: { ph: Ph; s: BathState }) {
   const tubSpill = s.tub === "full" || s.tub === "draining";
   return (
     <g>
-      {px(0, FLOOR, W, 2, GROUT[ph].deep)}
+      {px(0, FLOOR, W, H - FLOOR, GROUT[ph].deep)}
       <path d={FLOOR_FIELD.face} fill={floor.base} />
+      <path d={FLOOR_TONE.dark} fill={floor.lo} opacity={0.5} />
+      <path d={FLOOR_TONE.pale} fill={floor.hi} opacity={0.35} />
       <path d={FLOOR_FIELD.hi} fill={floor.hi} />
       <rect x={0} y={FLOOR} width={W} height={H - FLOOR} fill="url(#px-agg)" />
+      <rect x={0} y={FLOOR} width={W} height={H - FLOOR} fill="url(#px-satin)" opacity={0.6} />
+      <path d={FLOOR_HAIR} fill="#171009" opacity={0.35} />
+      <path d={FLOOR_SHADE.footSoft} fill="#171009" opacity={0.08} />
+      <path d={FLOOR_SHADE.foot} fill="#171009" opacity={0.14} />
       {px(0, SKIRT, W, 4, GRAPHITE[ph].base)}
       {px(0, SKIRT, W, 1, GRAPHITE[ph].hi)}
       {px(0, FLOOR, W, 1, floor.deep)}

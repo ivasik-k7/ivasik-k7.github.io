@@ -26,6 +26,7 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
+import { bandShade, wearLane } from "@/engine/scene/groundKit";
 import type { WorldState } from "@/lib/worldState";
 
 // --- WINDA / the lift cab — small, but kept with dignity ----------------------------
@@ -1694,6 +1695,10 @@ function Traces({ ph, s }: { ph: Ph; s: LiftState }) {
   );
 }
 
+/** Where the feet go: in from the door, and the patch in front of the panel. */
+const FL_WEAR = [wearLane(30, 170, FLOOR + 7, 3, 25), wearLane(150, 190, FLOOR + 3, 2, 26)];
+const FL_SHADE = bandShade(0, W, FLOOR, H);
+
 /** The floor, and whatever the day has left on it. */
 function CabFloor({ ph, s }: { ph: Ph; s: LiftState }) {
   const fl = FLOORR[ph];
@@ -1706,6 +1711,11 @@ function CabFloor({ ph, s }: { ph: Ph; s: LiftState }) {
       <path d={FL_CORNERS} fill={fl.lo} />
       {/* pram tracks, because a pram goes in and out of here twice a day */}
       <path d={FL_TRACKS} fill={fl.mid} opacity={0.6} />
+      {FL_WEAR.map((d) => (
+        <path key={d.slice(0, 12)} d={d} fill="#fff" opacity={0.06} />
+      ))}
+      <path d={FL_SHADE.lip} fill="#171009" opacity={0.12} />
+      <path d={FL_SHADE.footSoft} fill="#171009" opacity={0.08} />
       {/* the door track at the very front edge of the cab */}
       <path d={FL_TRACK_BAR} fill="#5d6266" />
       <path d={pxPath([[0, 177, W, 1]])} fill="#7d8085" />
