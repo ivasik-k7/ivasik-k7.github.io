@@ -89,3 +89,29 @@ describe("interrupt windows", () => {
     expect(stepAction(r, DEF, 700, true, false).natural).toBe(true);
   });
 });
+
+describe("frame-timed events", () => {
+  it("fire once per frame per loop, on the game clock, and not outside the loop", async () => {
+    const { dueEvents } = await import("./actionPlayer");
+    const def = {
+      enter: ["e"],
+      frames: ["a", "b"],
+      exit: ["x"],
+      frameMs: 100,
+      loops: 2,
+      events: [
+        { frame: 1, sound: "thud" },
+        { frame: 0, loop: 1, toast: "second" },
+      ],
+    };
+    const run = { id: "t", start: 0 };
+    const at = (now: number) => dueEvents(run, def, stepAction(run, def, now, false, false));
+    expect(at(50)).toEqual([]); // enter
+    expect(at(100)).toEqual([]); // a, loop 0
+    expect(at(210).map((e) => e.sound)).toEqual(["thud"]); // b, loop 0
+    expect(at(220)).toEqual([]); // same frame, already fired
+    expect(at(300).map((e) => e.toast)).toEqual(["second"]); // a, loop 1
+    expect(at(410).map((e) => e.sound)).toEqual(["thud"]); // b, loop 1 — every loop
+    expect(at(520)).toEqual([]); // exit
+  });
+});

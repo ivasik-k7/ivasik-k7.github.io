@@ -28,6 +28,8 @@ export interface HudProps {
   room: string;
   /** omit to derive from the wall clock */
   phase?: DayPhase;
+  /** the game's own time; omit to show the wall clock */
+  // clock?: { hour: number; minute: number; day: number };
   visited?: readonly string[];
   /** money line + carried item labels; the plate renders only when supplied */
   pocket?: { money: string; items: readonly string[] };

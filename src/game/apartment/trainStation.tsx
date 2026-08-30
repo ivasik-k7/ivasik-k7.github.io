@@ -34,7 +34,8 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
-import { dayPhase, type WorldState } from "@/lib/worldState";
+import { gamePhase } from "@/lib/body";
+import type { WorldState } from "@/lib/worldState";
 import { propActor, SUITCASE_PALETTE, suitcaseMap, TROLLEY_PALETTE, trolleyMap } from "./bandProps";
 import { NPCS } from "./npcs";
 import { planMotion, SkmUnit } from "./skmTrain";
@@ -416,7 +417,6 @@ const lampsOn = (s: StationState, ph: Ph) =>
  * the world but not the phase. It has to agree with what the runtime passes to
  * the art, and it does, because both go through the same `dayPhase`.
  */
-const phNow = () => toPhase(dayPhase(new Date().getHours()));
 
 /** Who is on the platform at this crowd level, at this hour. */
 function whoIsWaiting(s: StationState, ph: Ph) {
@@ -4512,7 +4512,8 @@ const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
     priority: 2,
     x: 305,
     range: 14,
-    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).reader,
+    when: (w) =>
+      whoIsWaiting(stationState(w as WorldState), toPhase(gamePhase(w as WorldState))).reader,
   },
   {
     id: "station-golebiarka",
@@ -4520,7 +4521,8 @@ const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
     priority: 2,
     x: 404,
     range: 14,
-    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).golebiarka,
+    when: (w) =>
+      whoIsWaiting(stationState(w as WorldState), toPhase(gamePhase(w as WorldState))).golebiarka,
   },
   {
     id: "station-bench-sitter",
@@ -4528,7 +4530,8 @@ const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
     priority: 2,
     x: 830,
     range: 16,
-    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).bench,
+    when: (w) =>
+      whoIsWaiting(stationState(w as WorldState), toPhase(gamePhase(w as WorldState))).bench,
   },
   {
     id: "station-phone",
@@ -4536,7 +4539,8 @@ const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
     priority: 2,
     x: 1054,
     range: 14,
-    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).phone,
+    when: (w) =>
+      whoIsWaiting(stationState(w as WorldState), toPhase(gamePhase(w as WorldState))).phone,
   },
   {
     id: "station-smoker",
@@ -4544,7 +4548,8 @@ const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
     priority: 2,
     x: 1610,
     range: 14,
-    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).smoker,
+    when: (w) =>
+      whoIsWaiting(stationState(w as WorldState), toPhase(gamePhase(w as WorldState))).smoker,
   },
   {
     id: "station-looker",
@@ -4552,7 +4557,8 @@ const STATION_OBJECTS: import("@/engine").RuntimeObject[] = [
     priority: 2,
     x: 1690,
     range: 14,
-    when: (w) => whoIsWaiting(stationState(w as WorldState), phNow()).looker,
+    when: (w) =>
+      whoIsWaiting(stationState(w as WorldState), toPhase(gamePhase(w as WorldState))).looker,
   },
   /* --- and the train, when it is here --- */
   ...DOORS_AS_OBJECTS,
@@ -4661,7 +4667,8 @@ export const TRAIN_STATION_SCENE: RuntimeSceneDef<WorldState> = {
     npcToActor(NPCS.walker, {
       x: 1240,
       patrol: { from: 1090, to: 1560, speed: 16, pauseMs: 3400 },
-      visible: (world) => whoIsWaiting(stationState(world), phNow()).pacer,
+      visible: (world) =>
+        whoIsWaiting(stationState(world), toPhase(gamePhase(world as WorldState))).pacer,
       z: 6,
     }),
     /* --- the band furniture, depth-sorted against everyone above --------- */

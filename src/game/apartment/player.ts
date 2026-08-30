@@ -22,6 +22,7 @@ import {
   FOOTWEAR,
   HEADWEAR,
   hoodUpPass,
+  type LayerDef,
   mirrorRows,
   openFrontPass,
   overlay,
@@ -36,12 +37,15 @@ import {
   sandalsPass,
   shiftRows,
   shiftSides,
+  shirtTexture,
+  shoeTexture,
   shortsPass,
   sleevePatch,
   stripePass,
   TORSO_GARMENTS,
   TORSO_ZONES,
   tankPass,
+  trouserTexture,
   widenRuns,
 } from "@/engine";
 
@@ -375,7 +379,219 @@ const LEG_SCUFF_SWING: Leg = [
   ".................BBBB...",
 ];
 
-const FAR_TONES: Record<string, string> = { p: "q", q: "Q", s: "S", b: "B" };
+// --- the run ------------------------------------------------------------------
+// Three poses a step, 12 px a frame (6 cells): the landing, with the front
+// knee taking it and the back leg still trailing high; the drive, up on the
+// toe of the back leg with the free knee coming through at hip height; and the
+// flight, both feet off the ground, the trailing shin folded up behind and
+// the front leg reaching for the next landing. The body leans a column into it
+// (Pose.lean) and the arms pump bent instead of swinging straight.
+const LEG_RUN_LAND_FRONT: Leg = [
+  "...........ppppq........",
+  "............ppppq.......",
+  ".............ppppq......",
+  "..............ppppq.....",
+  "...............pppq.....",
+  "...............pppq.....",
+  "................ppq.....",
+  "................ppq.....",
+  "................ppq.....",
+  ".................ppq....",
+  ".................ppq....",
+  ".................pps....",
+  ".................bbb....",
+  ".................bbbb...",
+  "................bbbbb...",
+  "................BBBBB...",
+];
+const LEG_RUN_LAND_BACK: Leg = [
+  "......qpppp.............",
+  ".....qpppp..............",
+  "....qpppp...............",
+  "....qpppp...............",
+  "...qpppp................",
+  "...qppp.................",
+  "..qppp..................",
+  "..qpp...................",
+  ".qpp....................",
+  ".qpp....................",
+  ".spp....................",
+  "bbb.....................",
+  "bbbb....................",
+  "........................",
+  "........................",
+  "........................",
+];
+const LEG_RUN_DRIVE_SUPPORT: Leg = [
+  "........pppppq..........",
+  ".......pppppq...........",
+  ".......ppppq............",
+  "......ppppq.............",
+  "......ppppq.............",
+  ".....pppq...............",
+  ".....pppq...............",
+  "....pppq................",
+  "....pppq................",
+  "....ppq.................",
+  "...ppq..................",
+  "...ppq..................",
+  "...pps..................",
+  "..bbb...................",
+  "...bbbb.................",
+  ".....BB.................",
+];
+const LEG_RUN_DRIVE_FREE: Leg = [
+  "............pppppq......",
+  "..............pppppq....",
+  ".................ppppq..",
+  "..................pppq..",
+  "..................ppq...",
+  "..................ppq...",
+  "..................ppq...",
+  "..................ppq...",
+  "..................pps...",
+  "..................bbb...",
+  ".................bbbb...",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+];
+// flight: 17 rows — one taller than the others so the lifted body still fills
+// the box; the bottom row (the floor) stays empty under both feet
+const LEG_RUN_FLIGHT_TRAIL: Leg = [
+  ".......ppppq............",
+  "......ppppq.............",
+  ".....ppppq..............",
+  "....ppppq...............",
+  "..bbpppq................",
+  ".bbbppq.................",
+  ".sppppq.................",
+  "..pppq..................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+];
+const LEG_RUN_FLIGHT_REACH: Leg = [
+  "...........ppppq........",
+  ".............ppppq......",
+  "...............ppppq....",
+  "................pppq....",
+  ".................ppq....",
+  ".................ppq....",
+  "..................ppq...",
+  "..................ppq...",
+  "..................ppq...",
+  "..................pps...",
+  "..................bbb...",
+  ".................bbbb...",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+];
+
+// --- the gym ------------------------------------------------------------------
+// Hanging from the bar with the knees bent back — the only way a man of this
+// height fits under a bar at the top of a 38-row box: arms overhead take ten
+// rows, and straight legs would want eighteen more.
+const LEGS_HANG_BENT: SpriteMap = [
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  "......qpppp..ppppq......",
+  "......qpppp..ppppq......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  ".......qppp..pppq.......",
+  "......qppppppppppq......",
+  "..bbbbqppppppppppq......",
+  "..BBBBqppppppppppq......",
+];
+// On the bike: the thigh of the leg that is up runs nearly level to a high
+// knee and the shin drops to the pedal at the top of its circle; the leg that
+// is down reaches forward to the pedal at the bottom. Two more for the halves.
+const LEG_PEDAL_UP: Leg = [
+  "..........ppppppppq.....",
+  "............pppppppq....",
+  "...............ppppq....",
+  "...............pppq.....",
+  "..............pppq......",
+  "..............pppq......",
+  ".............pppq.......",
+  ".............pps........",
+  "............bbbb........",
+  "............BBBB........",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+];
+const LEG_PEDAL_DOWN: Leg = [
+  "......qpppp.............",
+  "......qppppp............",
+  ".......qppppp...........",
+  "........qppppp..........",
+  ".........qppppp.........",
+  "..........qpppp.........",
+  "...........qppp.........",
+  "............pppq........",
+  ".............ppq........",
+  ".............ppq........",
+  "..............ppq.......",
+  "..............ppq.......",
+  "..............pps.......",
+  "..............bbbb......",
+  "..............BBBB......",
+  "........................",
+];
+const LEG_PEDAL_FWD: Leg = [
+  ".........pppppppq.......",
+  "...........ppppppq......",
+  "..............ppppq.....",
+  "...............pppq.....",
+  "...............ppq......",
+  "...............ppq......",
+  "................ppq.....",
+  "................ppq.....",
+  "................pps.....",
+  "................bbbb....",
+  "................BBBB....",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+];
+const LEG_PEDAL_BACK: Leg = [
+  "......qppppp............",
+  "......qppppp............",
+  ".......qpppp............",
+  ".......qpppp............",
+  "........qppp............",
+  "........qppp............",
+  ".........ppq............",
+  ".........ppq............",
+  ".........pps............",
+  "........bbbb............",
+  "........BBBB............",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+  "........................",
+];
+
+const FAR_TONES: Record<string, string> = { p: "q", q: "Q", s: "S", b: "B", r: "q", c: "B" };
 const toFar = (row: string) => [...row].map((ch) => FAR_TONES[ch] ?? ch).join("");
 
 /**
@@ -541,6 +757,29 @@ const BACK_LEGS_KNEEL: SpriteMap = [
   ".....bBqppp..pppqBb.....",
   ".....BBqppp..pppqBB.....",
   ".......qppp..pppq.......",
+];
+
+// Half way down to the knees, from behind: the knees bend outward, the feet
+// stay planted, the calves show. The empty top row is what the bend absorbs.
+const BACK_LEGS_HALF: SpriteMap = [
+  "........................",
+  "......qppppppppppq......",
+  "......qppppppppppq......",
+  ".....qpppppppppppq......",
+  ".....qpppp....ppppq.....",
+  ".....qpppp....ppppq.....",
+  "....qpppp......ppppq....",
+  "....qpppp......ppppq....",
+  "....qppp........pppq....",
+  "....qppp........pppq....",
+  "....qppp........pppq....",
+  "....qppp........pppq....",
+  "....qppp........pppq....",
+  "....qppp........pppq....",
+  "....sppp........ppps....",
+  "....bbbb........bbbb....",
+  "....bbbb........bbbb....",
+  "....BBBB........BBBB....",
 ];
 
 // Bare back for the shower: same silhouette as BACK_TORSO, skin ramp — traps
@@ -797,6 +1036,642 @@ const P0 = {
     r: 6,
     c: 17,
     rows: [".xxx.", "wwwww", ".sss.", "ss...", "ss...", "tt..."],
+  } as Patch,
+  // --- petting the dog --------------------------------------------------------
+  // Body coordinates for the crouch (drop 2): shoulder at body row 8 = frame
+  // row 10. The dog lies to the right, low, so every hand is at the frame's
+  // right edge and near the floor. Three tones on the arm like armDown — a
+  // highlight (y) along the top of the forearm, the shade (S) under the elbow
+  // and the heel of the hand — because a flat arm in a big frame is a tube.
+  //
+  // Hand out, palm down, for the nose to find first.
+  petArmOffer: {
+    r: 8,
+    c: 18,
+    rows: [
+      ".ttt..",
+      ".tss..",
+      ".sys..",
+      ".sys..",
+      "..sys.",
+      "..sys.",
+      "..sSs.",
+      "...sS.",
+      "...sy.",
+      "...sy.",
+      "...sy.",
+      "....sy",
+      "....sy",
+      "....ss",
+      "....ss",
+      "....sS",
+      "...sss",
+      "....SS",
+    ],
+  } as Patch,
+  // The stroke, forward: hand on the top of the head, fingers over the brow.
+  petArmStrokeA: {
+    r: 8,
+    c: 18,
+    rows: [
+      ".ttt..",
+      ".tss..",
+      ".sys..",
+      ".sys..",
+      "..sys.",
+      "..sys.",
+      "..sSs.",
+      "...sS.",
+      "...sy.",
+      "...sy.",
+      "....sy",
+      "....sy",
+      "....sy",
+      "....ss",
+      "....ss",
+      "....sS",
+      "....ss",
+      "...ssS",
+      "....SS",
+    ],
+  } as Patch,
+  // The stroke, back: the hand drawn to the neck, the elbow tucked.
+  petArmStrokeB: {
+    r: 8,
+    c: 18,
+    rows: [
+      ".ttt..",
+      ".tss..",
+      ".sys..",
+      ".sys..",
+      ".sys..",
+      "..sys.",
+      "..sSs.",
+      "..sS..",
+      "..sy..",
+      "..sy..",
+      "..sy..",
+      "..ss..",
+      "..ss..",
+      "..ss..",
+      "..ss..",
+      "..sS..",
+      ".sss..",
+      "..SS..",
+    ],
+  } as Patch,
+  // Behind the ear: the fingers apart, the hand a row up and a row down.
+  petArmScratchA: {
+    r: 8,
+    c: 18,
+    rows: [
+      ".ttt..",
+      ".tss..",
+      ".sys..",
+      ".sys..",
+      "..sys.",
+      "..sys.",
+      "..sSs.",
+      "...sS.",
+      "...sy.",
+      "...sy.",
+      "....sy",
+      "....sy",
+      "....ss",
+      "....ss",
+      "....sS",
+      "...ssS",
+      "...s.s",
+    ],
+  } as Patch,
+  petArmScratchB: {
+    r: 8,
+    c: 18,
+    rows: [
+      ".ttt..",
+      ".tss..",
+      ".sys..",
+      ".sys..",
+      "..sys.",
+      "..sys.",
+      "..sSs.",
+      "...sS.",
+      "...sy.",
+      "...sy.",
+      "....sy",
+      "....sy",
+      "....ss",
+      "....ss",
+      "....ss",
+      "....sS",
+      "...ssS",
+      "...s.s",
+    ],
+  } as Patch,
+  // The far hand comes round for the ruffle: the arm is behind the body, so
+  // only the forearm shows, from under the ribs across the knee to the dog.
+  petFarReachFwd: {
+    r: 18,
+    c: 13,
+    rows: [
+      "SS.........",
+      "..SS.......",
+      "....SS.....",
+      "......SS...",
+      ".......SS..",
+      "........SS.",
+      "........SSS",
+    ],
+  } as Patch,
+  petFarReachBack: {
+    r: 18,
+    c: 13,
+    rows: ["SS.....", ".SS....", "..SS...", "...SS..", "....SS.", "....SSS", ".....SS"],
+  } as Patch,
+  // The pat: the hand lifted off the back, about to come down again.
+  petArmPatUp: {
+    r: 8,
+    c: 18,
+    rows: [
+      ".ttt..",
+      ".tss..",
+      ".sys..",
+      ".sys..",
+      "..sys.",
+      "..sys.",
+      "..sSs.",
+      "...sS.",
+      "...sy.",
+      "...sy.",
+      "....sy",
+      "....sy",
+      "....ss",
+      "....ss",
+      "...sss",
+      "....SS",
+    ],
+  } as Patch,
+  // Sitting back on the heels, the hand on the knee, looking at him.
+  petArmKnee: {
+    r: 8,
+    c: 17,
+    rows: [
+      "..ttt.",
+      "..tss.",
+      "..sys.",
+      "..sys.",
+      "..sys.",
+      "...ss.",
+      "...ss.",
+      "...ss.",
+      "...ss.",
+      "...ss.",
+      "...ss.",
+      "...ss.",
+      "..sss.",
+      "..sSS.",
+    ],
+  } as Patch,
+  // --- the gym: the bar overhead, the bike's bars, the barbell on the floor ------
+  // Hanging: both hands on the bar at the top of the box (frame coordinates,
+  // laid on as `over`), the far arm behind the head, the near one in front of
+  // the face. Straight; then bent with the elbows out as he comes up.
+  armsHang: {
+    r: 0,
+    c: 5,
+    rows: [
+      "SSS.........sss",
+      "SSS.........sss",
+      ".SS..........ss",
+      ".SS..........ss",
+      ".SS..........ss",
+      ".SS..........ss",
+      ".SS..........ss",
+      ".SS..........ss",
+      ".SS..........ss",
+      ".ST..........ts",
+      "..T..........t.",
+    ],
+  } as Patch,
+  armsPullHalf: {
+    r: 0,
+    c: 3,
+    rows: [
+      "..SSS.........sss..",
+      "..SSS.........sss..",
+      ".SS.............ss.",
+      "SS...............ss",
+      "SS...............ss",
+      "SS...............ss",
+      ".SS.............ss.",
+      "..ST...........ts..",
+    ],
+  } as Patch,
+  armsPullTop: {
+    r: 0,
+    c: 2,
+    rows: [
+      "...SSS.........sss...",
+      "...SSS.........sss...",
+      "..SS.............ss..",
+      "SS.................ss",
+      ".SS...............ss.",
+      "..ST.............ts..",
+    ],
+  } as Patch,
+  // the near hand forward and down to the handlebars
+  armBars: {
+    r: 8,
+    c: 19,
+    rows: ["ttt.", "ttt.", "tss.", ".sys", "..ss", "..ss", "..sS", "..SS"],
+  } as Patch,
+  // A barbell seen the way the press already sees it, bar across and a plate
+  // at each end, at three heights: on the floor (plates on the boards), at the
+  // knee, at the hip. Twelve rows of plate is a 45 at this scale; the inner
+  // face of each plate is a tone up so it reads against a dark floor.
+  barFloor: {
+    r: 26,
+    c: 0,
+    rows: [
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PGRRRRRRRRRRRRRRRRRRRRGP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+    ],
+  } as Patch,
+  barKnee: {
+    r: 20,
+    c: 0,
+    rows: [
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PGRRRRRRRRRRRRRRRRRRRRGP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+    ],
+  } as Patch,
+  barHip: {
+    r: 16,
+    c: 0,
+    rows: [
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PGRRRRRRRRRRRRRRRRRRRRGP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+      "PG....................GP",
+    ],
+  } as Patch,
+  // both arms straight down to the bar, hands inside the plates (over, frame coords)
+  dlArmsFloor: {
+    r: 10,
+    c: 3,
+    rows: [
+      "ts...............st",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      "SS...............ss",
+      "SS...............ss",
+    ],
+  } as Patch,
+  dlArmsKnee: {
+    r: 9,
+    c: 3,
+    rows: [
+      "ts...............st",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      "SS...............ss",
+      "SS...............ss",
+    ],
+  } as Patch,
+  dlArmsHip: {
+    r: 8,
+    c: 3,
+    rows: [
+      "ts...............st",
+      "ts...............st",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      ".s...............s.",
+      "SS...............ss",
+      "SS...............ss",
+    ],
+  } as Patch,
+  // a finger on a button at chest height
+  armPoint: {
+    r: 8,
+    c: 19,
+    rows: ["ttt.", "tss.", ".sss", "..ss", "...s"],
+  } as Patch,
+  // --- the run's arms: bent at the elbow, pumping ---------------------------------
+  armRunFwd: {
+    r: 8,
+    c: 19,
+    rows: ["ttt.", "ttt.", "tss.", ".sy.", ".sy.", ".ss.", ".sss", "..ss"],
+  } as Patch,
+  armRunBack: {
+    r: 8,
+    c: 17,
+    rows: ["..ttt", "..ttt", ".sss.", "sys..", "sy...", "ss...", ".ss..", "..ss."],
+  } as Patch,
+  farArmRunFwd: {
+    r: 8,
+    c: 2,
+    rows: ["Tt.", "Tt.", "TS.", ".SS", ".SS", ".S.", ".S."],
+  } as Patch,
+  farArmRunBack: {
+    r: 8,
+    c: 0,
+    rows: ["..Tt", "..Tt", ".TS.", "SS..", "SS..", "S...", "SS..", ".SS."],
+  } as Patch,
+  // --- weather on the body -----------------------------------------------------------
+  // Breath in front of the mouth on a cold street, two phases; sweat at the
+  // temple and down the neck after the gym. Effect zones, ignored by the
+  // validator's connectivity like the cigarette smoke.
+  breathA: { r: 4, c: 17, rows: ["v..", ".v.", "..v"] } as Patch,
+  breathB: { r: 3, c: 18, rows: ["v.", "vv", ".v"] } as Patch,
+  sweat: { r: 3, c: 14, rows: ["..c", ".c.", "...", "..c"] } as Patch,
+  // --- the idle flourishes' arms -------------------------------------------------
+  // The hand to the mouth for a yawn (the head goes back), the knuckles at the
+  // eye (the head goes down), the hand flat on the stomach, the fingers at the
+  // temple, the wrist turned up for the watch.
+  armMouth: {
+    r: 5,
+    c: 16,
+    rows: ["ss..", "ss..", ".ss.", ".ss.", "tss.", "ttt.", "tt.."],
+  } as Patch,
+  armEyes: {
+    r: 5,
+    c: 15,
+    rows: ["ss...", "sss..", "..ss.", "..ss.", ".tss.", ".ttt.", ".tt.."],
+  } as Patch,
+  armBelly: {
+    r: 8,
+    c: 14,
+    rows: ["....ttt", "....ttt", "....tss", "....sys", "....sys", "...sss.", "..sss..", "sssS..."],
+  } as Patch,
+  armTemple: {
+    r: 4,
+    c: 15,
+    rows: [".s...", "ss...", ".ss..", "..ss.", "..ss.", ".tss.", ".ttt.", ".tt.."],
+  } as Patch,
+  armWatch: {
+    r: 8,
+    c: 15,
+    rows: ["....ttt", "....ttt", "....tss", "....sys", "...ssys", ".sSsss.", "..ss...", "........"],
+  } as Patch,
+  // --- things carried (the layers) ----------------------------------------------
+  // The phone held low in front of the chest, read while walking: the forearm
+  // comes up across the body and the head goes down to it (the pose bows).
+  armPhoneLow: {
+    r: 8,
+    c: 17,
+    rows: ["..ttt", "..ttt", "..tss", "..sys", "..sys", ".sss.", "cc...", "css..", ".ss.."],
+  } as Patch,
+  // A parcel under the arm: cardboard (spruce tones) pinned between the
+  // forearm and the ribs, the hand cupping its far corner.
+  armParcel: {
+    r: 8,
+    c: 16,
+    rows: [
+      "...ttt.",
+      "...ttt.",
+      "...tss.",
+      "...sys.",
+      "...sys.",
+      "Wwwwws.",
+      "WwwwwSs",
+      "Wwwwwss",
+      "WWWWWs.",
+    ],
+  } as Patch,
+  // Hands in the trouser pockets: the arm goes down and disappears at the
+  // hip; the far one the same, a tone down.
+  armPocket: {
+    r: 8,
+    c: 19,
+    rows: ["ttt", "ttt", "tss", "sys", "sys", "sss", ".ss", ".ss", ".ss", ".ss", ".sS"],
+  } as Patch,
+  farArmPocket: {
+    r: 8,
+    c: 2,
+    rows: ["Tt", "Tt", "TS", "SS", "SS", "SS", ".S", ".S", ".S", ".S", ".S"],
+  } as Patch,
+  // --- petting the dog, from behind -------------------------------------------
+  // He kneels with his back to the camera and the dog in front of him and a
+  // little to his right, so the working arm is the one that leaves the
+  // silhouette: it goes down and out to the right edge and the back of the
+  // hand (shade) shows at the bottom. A stroke along the dog's back — towards
+  // the camera and away — is a hand going up and down the screen from behind.
+  // The other arm rests on the thigh, or comes forward too and disappears in
+  // front of the body, which is what an arm reaching ahead of you does.
+  backPetReachUp: {
+    r: 8,
+    c: 20,
+    rows: [
+      "tt..",
+      "tt..",
+      "ss..",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..sS",
+      "..SS",
+    ],
+  } as Patch,
+  backPetReach: {
+    r: 8,
+    c: 20,
+    rows: [
+      "tt..",
+      "tt..",
+      "ss..",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..sS",
+      "..SS",
+    ],
+  } as Patch,
+  backPetReachLow: {
+    r: 8,
+    c: 20,
+    rows: [
+      "tt..",
+      "tt..",
+      "ss..",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..sS",
+      "..SS",
+    ],
+  } as Patch,
+  // the scratch: fingers spread at the end, the hand a row up and down
+  backPetScratchA: {
+    r: 8,
+    c: 20,
+    rows: [
+      "tt..",
+      "tt..",
+      "ss..",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..sS",
+      ".S.S",
+    ],
+  } as Patch,
+  backPetScratchB: {
+    r: 8,
+    c: 20,
+    rows: [
+      "tt..",
+      "tt..",
+      "ss..",
+      ".ss.",
+      ".ss.",
+      ".ss.",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..ss",
+      "..sS",
+      ".S.S",
+    ],
+  } as Patch,
+  // the left arm on the left thigh, and its mirror for the right
+  backArmThighL: {
+    r: 8,
+    c: 2,
+    rows: [
+      "tt....",
+      "tt....",
+      "ts....",
+      ".s....",
+      ".s....",
+      ".s....",
+      ".s....",
+      ".s....",
+      ".s....",
+      ".ss...",
+      ".ss...",
+      "..ss..",
+      "...ss.",
+      "...sS.",
+    ],
+  } as Patch,
+  backArmThighR: {
+    r: 8,
+    c: 16,
+    rows: [
+      "....tt",
+      "....tt",
+      "....st",
+      "....s.",
+      "....s.",
+      "....s.",
+      "....s.",
+      "....s.",
+      "....s.",
+      "...ss.",
+      "...ss.",
+      "..ss..",
+      ".ss...",
+      ".Ss...",
+    ],
+  } as Patch,
+  // the left arm reaching forward too: it angles out and down and is gone in
+  // front of the body from the elbow on
+  backArmForwardL: {
+    r: 8,
+    c: 1,
+    rows: [".tt.", ".tt.", ".ss.", "ss..", "ss..", "ss..", "sS..", "SS.."],
   } as Patch,
   // --- the seated arms --------------------------------------------------------
   // In body coordinates like every other arm: the pose drops them four rows
@@ -1640,6 +2515,42 @@ const ARM_PATCHES = new Set<keyof typeof P0>([
   "armPhone",
   "armMug",
   "armMugUp",
+  "armMouth",
+  "armEyes",
+  "armBelly",
+  "armTemple",
+  "armWatch",
+  "armsHang",
+  "armsPullHalf",
+  "armsPullTop",
+  "dlArmsFloor",
+  "dlArmsKnee",
+  "dlArmsHip",
+  "armBars",
+  "armPoint",
+  "armRunFwd",
+  "armRunBack",
+  "farArmRunFwd",
+  "farArmRunBack",
+  "armPhoneLow",
+  "armParcel",
+  "armPocket",
+  "farArmPocket",
+  "backPetReachUp",
+  "backPetReach",
+  "backPetReachLow",
+  "backPetScratchA",
+  "backPetScratchB",
+  "backArmThighL",
+  "backArmThighR",
+  "backArmForwardL",
+  "petArmOffer",
+  "petArmStrokeA",
+  "petArmStrokeB",
+  "petArmScratchA",
+  "petArmScratchB",
+  "petArmPatUp",
+  "petArmKnee",
   "seatedArmLap",
   "seatedArmThigh",
   "seatedArmPhone",
@@ -1701,6 +2612,36 @@ const SHOULDER_PATCHES = new Set<keyof typeof P0>([
   "armPhone",
   "armMug",
   "armMugUp",
+  "armMouth",
+  "armEyes",
+  "armBelly",
+  "armTemple",
+  "armWatch",
+  "armBars",
+  "armPoint",
+  "armRunFwd",
+  "armRunBack",
+  "farArmRunFwd",
+  "farArmRunBack",
+  "armPhoneLow",
+  "armParcel",
+  "armPocket",
+  "farArmPocket",
+  "backPetReachUp",
+  "backPetReach",
+  "backPetReachLow",
+  "backPetScratchA",
+  "backPetScratchB",
+  "backArmThighL",
+  "backArmThighR",
+  "backArmForwardL",
+  "petArmOffer",
+  "petArmStrokeA",
+  "petArmStrokeB",
+  "petArmScratchA",
+  "petArmScratchB",
+  "petArmPatUp",
+  "petArmKnee",
   "seatedArmLap",
   "seatedArmThigh",
   "seatedArmPhone",
@@ -1734,6 +2675,9 @@ const SHOULDER_PATCHES = new Set<keyof typeof P0>([
   "cupSteamB",
   "cupSteamBlown",
   "bottleHip",
+  "breathA",
+  "breathB",
+  "sweat",
   "wispB",
   // the hands on the bar: the bar is wider than the grip, so they can slide
   "armsRack",
@@ -1760,10 +2704,72 @@ const SINGLE_ANCHOR: Partial<Record<keyof typeof P0, "far" | "near">> = {
   seatedArmLap: "near",
   seatedArmThigh: "near",
   seatedArmPhone: "near",
+  petArmOffer: "near",
+  petArmStrokeA: "near",
+  petArmStrokeB: "near",
+  petArmScratchA: "near",
+  petArmScratchB: "near",
+  petArmPatUp: "near",
+  petArmKnee: "near",
+  backPetReachUp: "near",
+  backPetReach: "near",
+  backPetReachLow: "near",
+  backPetScratchA: "near",
+  backPetScratchB: "near",
+  backArmThighR: "near",
+  backArmThighL: "far",
+  backArmForwardL: "far",
+  armBars: "near",
+  armPoint: "near",
+  armRunFwd: "near",
+  armRunBack: "near",
+  farArmRunFwd: "far",
+  farArmRunBack: "far",
+  armMouth: "near",
+  armEyes: "near",
+  armBelly: "near",
+  armTemple: "near",
+  armWatch: "near",
+  armPhoneLow: "near",
+  armParcel: "near",
+  armPocket: "near",
+  farArmPocket: "far",
 };
 
 /** The shoulder row in frame coordinates (torso row 1). */
 const SHOULDER_Y = 8;
+
+/**
+ * Arms drawn in frame coordinates for a body that is not standing where the
+ * standing body stands — hanging from the bar, bent to a barbell — say where
+ * their shoulders are themselves, so the sleeve pass starts from the right cell.
+ */
+const FIXED_ANCHORS: Partial<Record<keyof typeof P0, Anchor[]>> = {
+  armsHang: [
+    [6, 9],
+    [18, 9],
+  ],
+  armsPullHalf: [
+    [5, 7],
+    [18, 7],
+  ],
+  armsPullTop: [
+    [4, 5],
+    [19, 5],
+  ],
+  dlArmsFloor: [
+    [4, 10],
+    [20, 10],
+  ],
+  dlArmsKnee: [
+    [4, 9],
+    [20, 9],
+  ],
+  dlArmsHip: [
+    [4, 8],
+    [20, 8],
+  ],
+};
 
 /** Rebuild the neck row of a head for a neck `w` cells wide, ending at the face side. */
 function neckRow(row: string, w: number, back: boolean): string {
@@ -1809,6 +2815,8 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   // --- the body -------------------------------------------------------------
   let head = HEAD.map((row, y) => (y === 6 ? neckRow(row, morph.neck, false) : row));
   let backHead = BACK_HEAD.map((row, y) => (y === 6 ? neckRow(row, morph.neck, true) : row));
+  // the head he showers with: no hood, no beanie — they came off with the shirt
+  const backHeadBare = backHead;
   if (headwear.hood && top.hood) {
     head = hoodUpPass(head, [1, 2, 3]);
     backHead = hoodUpPass(backHead, [1, 2, 3, 4, 5]);
@@ -1832,8 +2840,9 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     if (top.belt) m = beltPass(m, 12);
     return m;
   };
-  const torso = dressTorso(TORSO);
-  const backTorso = dressTorso(BACK_TORSO);
+  // the light last: on the near shoulder in profile, on both blades from behind
+  const torso = shirtTexture(dressTorso(TORSO), "profile");
+  const backTorso = shirtTexture(dressTorso(BACK_TORSO), "back");
   const backTorsoBare = widenRuns(
     widenRuns(BACK_TORSO_BARE, 0, 6, morph.shoulder, TORSO_ZONES),
     7,
@@ -1852,7 +2861,8 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     o: {
       hips: [number, number];
       thighs?: [number, number];
-      shin: number;
+      /** the shin row the height morph duplicates; absent = the height goes elsewhere */
+      shin?: number;
       ankle: number;
       clothed?: boolean;
     },
@@ -1860,17 +2870,20 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     let m = widenRuns(legs, o.hips[0], o.hips[1], morph.hip);
     if (o.thighs) m = widenRuns(m, o.thighs[0], o.thighs[1], morph.thigh);
     // a longer shin moves the ankle
-    m = extendRows(m, o.shin, morph.shin);
-    const ankle = o.ankle + morph.shin;
+    const grown = o.shin === undefined ? 0 : morph.shin;
+    if (o.shin !== undefined) m = extendRows(m, o.shin, morph.shin);
+    const ankle = o.ankle + grown;
     if (o.clothed !== false) {
       if (bottom.shorts) m = shortsPass(m, 8, ankle);
       if (bottom.stripe) m = stripePass(m, 2, bottom.shorts ? 7 : ankle - 1);
       if (bottom.cuff && !bottom.shorts) m = cuffPass(m, ankle);
       if (feet.bare) m = barefootPass(m);
       else if (feet.shaft) m = bootsPass(m, ankle, feet.shaft);
-      else if (spec.garments.feet === "sandals") m = sandalsPass(m, ankle);
+      else if (feet.open) m = sandalsPass(m, ankle);
     }
-    return m;
+    // and the light, after the clothes are on: the highlight down the front
+    // of the near leg, the crease behind a bend, the heel and toe of the shoe
+    return shoeTexture(trouserTexture(m));
   };
   const standing = {
     hips: [0, 1] as [number, number],
@@ -1878,13 +2891,21 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     shin: 13,
     ankle: 14,
   };
+  /** Height that goes above the figure instead of into the shins (a seated man's thighs, not shins). */
+  const growTop = (m: SpriteMap, n: number): string[] => {
+    const empty = ".".repeat(m[0]?.length ?? 24);
+    if (n >= 0) return [...Array.from({ length: n }, () => empty), ...m];
+    return m.slice(-n);
+  };
   const legsStand = dressLegs(LEGS_STAND, standing);
   const legsStride = dressLegs(LEGS_STRIDE, standing);
   const legsContact = dressLegs(LEGS_CONTACT, standing);
   const legsPass = dressLegs(LEGS_PASS, { ...standing, shin: 11 });
   const legsHalf = dressLegs(LEGS_HALF, { hips: [1, 2], thighs: [3, 9], shin: 13, ankle: 14 });
   const legsBent = dressLegs(LEGS_BENT, { hips: [2, 3], thighs: [4, 9], shin: 13, ankle: 14 });
-  const legsSit = dressLegs(LEGS_SIT, { hips: [4, 7], shin: 13, ankle: 14 });
+  // a taller man on the same bench has longer thighs, not longer shins: the
+  // seat stays where the bench is and the frame grows at the top instead
+  const legsSit = growTop(dressLegs(LEGS_SIT, { hips: [4, 7], ankle: 14 }), morph.shin);
   const legsTiptoe = dressLegs(LEGS_TIPTOE, { ...standing, shin: 14, ankle: 15 });
   const legsIdleShift = dressLegs(LEGS_IDLE_SHIFT, standing);
   // the eight-frame walk: each pose once per step, near leg in front and then
@@ -1910,6 +2931,29 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   const legsLateB = walkSet(LEG_LATE_SWING, LEG_LATE_SUPPORT, { shin: 10, ankle: 14 });
   const legsScuffA = walkSet(LEG_LATE_SUPPORT, LEG_SCUFF_SWING, { shin: 10, ankle: 14 });
   const legsScuffB = walkSet(LEG_SCUFF_SWING, LEG_LATE_SUPPORT, { shin: 10, ankle: 14 });
+  // the run: land, drive, flight — A with the near leg in front, B the far
+  const legsRunLandA = walkSet(LEG_RUN_LAND_FRONT, LEG_RUN_LAND_BACK, { shin: 10, ankle: 13 });
+  const legsRunLandB = walkSet(LEG_RUN_LAND_BACK, LEG_RUN_LAND_FRONT, { shin: 10, ankle: 13 });
+  const legsRunDriveA = walkSet(LEG_RUN_DRIVE_SUPPORT, LEG_RUN_DRIVE_FREE, { shin: 9, ankle: 14 });
+  const legsRunDriveB = walkSet(LEG_RUN_DRIVE_FREE, LEG_RUN_DRIVE_SUPPORT, { shin: 9, ankle: 14 });
+  const legsRunFlightA = walkSet(LEG_RUN_FLIGHT_TRAIL, LEG_RUN_FLIGHT_REACH, {
+    shin: 7,
+    ankle: 11,
+  });
+  const legsRunFlightB = walkSet(LEG_RUN_FLIGHT_REACH, LEG_RUN_FLIGHT_TRAIL, {
+    shin: 7,
+    ankle: 11,
+  });
+  const legsHangBent = dressLegs(LEGS_HANG_BENT, {
+    hips: [0, 1],
+    thighs: [2, 6],
+    shin: 5,
+    ankle: 8,
+  });
+  const legsPedalA = walkSet(LEG_PEDAL_UP, LEG_PEDAL_DOWN, { shin: 6, ankle: 14 });
+  const legsPedalB = walkSet(LEG_PEDAL_DOWN, LEG_PEDAL_UP, { shin: 6, ankle: 14 });
+  const legsPedalFwd = walkSet(LEG_PEDAL_FWD, LEG_PEDAL_BACK, { shin: 7, ankle: 10 });
+  const legsPedalBack = walkSet(LEG_PEDAL_BACK, LEG_PEDAL_FWD, { shin: 7, ankle: 10 });
   const backLegsKneel = dressLegs(BACK_LEGS_KNEEL, {
     hips: [6, 7],
     thighs: [8, 13],
@@ -1918,6 +2962,12 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     clothed: false,
   });
   const backLegsBare = dressLegs(BACK_LEGS_BARE, { ...standing, clothed: false });
+  const backLegsHalf = dressLegs(BACK_LEGS_HALF, {
+    hips: [1, 2],
+    thighs: [3, 9],
+    shin: 12,
+    ankle: 14,
+  });
 
   // lying poses are drawn in the full frame; they ride down with the floor
   const lying = (m: SpriteMap): string[] =>
@@ -1927,6 +2977,8 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
 
   // --- the arms -------------------------------------------------------------
   const anchorsFor = (name: keyof typeof P0): Anchor[] => {
+    const fixed = FIXED_ANCHORS[name];
+    if (fixed) return fixed;
     const near: Anchor = [20 + d, SHOULDER_Y];
     const far: Anchor = [3 - d, SHOULDER_Y];
     const single = SINGLE_ANCHOR[name];
@@ -1973,10 +3025,12 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     legsBent,
     legsSit,
     backHead,
+    backHeadBare,
     backTorso,
     backLegsKneel,
     backTorsoBare,
     backLegsBare,
+    backLegsHalf,
     legsIdleShift,
     legsTiptoe,
     legsRecoilA,
@@ -1987,6 +3041,17 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     legsLateB,
     legsScuffA,
     legsScuffB,
+    legsRunLandA,
+    legsRunLandB,
+    legsRunDriveA,
+    legsRunDriveB,
+    legsRunFlightA,
+    legsRunFlightB,
+    legsHangBent,
+    legsPedalA,
+    legsPedalB,
+    legsPedalFwd,
+    legsPedalBack,
   };
   for (const [name, map] of Object.entries(parts)) b.part(name, map);
 
@@ -2229,21 +3294,21 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   const bareHead = (m: SpriteMap) => replaceColor(replaceColor(m, "k", "h"), "K", "H");
   b.frame("showerIdle", (f) =>
     f
-      .stack("backHead", "backTorsoBare", "backLegsBare")
+      .stack("backHeadBare", "backTorsoBare", "backLegsBare")
       .map(bareHead)
       .patch(P.bareArmsDown)
       .patch(P.clothesPile),
   );
   b.frame("showerTap", (f) =>
     f
-      .stack("backHead", "backTorsoBare", "backLegsBare")
+      .stack("backHeadBare", "backTorsoBare", "backLegsBare")
       .map(bareHead)
       .patch(P.showerTapArm)
       .patch(P.clothesPile),
   );
   b.frame("washHairA", (f) =>
     f
-      .stack("backHead", "backTorsoBare", "backLegsBare")
+      .stack("backHeadBare", "backTorsoBare", "backLegsBare")
       .map(bareHead)
       .patch(P.washHairBoth)
       .patch(P.clothesPile)
@@ -2252,7 +3317,7 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   );
   b.frame("washHairB", (f) =>
     f
-      .stack("backHead", "backTorsoBare", "backLegsBare")
+      .stack("backHeadBare", "backTorsoBare", "backLegsBare")
       .map(bareHead)
       .patch(P.washHairBoth)
       .patch(P.clothesPile)
@@ -2260,7 +3325,7 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   );
   b.frame("scrubA", (f) =>
     f
-      .stack("backHead", "backTorsoBare", "backLegsBare")
+      .stack("backHeadBare", "backTorsoBare", "backLegsBare")
       .map(bareHead)
       .patch(P.scrubTorso)
       .patch(P.clothesPile)
@@ -2269,7 +3334,7 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   b.variant("scrubB", "scrubA", (m) => bowHead(m, 1));
   b.frame("rinse", (f) =>
     f
-      .stack("backHead", "backTorsoBare", "backLegsBare")
+      .stack("backHeadBare", "backTorsoBare", "backLegsBare")
       .map(bareHead)
       .patch(P.bareArmsDown)
       .patch(P.clothesPile)
@@ -2278,7 +3343,7 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   );
   b.frame("towelOut", (f) =>
     f
-      .stack("backHead", "backTorsoBare", "backLegsBare")
+      .stack("backHeadBare", "backTorsoBare", "backLegsBare")
       .map(bareHead)
       .patch(P.bareArmsDown)
       .patch(P.towelWrap),
@@ -2361,11 +3426,13 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
         ],
       }),
   );
+  // legsBent carries two empty rows for the bend to absorb — one was leaving a
+  // blank row through the hips on this frame, twelve times per swing
   b.frame("swingMid", (f) =>
     f
       .stack("head", "torso", "legsBent")
       .patch(P.giriaMid)
-      .map((m) => dropBody(m, 1)),
+      .map((m) => dropBody(m, 2)),
   );
   b.variant("drinkC", "drinkA", (m) => bowHead(m));
   b.variant("phoneC", "phoneA", (m) => mirrorRows(m, 0, 6));
@@ -2457,7 +3524,8 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   // shoulder that lasts three frames and faces front before the foot lands.
   const stride = (legs: string, far: string, near: string, more: Partial<Pose> = {}): Pose => ({
     legs,
-    arms: [far, near],
+    far: [far],
+    near: [near],
     posture: true,
     ...more,
   });
@@ -2478,6 +3546,96 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     lateBLook: stride("legsLateB", "farArmFwd", "armSwingBack", { head: { turn: true } }),
   };
 
+  // --- the run -------------------------------------------------------------------
+  // Land (body a row down, the leg that landed forward), drive (up on the back
+  // toe), flight (both feet off the ground, body a row up). Lean 1 throughout;
+  // the arms are the legs' opposite as in the walk, but bent.
+  const sprint = (legs: string, far: string, near: string, more: Partial<Pose> = {}): Pose => ({
+    legs,
+    far: [far],
+    near: [near],
+    lean: 1,
+    posture: true,
+    ...more,
+  });
+  const RUN: Record<string, Pose> = {
+    runLandA: sprint("legsRunLandA", "farArmRunFwd", "armRunBack", { drop: 1 }),
+    runDriveA: sprint("legsRunDriveA", "farArmRunFwd", "armRunBack"),
+    runFlightA: sprint("legsRunFlightA", "farArmRunBack", "armRunFwd", { lift: true }),
+    runLandB: sprint("legsRunLandB", "farArmRunBack", "armRunFwd", { drop: 1 }),
+    runDriveB: sprint("legsRunDriveB", "farArmRunBack", "armRunFwd"),
+    runFlightB: sprint("legsRunFlightB", "farArmRunFwd", "armRunBack", { lift: true }),
+  };
+  // Drunk: the walk with the head hanging and the body swaying a column either
+  // way on the pass; the toe catches every other cycle.
+  const DRUNK: Record<string, Pose> = {
+    drunkPassA: { ...WALK.passHiA, lean: 1, head: { bow: 1 } },
+    drunkPassB: { ...WALK.passHiB, lean: -1, head: { bow: 1 } },
+    drunkRecoilA: { ...WALK.recoilA, head: { bow: 2 } },
+    drunkRecoilB: { ...WALK.recoilB, head: { bow: 2 } },
+    drunkLateA: { ...WALK.lateA, lean: 1, head: { bow: 1 } },
+    drunkLateB: { ...WALK.lateB, lean: -1, head: { bow: 1 } },
+  };
+
+  // --- the gym -------------------------------------------------------------------
+  // Pull-ups: the action draws him 16 px higher, which puts the top row of the
+  // box on the bar. The hang sits the whole figure three rows down (arms
+  // overhead), the pull brings it up through the half to the top, where the
+  // eyes are level with the bar — as far as a 38-row box lets a chin go.
+  const hang = (arms: string, rise: number, more: Partial<Pose> = {}): Pose => ({
+    legs: "legsHangBent",
+    rise,
+    over: [arms],
+    ...more,
+  });
+  const pedal = (legs: string): Pose => ({
+    legs,
+    far: ["farArm"],
+    near: ["armBars"],
+    lean: 1,
+    head: { bow: 1 },
+  });
+  const GYM: Record<string, Pose> = {
+    hang: hang("armsHang", -3, { head: { chin: true } }),
+    pullHalf: hang("armsPullHalf", 0),
+    pullTop: hang("armsPullTop", 2),
+    // the bike: the action lifts him 28 px onto the saddle; the near hand is on
+    // the bars, the body leans into them, the legs go round
+    cycleA: pedal("legsPedalA"),
+    cycleFwd: pedal("legsPedalFwd"),
+    cycleB: pedal("legsPedalB"),
+    cycleBack: pedal("legsPedalBack"),
+    // the deadlift: the bar on the boards, at the knee, at the hip; the head
+    // goes down with it and comes up ahead of it
+    dlFloor: { legs: "legsBent", drop: 2, head: { bow: 2 }, over: ["barFloor", "dlArmsFloor"] },
+    dlKnee: { legs: "legsHalf", drop: 1, head: { bow: 1 }, over: ["barKnee", "dlArmsKnee"] },
+    dlTop: { legs: "legsStand", head: { chin: true }, over: ["barHip", "dlArmsHip"] },
+    // a finger on a button
+    pressButton: { legs: "legsStand", far: ["farArm"], near: ["armPoint"] },
+  };
+
+  // Tired: the walk with the head down (the drunk's recoil, head hanging) and
+  // no rise over the leg on the pass; shorter steps.
+  const TIRED: Record<string, Pose> = {
+    // the flat pass (18-row legs): no rise over the leg when he is spent
+    tiredPassA: {
+      legs: "legsPass",
+      far: ["farArm"],
+      near: ["armMidFwd"],
+      posture: true,
+      head: { bow: 1 },
+    },
+    tiredPassB: {
+      legs: "legsPassAlt",
+      far: ["farArm"],
+      near: ["armMidBack"],
+      posture: true,
+      head: { bow: 1 },
+    },
+    tiredLateA: { ...WALK.lateA, head: { bow: 1 } },
+    tiredLateB: { ...WALK.lateB, head: { bow: 1 } },
+  };
+
   // --- over the counter -------------------------------------------------------
   // Coffee (and grzaniec, which comes in the same returnable cup): held to the
   // chest with the steam coming off it, blown on, sipped with the chin up. The
@@ -2487,14 +3645,16 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   // pull, a deeper one, down with the head dropped for the breath, a look along
   // the street with it hanging from the hand. Water is the same bottle in clear
   // plastic.
-  const upright = (arms: string[], more: Partial<Pose> = {}): Pose => ({
+  const upright = (near: string[], more: Partial<Pose> = {}): Pose => ({
     legs: "legsStand",
-    arms: ["farArm", ...arms],
+    far: ["farArm"],
+    near,
     ...more,
   });
   const bottle = (prefix: string, tone: string): Record<string, Pose> => ({
-    [`${prefix}Hold`]: upright(["armDown", `${tone}bottleHip`], { posture: true }),
-    [`${prefix}HoldLook`]: upright(["armDown", `${tone}bottleHip`], {
+    [`${prefix}Hold`]: upright(["armDown"], { props: [`${tone}bottleHip`], posture: true }),
+    [`${prefix}HoldLook`]: upright(["armDown"], {
+      props: [`${tone}bottleHip`],
       posture: true,
       head: { turn: true },
     }),
@@ -2504,9 +3664,9 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     [`${prefix}Deep`]: upright([], { head: { chin: true }, over: [`${tone}armBottleDeep`] }),
   });
   const COUNTER: Record<string, Pose> = {
-    coffeeHold: upright(["armCupHold", "cupSteamA"]),
-    coffeeHoldB: upright(["armCupHold", "cupSteamB"]),
-    coffeeBlow: upright(["armCupHold", "cupSteamBlown"], { head: { bow: 1 } }),
+    coffeeHold: upright(["armCupHold"], { props: ["cupSteamA"] }),
+    coffeeHoldB: upright(["armCupHold"], { props: ["cupSteamB"] }),
+    coffeeBlow: upright(["armCupHold"], { props: ["cupSteamBlown"], head: { bow: 1 } }),
     coffeeSip: upright(["armCupSip"]),
     coffeeSipUp: upright([], { head: { chin: true }, over: ["armCupSipUp"] }),
     hotdogHold: upright(["armBunHold"]),
@@ -2528,7 +3688,7 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
   const seated = (arms: string[], more: Partial<Pose> = {}): Pose => ({
     legs: "legsSit",
     drop: 4,
-    arms: ["farArm"],
+    far: ["farArm"],
     over: arms,
     ...more,
   });
@@ -2540,6 +3700,62 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     sitDozeDeep: seated(["seatedArmLap"], { head: { bow: 3 } }),
     sitGlance: seated(["seatedArmLap"], { head: { turn: true } }),
   };
+  // --- the dog ------------------------------------------------------------------
+  // From behind. He turns into the scene, goes down through a half squat onto
+  // his knees, and the dog is in front of him where a dog you are petting is.
+  // Kneeling upright is drop 6 (backKneel's); leaning in over the dog is drop
+  // 7 — the whole back sinks a row — with the head down one or two more. From
+  // behind, a head bowed is a head going down into the shoulders, which is
+  // exactly what it looks like when somebody is looking at a dog.
+  const BACK = ["backHead", "backTorso"] as const;
+  const kneeling = (over: string[], more: Partial<Pose> = {}): Pose => ({
+    upper: BACK,
+    legs: "backLegsKneel",
+    drop: 6,
+    over,
+    ...more,
+  });
+  const leaning = (over: string[], more: Partial<Pose> = {}): Pose =>
+    kneeling(over, { drop: 7, head: { bow: 1 }, ...more });
+  const PET: Record<string, Pose> = {
+    backCrouchHalf: { upper: BACK, legs: "backLegsHalf", drop: 1, near: ["backArms"] },
+    // on the knees, hands on the thighs, looking at him
+    petKneel: kneeling(["backArmThighL", "backArmThighR"]),
+    // the hand out and down for the nose
+    petOffer: kneeling(["backArmThighL", "backPetReachUp"], { head: { bow: 1 } }),
+    // the strokes: along the back, towards and away — up and down the screen
+    petStrokeA: leaning(["backArmThighL", "backPetReachLow"]),
+    petStrokeB: leaning(["backArmThighL", "backPetReach"]),
+    // behind the ear, head right down over it
+    petScratchA: leaning(["backArmThighL", "backPetScratchA"], { head: { bow: 2 } }),
+    petScratchB: leaning(["backArmThighL", "backPetScratchB"], { head: { bow: 2 } }),
+    // both hands in the neck
+    petRuffleA: leaning(["backArmForwardL", "backPetReachLow"], { head: { bow: 2 } }),
+    petRuffleB: leaning(["backArmForwardL", "backPetReach"], { head: { bow: 2 } }),
+    // the pat: up off the back and down onto it
+    petPatUp: leaning(["backArmThighL", "backPetReachUp"]),
+    // sat back upright, the hand still on him, looking
+    petLook: kneeling(["backArmThighL", "backPetReach"]),
+  };
+
+  // --- the idle flourishes -------------------------------------------------------
+  // Standing poses for the things a body does on its own when it is tired,
+  // cold, hungry, the morning after, or waiting: core/idleBrain picks them
+  // from the moment (GameConfig.playerIdles). The shiver borrows the pockets
+  // layer's bodies; the phone the phoneLow one.
+  const IDLE: Record<string, Pose> = {
+    yawnA: upright(["armMouth"]),
+    yawn: upright([], { head: { chin: true }, over: ["armMouth"] }),
+    rubEyes: upright([], { head: { bow: 1 }, over: ["armEyes"] }),
+    rubEyesB: upright([], { head: { bow: 2 }, over: ["armEyes"] }),
+    belly: upright(["armBelly"], { head: { bow: 1 } }),
+    temples: upright([], { head: { bow: 1 }, over: ["armTemple"] }),
+    watch: upright(["armWatch"], { head: { bow: 1 } }),
+    // the cough: the fist to the mouth and the head jerking down into it
+    coughA: upright(["armMouth"], { head: { bow: 1 } }),
+    coughB: upright([], { head: { bow: 2 }, over: ["armMouth"] }),
+  };
+
   // --- layers: the upper half of one pose on the lower half of another ------
   // This is the thing the hand-drawn frames could never do. Drinking is an
   // upper-body pose; a seat is a lower-body one; a man drinking on a bench is
@@ -2552,8 +3768,234 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     ]),
   );
 
-  for (const [name, pose] of Object.entries({ ...WALK, ...COUNTER, ...SEATED, ...LAYERED })) {
+  for (const [name, pose] of Object.entries({
+    ...WALK,
+    ...RUN,
+    ...DRUNK,
+    ...TIRED,
+    ...IDLE,
+    ...GYM,
+    ...COUNTER,
+    ...SEATED,
+    ...PET,
+    ...LAYERED,
+  })) {
     b.frame(name, (f) => f.raw(buildPose(rig, pose)));
+  }
+
+  // --- layers: what he carries over whatever the body does ----------------------
+  // BODIES are the poses of the frames a layer can ride on — the hand-drawn
+  // standing, walking and seated frames re-stated as data. UPPER are the things
+  // in his hand. For every layer × body the recipe bakes `body+upper`, and the
+  // runtime (core/layerBrain) swaps it in for the body's own frame while the
+  // layer is on. A body with no pose of its own borrows its base (a glance back
+  // mid-stride is walked plain while he holds something).
+  const BODIES: Record<string, Pose> = {
+    stand: upright(["armDown"], { posture: true }),
+    idleB: upright(["armDown"], { posture: true, drop: 1 }),
+    leanIdle: { legs: "legsIdleShift", far: ["farArm"], near: ["armSwingBack"], posture: true },
+    nod: upright(["armDown"], { posture: true, head: { bow: 1 } }),
+    contactA: {
+      legs: "legsContact",
+      far: ["farArmFwd"],
+      near: ["armSwingBack"],
+      drop: 1,
+      posture: true,
+    },
+    contactB: {
+      legs: "legsContactAlt",
+      far: ["farArmBack"],
+      near: ["armSwingFwd"],
+      drop: 1,
+      posture: true,
+    },
+    recoilA: WALK.recoilA,
+    passHiA: WALK.passHiA,
+    lateA: WALK.lateA,
+    recoilB: WALK.recoilB,
+    passHiB: WALK.passHiB,
+    lateB: WALK.lateB,
+    scuffA: WALK.scuffA,
+    scuffB: WALK.scuffB,
+    passA: { legs: "legsPass", far: ["farArm"], near: ["armMidFwd"], posture: true },
+    passB: { legs: "legsPassAlt", far: ["farArm"], near: ["armMidBack"], posture: true },
+    sit: seated(["armDown"]),
+    sitLap: SEATED.sitLap,
+    sitLean: SEATED.sitLean,
+    sitGlance: SEATED.sitGlance,
+  };
+  const BODY_ALIAS: Record<string, string> = {
+    recoilBLook: "recoilB",
+    passHiBLook: "passHiB",
+    lateBLook: "lateB",
+    lookBack: "stand",
+    stretchA: "stand",
+    stretchB: "stand",
+    talkA: "stand",
+    talkB: "stand",
+    sitDoze: "sitLap",
+    sitDozeDeep: "sitLap",
+    sitPhone: "sitLap",
+    sitBack: "sit",
+    sitCross: "sit",
+    sitSlouch: "sit",
+  };
+  const UPPER: Record<string, Pose> = {
+    cigDown: upright(["armCigDown"], { props: ["wispA"] }),
+    cigDownB: upright(["armCigDown"], { props: ["wispB"] }),
+    cigHalf: upright(["armCigHalf"]),
+    cigLips: upright(["armCigLips"], { over: ["emberFace"] }),
+    cupHold: COUNTER.coffeeHold,
+    cupHoldB: COUNTER.coffeeHoldB,
+    cupSip: COUNTER.coffeeSip,
+    bottleCarry: upright(["armDown"], { props: ["bottleHip"] }),
+    bottleRaise: COUNTER.beerRaise,
+    bottleDrink: COUNTER.beerDrink,
+    phoneEar: upright(["armPhone"]),
+    phoneLow: upright(["armPhoneLow"], { head: { bow: 1 } }),
+    parcel: upright(["armParcel"]),
+    pockets: { legs: "legsStand", far: ["farArmPocket"], near: ["armPocket"] },
+    // the same, with the breath showing — the cold street's version
+    pocketsBreathA: {
+      legs: "legsStand",
+      far: ["farArmPocket"],
+      near: ["armPocket"],
+      over: ["breathA"],
+    },
+    pocketsBreathB: {
+      legs: "legsStand",
+      far: ["farArmPocket"],
+      near: ["armPocket"],
+      over: ["breathB"],
+    },
+    // sweat over whatever the arms are doing
+    sweat: { legs: "legsStand", over: ["sweat"] },
+  };
+  const STANDING = ["stand", "idleB", "leanIdle", "nod"];
+  const WALKING = [
+    "contactA",
+    "recoilA",
+    "passHiA",
+    "lateA",
+    "contactB",
+    "recoilB",
+    "passHiB",
+    "lateB",
+    "scuffA",
+    "scuffB",
+    "passA",
+    "passB",
+  ];
+  const SITTING = ["sit", "sitLap", "sitLean", "sitGlance"];
+  const onFoot = [...STANDING, ...WALKING];
+  const anywhere = [...onFoot, ...SITTING];
+  const LAYERS: Record<string, LayerDef> = {
+    // lit between the fingers at the hip, a drag now and then
+    cigarette: {
+      frames: [
+        "cigDown",
+        "cigDownB",
+        "cigDown",
+        "cigDownB",
+        "cigDown",
+        "cigDownB",
+        "cigHalf",
+        "cigLips",
+        "cigLips",
+        "cigHalf",
+        "cigDown",
+        "cigDownB",
+        "cigDown",
+        "cigDownB",
+      ],
+      frameMs: 480,
+      bodies: anywhere,
+    },
+    // the paper cup: carried, sipped
+    cup: {
+      frames: [
+        "cupHold",
+        "cupHoldB",
+        "cupHold",
+        "cupHoldB",
+        "cupHold",
+        "cupSip",
+        "cupSip",
+        "cupHoldB",
+      ],
+      frameMs: 520,
+      bodies: anywhere,
+    },
+    // the bottle by the neck, a pull every so often
+    bottle: {
+      frames: [
+        "bottleCarry",
+        "bottleCarry",
+        "bottleCarry",
+        "bottleCarry",
+        "bottleRaise",
+        "bottleDrink",
+        "bottleDrink",
+        "bottleRaise",
+        "bottleCarry",
+        "bottleCarry",
+      ],
+      frameMs: 520,
+      bodies: onFoot,
+    },
+    // on the phone
+    phone: { frames: ["phoneEar"], frameMs: 1000, bodies: anywhere },
+    // reading it while walking — the head down to it
+    phoneLow: { frames: ["phoneLow"], frameMs: 1000, bodies: onFoot },
+    // the parcel under the arm until it is delivered
+    parcel: { frames: ["parcel"], frameMs: 1000, bodies: onFoot },
+    // hands in pockets — a cold street, or waiting; the breath shows every
+    // few seconds, the way it does when it is cold enough for the pockets
+    pockets: {
+      frames: [
+        "pockets",
+        "pockets",
+        "pockets",
+        "pocketsBreathA",
+        "pocketsBreathB",
+        "pocketsBreathB",
+        "pockets",
+        "pockets",
+        "pockets",
+        "pockets",
+        "pockets",
+        "pocketsBreathA",
+        "pocketsBreathB",
+        "pockets",
+      ],
+      frameMs: 420,
+      bodies: onFoot,
+    },
+    // after the gym, for a while
+    sweat: { frames: ["sweat"], frameMs: 1000, bodies: anywhere },
+  };
+  const layered: Record<string, Record<string, string>> = {};
+  const baked = new Set<string>();
+  for (const def of Object.values(LAYERS)) {
+    for (const body of def.bodies) {
+      const lower = BODIES[body];
+      if (!lower) throw new Error(`player: layer body "${body}" has no pose`);
+      for (const up of def.frames) {
+        const upper = UPPER[up];
+        if (!upper) throw new Error(`player: layer pose "${up}" is not defined`);
+        const name = `${body}+${up}`;
+        if (!baked.has(name)) {
+          baked.add(name);
+          b.frame(name, (f) => f.raw(buildPose(rig, overlay(upper, lower))));
+        }
+        const row = layered[body] ?? {};
+        row[up] = name;
+        layered[body] = row;
+      }
+    }
+  }
+  for (const [alias, base] of Object.entries(BODY_ALIAS)) {
+    if (layered[base]) layered[alias] = layered[base];
   }
 
   b.walkCycle("contactA", "recoilA", "passHiA", "lateA", "contactB", "recoilB", "passHiB", "lateB");
@@ -2580,6 +4022,14 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     use: { frames: ["reachHalf", "reach", "reach", "reachHalf"], frameMs: 150, loops: 1 },
     // down through a half squat and a crouch, and back up through the forward
     // hunch that is how a person actually gets off a sofa
+    // a hand to a door handle, for exactly the time the door takes to open
+    open: { frames: ["reachHalf", "reach", "reach"], frameMs: 130, loops: 1 },
+    // a finger on a lift button
+    pressButton: {
+      frames: ["reachHalf", "pressButton", "pressButton", "reachHalf"],
+      frameMs: 120,
+      loops: 1,
+    },
     // Leaning on something — the train's perch, a rail: weight on one leg, a
     // look back along the carriage now and then. The perch asked for this
     // action for a long time and got nothing, because nobody had drawn it.
@@ -2735,27 +4185,54 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
       loops: 3,
       interruptible: true,
     },
+    // The dog, in stages: down on the heels, the hand out for the nose to find,
+    // the head stroked twice over, behind the ear, both hands in the neck, two
+    // pats on the flank, and a moment sat back on the heels looking at him
+    // before the knees straighten. Gross's own reaction (animalBuilder `pet`)
+    // is the same length.
+    // The dog, from behind, in stages: he turns into the room, goes down
+    // through a half squat onto his knees, looks at him, offers the hand, strokes
+    // him along the back, scratches behind the ear with his head right down over
+    // it, gets both hands into the neck, pats him twice, sits back upright with
+    // the hand still on him, and comes up and round the way he went down.
+    // Gross's own reaction (animalBuilder `pet`) runs the same length.
     pet: {
-      enter: ["crouchHalf"],
+      enter: ["lookBack", "backStand", "backCrouchHalf"],
       frames: [
-        "crouch",
-        "petA",
-        "petB",
-        "petA",
-        "petB",
-        "scratchA",
-        "scratchB",
-        "scratchA",
-        "scratchB",
-        "scratchA",
-        "petA",
-        "ruffle",
-        "ruffle",
-        "petB",
-        "crouchB",
+        "petKneel",
+        "petKneel",
+        "petOffer",
+        "petOffer",
+        "petOffer",
+        "petStrokeA",
+        "petStrokeB",
+        "petStrokeA",
+        "petStrokeB",
+        "petStrokeA",
+        "petScratchA",
+        "petScratchB",
+        "petScratchA",
+        "petScratchB",
+        "petScratchA",
+        "petScratchB",
+        "petStrokeB",
+        "petRuffleA",
+        "petRuffleB",
+        "petRuffleA",
+        "petRuffleB",
+        "petRuffleA",
+        "petStrokeA",
+        "petPatUp",
+        "petStrokeA",
+        "petPatUp",
+        "petStrokeA",
+        "petLook",
+        "petLook",
+        "petLook",
+        "petKneel",
       ],
-      exit: ["crouchHalf"],
-      abort: ["crouchHalf"],
+      exit: ["backCrouchHalf", "backStand", "lookBack"],
+      abort: ["backCrouchHalf", "backStand", "lookBack"],
       frameMs: 270,
       loops: 1,
       interruptible: true,
@@ -2860,27 +4337,21 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     // the treadmill runs the walk cycle fast — the same eight frames the
     // legs use on the street, so the belt and the pavement agree
     run: {
-      frames: [
-        "contactA",
-        "recoilA",
-        "passHiA",
-        "lateA",
-        "contactB",
-        "recoilB",
-        "passHiB",
-        "lateB",
-      ],
+      frames: ["runLandA", "runDriveA", "runFlightA", "runLandB", "runDriveB", "runFlightB"],
       frameMs: 90,
       loops: 7,
       interruptible: true,
     },
+    // the bike: up onto the saddle (the action draws him 28 px higher, hips on
+    // the seat), the legs go round, down again
     cycle: {
       enter: ["crouchHalf"],
-      frames: ["crouch", "crouchB", "crouch", "crouchB"],
+      frames: ["cycleA", "cycleFwd", "cycleB", "cycleBack"],
       exit: ["crouchHalf"],
       abort: ["crouchHalf"],
-      frameMs: 220,
-      loops: 5,
+      frameMs: 170,
+      loops: 12,
+      rise: 28,
       interruptible: true,
     },
     stretch: {
@@ -2898,10 +4369,18 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
       loops: 1,
       interruptible: true,
     },
+    // the bar: reach, up on the toes, and the jump — the loop is drawn 16 px
+    // higher, with the top of the box on the bar; a hang with the chin up at
+    // it, the pull through the half to eyes-level, and down. The drop is the
+    // cut back to the floor through a bent knee.
     pull: {
-      frames: ["reach", "stretchB", "reach", "stretchB", "reach"],
-      frameMs: 380,
-      loops: 2,
+      enter: ["reachHalf", "reach", "stretchB"],
+      frames: ["hang", "hang", "pullHalf", "pullTop", "pullTop", "pullHalf", "hang"],
+      exit: ["crouchHalf", "stand"],
+      abort: ["crouchHalf"],
+      frameMs: 320,
+      loops: 4,
+      rise: 16,
       interruptible: true,
     },
     // Three depths, not two. Standing straight to a full bent-knee crouch is a
@@ -2913,12 +4392,14 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
       loops: 4,
       interruptible: true,
     },
+    // the deadlift: down to the bar on the boards, to the knee, to the hip with
+    // the head up, and back down the same way; three pulls
     deadlift: {
       enter: ["crouchHalf"],
-      frames: ["crouchB", "crouch", "crouchHalf", "stand", "stand", "crouchHalf", "crouch"],
+      frames: ["dlFloor", "dlFloor", "dlKnee", "dlTop", "dlTop", "dlKnee", "dlFloor"],
       exit: ["crouchHalf"],
       abort: ["crouchHalf"],
-      frameMs: 300,
+      frameMs: 330,
       loops: 3,
       interruptible: true,
     },
@@ -3188,8 +4669,31 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
     b.action(id, def);
   }
 
+  // A baked combination can come out identical to a frame the recipe already
+  // has — stand+bottleCarry is beerHold, stand+cigDown is smokeA. Those point
+  // at the existing frame instead of duplicating it in the sheet.
+  const built = b.build();
+  const frames: Record<string, SpriteMap> = { ...built.frames };
+  const byPixels = new Map<string, string>();
+  for (const [name, map] of Object.entries(frames)) {
+    if (baked.has(name)) continue;
+    byPixels.set(map.join("\n"), name);
+  }
+  for (const name of baked) {
+    const key = frames[name].join("\n");
+    const existing = byPixels.get(key);
+    if (existing) {
+      delete frames[name];
+      for (const row of Object.values(layered)) {
+        for (const up of Object.keys(row)) if (row[up] === name) row[up] = existing;
+      }
+    } else {
+      byPixels.set(key, name);
+    }
+  }
   const cfg: PlayerConfig = {
-    ...b.build(),
+    ...built,
+    frames,
     // 8 px a frame keeps the planted foot where it was put (see the leg poses)
     walkStride: 8,
     // a walk begins from standing with a push-off, not a heel already landed
@@ -3203,10 +4707,125 @@ export function buildPlayer(spec: CharacterSpec = DEFAULT_PLAYER_SPEC): PlayerCo
         frames: [null, null, null, null, null, "recoilBLook", "passHiBLook", "lateBLook"],
       },
     ],
+    layers: LAYERS,
+    layered,
+    // what he does standing about when the moment calls for it
+    idles: {
+      yawn: {
+        frames: [
+          { f: "yawnA", ms: 450 },
+          { f: "yawn", ms: 1500 },
+          { f: "yawnA", ms: 500 },
+        ],
+      },
+      rubEyes: {
+        frames: [
+          { f: "rubEyes", ms: 700 },
+          { f: "rubEyesB", ms: 400 },
+          { f: "rubEyes", ms: 400 },
+          { f: "rubEyesB", ms: 400 },
+          { f: "rubEyes", ms: 500 },
+        ],
+      },
+      shiver: {
+        frames: Array.from({ length: 10 }, (_, i) => ({
+          f: i % 2 ? "idleB+pockets" : "stand+pockets",
+          ms: 110,
+        })),
+      },
+      belly: { frames: [{ f: "belly", ms: 2000 }] },
+      temples: { frames: [{ f: "temples", ms: 2400 }] },
+      watch: { frames: [{ f: "watch", ms: 1700 }] },
+      cough: {
+        frames: [
+          { f: "coughA", ms: 260 },
+          { f: "coughB", ms: 180 },
+          { f: "coughA", ms: 200 },
+          { f: "coughB", ms: 180 },
+          { f: "coughA", ms: 500 },
+        ],
+      },
+      phone: { frames: [{ f: "stand+phoneLow", ms: 6500 }] },
+    },
+    gaits: {
+      // 12 px a frame, six frames a cycle; the drive is the push-off from standing
+      run: {
+        cycle: ["runLandA", "runDriveA", "runFlightA", "runLandB", "runDriveB", "runFlightB"],
+        stride: 12,
+        start: 1,
+        speed: 1.8,
+      },
+      // spent: shorter, slower, the head down, no spring in the pass
+      tired: {
+        cycle: [
+          "contactA",
+          "drunkRecoilA",
+          "tiredPassA",
+          "tiredLateA",
+          "contactB",
+          "drunkRecoilB",
+          "tiredPassB",
+          "tiredLateB",
+        ],
+        stride: 7,
+        start: 3,
+        speed: 0.82,
+        variants: [{ every: 4, frames: [null, null, null, "scuffA", null, null, null, "scuffB"] }],
+      },
+      // shorter steps, the head down, the sway on the pass, a scuff often
+      drunk: {
+        cycle: [
+          "contactA",
+          "drunkRecoilA",
+          "drunkPassA",
+          "drunkLateA",
+          "contactB",
+          "drunkRecoilB",
+          "drunkPassB",
+          "drunkLateB",
+        ],
+        stride: 7,
+        start: 3,
+        speed: 0.8,
+        variants: [
+          { every: 2, frames: [null, null, null, "scuffA", null, null, null, "scuffB"] },
+          {
+            every: 3,
+            frames: [null, "recoilA", "passHiA", null, null, "recoilB", "passHiB", null],
+          },
+        ],
+      },
+    },
   };
   // relaxed: he stands the way people stand when nobody is watching
   return spec.body.posture === "relaxed" ? { ...cfg, idleLean: true } : cfg;
 }
+
+/**
+ * What the validator may not hold against this rig: the bed frames float by
+ * design, and the shower frames leave a pile of clothes on the floor that is
+ * not attached to him because he took it off.
+ */
+export const PLAYER_VALIDATION = {
+  airborne: new Set(["bedLie", "bedLieB", "bedSide", "bedSitUp"]),
+  loose: new Set([
+    "showerIdle",
+    "showerTap",
+    "washHairA",
+    "washHairB",
+    "scrubA",
+    "scrubB",
+    "rinse",
+    "towelOut",
+  ]),
+} as const;
+
+/** The arm/shoulder bookkeeping, exported so a test can check no arm was forgotten. */
+export const PATCH_TABLES = {
+  patches: P0,
+  arms: ARM_PATCHES,
+  shoulders: SHOULDER_PATCHES,
+} as const;
 
 /** The one true resident of Słoneczna 14 / m. 14 — as drawn, before the wardrobe. */
 export const PLAYER: PlayerConfig = buildPlayer();

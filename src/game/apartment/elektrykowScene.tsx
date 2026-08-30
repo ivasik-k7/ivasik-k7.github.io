@@ -34,7 +34,9 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
-import { dayPhase, type WorldState } from "@/lib/worldState";
+import { gamePhase } from "@/lib/body";
+
+import type { WorldState } from "@/lib/worldState";
 import {
   ABOARD_PALETTE,
   aboardMap,
@@ -326,7 +328,6 @@ export function elektrykowState(world: WorldState, ph: Ph): ElektrykowState {
  * `visible` gates, which get the world but not the phase. Same derivation the
  * runtime feeds the art, so the gate and the picture always agree.
  */
-const phNow = () => toPhase(dayPhase(new Date().getHours()));
 
 const festoonOn = (s: ElektrykowState, ph: Ph) =>
   s.festoon === "on" || (s.festoon === "auto" && (ph === "night" || ph === "dusk"));
@@ -3518,7 +3519,8 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       x: Z.bar + 40,
       y: 162,
       patrol: { from: Z.bar - 60, to: Z.queue - 30, speed: 17, pauseMs: 3600 },
-      visible: (world) => elektrykowState(world as WorldState, phNow()).crowd >= 2,
+      visible: (world) =>
+        elektrykowState(world as WorldState, toPhase(gamePhase(world as WorldState))).crowd >= 2,
       z: 6,
     }),
     npcToActor(NPCS.spacerka, {
@@ -3526,7 +3528,8 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       y: 156,
       facing: -1,
       patrol: { from: Z.gap - 40, to: Z.frytki + 60, speed: 13, pauseMs: 5200 },
-      visible: (world) => elektrykowState(world as WorldState, phNow()).crowd >= 1,
+      visible: (world) =>
+        elektrykowState(world as WorldState, toPhase(gamePhase(world as WorldState))).crowd >= 1,
       z: 6,
     }),
     /* --- the furniture, depth-sorted against everyone above ------------- */
@@ -3576,7 +3579,7 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       priority: 2,
       x: Z.mural + 58,
       range: 16,
-      when: (w) => elektrykowState(w as WorldState, phNow()).crowd >= 2,
+      when: (w) => elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState))).crowd >= 2,
     },
     /* --- the gap --- */
     { id: "pipe-bridge", kind: "flavor", x: Z.gap + 12, range: 24, markerY: 40 },
@@ -3586,7 +3589,7 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       priority: 2,
       x: Z.smoke - 40,
       range: 16,
-      when: (w) => elektrykowState(w as WorldState, phNow()).crowd >= 1,
+      when: (w) => elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState))).crowd >= 1,
     },
     { id: "pallet-bench", kind: "sport", action: "sit", face: 1, x: Z.smoke - 54, range: 20 },
     { id: "smoke-corner", kind: "sport", action: "smoke", x: Z.smoke, range: 20 },
@@ -3621,7 +3624,7 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       kind: "flavor",
       x: Z.bar + 220,
       range: 20,
-      when: (w) => elektrykowState(w as WorldState, phNow()).crowd >= 2,
+      when: (w) => elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState))).crowd >= 2,
     },
     /* --- the frytki --- */
     {
@@ -3662,7 +3665,7 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       priority: 2,
       x: Z.queue + 18,
       range: 14,
-      when: (w) => elektrykowState(w as WorldState, phNow()).queue >= 1,
+      when: (w) => elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState))).queue >= 1,
     },
     {
       id: "club-aboard",
@@ -3678,7 +3681,7 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       x: Z.door - 58,
       range: 18,
       when: (w) => {
-        const s = elektrykowState(w as WorldState, phNow());
+        const s = elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState)));
         return clubOn(s) || s.club === "prep";
       },
     },
@@ -3689,10 +3692,7 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       x: 950,
       range: 34,
       markerY: 84,
-      when: (w) => {
-        void w;
-        return isDark(phNow());
-      },
+      when: (w) => isDark(toPhase(gamePhase(w as WorldState))),
     },
     {
       id: "spur-cat",
@@ -3700,10 +3700,7 @@ export const ELEKTRYKOW_SCENE: RuntimeSceneDef<WorldState> = {
       x: Z.gap + 58,
       range: 26,
       markerY: 76,
-      when: (w) => {
-        void w;
-        return phNow() === "night";
-      },
+      when: (w) => toPhase(gamePhase(w as WorldState)) === "night",
     },
     { id: "club-neon", kind: "flavor", x: Z.door, range: 40, markerY: 40 },
     { id: "club-rules", kind: "flavor", x: RULES_BOARD[0] + 12, range: 14 },

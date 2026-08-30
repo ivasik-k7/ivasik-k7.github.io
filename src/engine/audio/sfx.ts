@@ -12,6 +12,7 @@ export type SfxName =
   | "creak" // wooden doors
   | "doorshut" // a door settling into its frame
   | "thud" // heavy things, stairs
+  | "step" // a footfall — soft, short, a little different every time
   | "chime" // pleasant confirmation
   | "register" // the Żabka kasa
   | "denied" // not enough money
@@ -194,6 +195,17 @@ export function playSfx(name: SfxName) {
 
     case "thud":
       blip(v, { from: 120, to: 45, len: 0.25, peak: 0.3, exp: true });
+      break;
+
+    case "step":
+      // a footfall: a short low knock, pitched a little differently each time
+      blip(v, {
+        from: 95 + Math.random() * 25,
+        to: 40,
+        len: 0.07,
+        peak: 0.07,
+        exp: true,
+      });
       break;
 
     case "kick":

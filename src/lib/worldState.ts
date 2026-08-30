@@ -1,4 +1,5 @@
 // World-wide state that persists across all locations
+import { freshBody } from "./body";
 
 export type LightRoom = "hallway" | "kitchen" | "living" | "study" | "bath";
 
@@ -108,6 +109,21 @@ export interface WorldState {
     lights: boolean;
     weather: "clear" | "rain";
   };
+
+  /**
+   * The man himself — see lib/body.ts. Energy, hunger, warmth, buzz and
+   * hangover; what he has done, all-time and today; the game's own clock;
+   * what his inner voice has already said. All optional so a save from before
+   * he had an inside still loads: readers go through `bodyState(w)`,
+   * `habitsState(w)`, `gameTime(w)`, and default to a rested man at the real
+   * hour.
+   */
+  body?: import("./body").BodyState;
+  habits?: import("./body").Habits;
+  time?: import("./body").GameTime;
+  voice?: import("./body").Voice;
+  /** how often he has spoken to each person — see lib/body.ts and the dialogue trees */
+  met?: Record<string, { times: number; lastDay: number }>;
 }
 
 /** What the things in the pocket call themselves (HUD, status menu). */
@@ -200,6 +216,8 @@ export const initialWorld: WorldState = {
   },
   street: { binOpen: false, paczkomatUsed: false },
   zabka: { fridgeOpen: false, freezerOpen: false },
+  ...freshBody(),
+  met: {},
 };
 
 export function dayPhase(hour: number): DayPhase {

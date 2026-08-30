@@ -25,7 +25,24 @@ export type SpriteMap = readonly string[];
 
 export type SpritePalette = Readonly<Record<string, string>>;
 
+/**
+ * Something that happens at a moment inside an action — a sound, an effect, a
+ * line — timed to a frame of the animation rather than to a wall-clock timer,
+ * so it pauses with the game and is cancelled with the action.
+ */
+export interface ActionEvent {
+  /** index into the loop's `frames` (enter/exit frames are not addressable) */
+  frame: number;
+  /** which pass of the loop; default: every loop */
+  loop?: number;
+  sound?: string;
+  fx?: { kind: string; x?: number; ttlMs?: number; data?: unknown };
+  toast?: string;
+}
+
 export interface ActionDef {
+  /** frame-timed side effects; see ActionEvent */
+  events?: readonly ActionEvent[];
   /** Frame names cycled while the action plays. */
   frames: readonly string[];
   /** ms per frame. */
@@ -33,6 +50,12 @@ export interface ActionDef {
   /** Total loops of the frame list (duration = frames.length * frameMs * loops). */
   loops: number;
   /** Walking cancels the action instead of waiting it out. */
+  /**
+   * Logical px the whole sprite is drawn higher while the loop plays — hanging
+   * from a bar, sitting up on a bike. Enter and exit frames stay on the floor,
+   * so the jump up and the drop down are the cut between them.
+   */
+  rise?: number;
   interruptible?: boolean;
   /**
    * Frames played once on the way in, before `frames` starts looping, and once
@@ -53,6 +76,37 @@ export interface ActionDef {
    * after they have already pressed a direction is worse than the pop was.
    */
   abort?: readonly string[];
+}
+
+/**
+ * A layer: something held or worn that rides over whatever the body does —
+ * a cigarette, a cup, a parcel — as a short clip of upper-body poses.
+ * `bodies` are the body frames the recipe baked it onto (`layered`).
+ */
+export interface LayerDef {
+  frames: readonly string[];
+  frameMs: number;
+  bodies: readonly string[];
+}
+
+/**
+ * A way of moving: the cycle, how far each frame carries him, where it starts
+ * from standing, its variants, and how fast the body travels relative to the
+ * walk. The walk itself is the default gait (`walkCycle` & co.); a run and a
+ * drunk walk are others.
+ */
+export interface GaitDef {
+  cycle: readonly string[];
+  stride: number;
+  start?: number;
+  variants?: readonly WalkVariant[];
+  /** speed multiplier on the walk speed (default 1) */
+  speed?: number;
+}
+
+/** A thing he does while standing about: a timed run of frames. */
+export interface IdleFlourish {
+  frames: readonly { f: string; ms: number }[];
 }
 
 export interface WalkVariant {
@@ -83,7 +137,21 @@ export interface PlayerConfig<F extends string = string> {
    * by core/gait.ts, so a walk replays the same way for the same distance.
    */
   walkVariants?: readonly WalkVariant[];
+  /** other ways of moving — "run", "drunk" — by id (see core/gait.ts) */
+  gaits?: Readonly<Record<string, GaitDef>>;
+  /** idle flourishes beyond the built-in three, by id (see core/idleBrain.ts) */
+  idles?: Readonly<Record<string, IdleFlourish>>;
+  /** the layers this character can carry, by id (see core/layerBrain.ts) */
+  layers?: Readonly<Record<string, LayerDef>>;
+  /** `layered[body][upper]` — the baked frame for that body under that layer pose */
+  layered?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   actions: Record<string, ActionDef>;
+  /**
+   * Frames the compiler derived from authored ones, by role. `derived.stand.blink`
+   * names the eyes-closed twin of `stand`; the runtime looks here instead of
+   * guessing from a name suffix, and the validator knows they are intentional.
+   */
+  derived?: Readonly<Record<string, { blink?: string; moods?: Readonly<Record<string, string>> }>>;
   /** Logical px per sprite cell (default 2). */
   cell?: number;
   walkSpeed?: number;
@@ -192,8 +260,21 @@ export interface InteractionCtx<W extends AnyWorld = AnyWorld> {
   /** Single write path — keeps React state and the rAF-side ref in sync. */
   updateWorld: (patch: Partial<W> | ((w: W) => W)) => void;
   showToast: (text: string) => void;
+  /**
+   * Run `fn` after `ms` of *game* time — held by the pause menu, so a sound
+   * timed to an animation stays with it. Returns an id for `cancelAfter`.
+   */
+  after: (ms: number, fn: () => void) => number;
+  cancelAfter: (id: number) => void;
   /** Run a player action animation (id must exist in PlayerConfig.actions). */
   startAction: (id: string, opts?: { onInterrupt?: () => void }) => void;
+  /** Put a look on his face for `ms`: "smile" | "sad" | "tense" | "surprise" (null clears). */
+  setMood: (mood: string | null, ms?: number) => void;
+  /** Make him move a certain way for `ms` (0 = until cleared): a gait from `PlayerConfig.gaits`. */
+  setGait: (id: string | null, ms?: number) => void;
+  /** Put something in his hand for `ms` (0 = until stopped): a layer over the body. */
+  startLayer: (id: string, ms?: number) => void;
+  stopLayer: (id?: string) => void;
   /** Fade out, switch scene, fade in. */
   travel: (scene: string, spawnX: number, spawnY?: number) => void;
   /** Slow fade to black, hold, fade back, then toast (toilet, bath…). */
@@ -228,6 +309,45 @@ export interface GameConfig<W extends AnyWorld = AnyWorld> {
    * object for the same look (see `compileCharacter`).
    */
   playerFor?: (world: W) => PlayerConfig;
+  /**
+   * A layer the world itself puts on him — a parcel while it is in the
+   * pocket, hands in pockets on a cold street — re-evaluated every tick and
+   * applied when no explicit layer is running. Return null for none.
+   */
+  playerLayer?: (world: W, scene: string) => string | null;
+  /**
+   * A gait the world imposes — drunk, tired — re-evaluated every tick and
+   * applied when no explicit gait override is running and the run key is not
+   * down. Return null for the walk.
+   */
+  playerGait?: (world: W) => string | null;
+  /**
+   * The look the world puts on his face when nothing more recent has — the
+   * morning after, the cold. Return null for neutral.
+   */
+  playerMood?: (world: W) => string | null;
+  /**
+   * The idle flourishes the world makes likely right now, by id from
+   * `PlayerConfig.idles` — a yawn when tired, a shiver on a cold street.
+   * Picked from alongside the default ones.
+   */
+  playerIdles?: (world: W, scene: string) => readonly string[];
+  /**
+   * The body's clock: advance the world by `dtMs` of game time. Called on the
+   * game clock (paused with it), at most a few times a second. Return the
+   * same object when nothing changed.
+   */
+  simulate?: (
+    world: W,
+    dtMs: number,
+    env: { scene: string; moving: boolean; running: boolean },
+  ) => W;
+  /**
+   * The inner voice: polled every couple of seconds while nothing else is
+   * being said. Return `{ text, world }` to say something (and record that
+   * it was said), or null.
+   */
+  thought?: (world: W, scene: string) => { text: string; world: W } | null;
   /** The "there are other things here" hint under the interact chip; default English. */
   promptSwitchLabel?: () => string;
   /** Handler table by object kind. `door` is built in but can be overridden. */
@@ -237,7 +357,8 @@ export interface GameConfig<W extends AnyWorld = AnyWorld> {
   /** Verb for the interact chip ("TALK", "OPEN"); omit for a label-only chip. */
   objectVerb?: (obj: SceneObject) => string;
   /** Day phase fed to scenes; re-evaluated every minute. */
-  dayPhase?: () => string;
+  /** The phase of the day — from the world's own clock, or the wall clock. */
+  dayPhase?: (world: W) => string;
   /** HUD renderer; receives scene id, world, day phase and an overlay opener. */
   renderHud?: (
     scene: string,

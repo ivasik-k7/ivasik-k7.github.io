@@ -11,15 +11,17 @@ import {
   type Rect,
   textWidth,
 } from "@/engine/scene/pixelKit";
-import { initialWorld, type WorldState } from "@/lib/worldState";
+import type { WorldState } from "@/lib/worldState";
 import { MinigameShell } from "../minigames/kit";
 import {
   APPEARANCE_GROUPS,
   APPEARANCE_SLOTS,
   type Appearance,
+  type AppearanceSlot,
   activeOutfit,
   applyOutfit,
   cycleOption,
+  hoodAllowed,
   normalizeAppearance,
   OUTFITS,
   paletteForAppearance,
@@ -98,15 +100,32 @@ function optionLabel(slotKey: keyof Appearance, id: string, fallback: string): s
 const POSES: Pose[] = ["stand", "walk", "sit"];
 const WALK_MS = 170;
 
+/** Greedy word wrap for the note line, in the font's own widths, at most two lines. */
+function wrapNote(text: string, maxWidth: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let line = "";
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (textWidth(next) > maxWidth && line) {
+      lines.push(line);
+      line = w;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines.slice(0, 2);
+}
+
 export function WardrobePanel({
   world,
   updateWorld,
+  onClose,
 }: {
   world: WorldState;
   updateWorld: (patch: Partial<WorldState> | ((w: WorldState) => WorldState)) => void;
   onClose: () => void;
 }) {
-  const appearance = normalizeAppearance(world.appearance);
+  const appearance = useMemo(() => normalizeAppearance(world.appearance), [world.appearance]);
   const palette = useMemo(() => paletteForAppearance(appearance), [appearance]);
   const player = useMemo(() => playerForAppearance(appearance), [appearance]);
 
@@ -138,6 +157,37 @@ export function WardrobePanel({
     [updateWorld],
   );
 
+  /** Move the selected rail one stop; the hood/hat rules speak up when they apply. */
+  const change = useCallback(
+    (target: AppearanceSlot | undefined, dir: 1 | -1) => {
+      if (!target) return;
+      let next = cycleOption(target, appearance[target.key], dir);
+      // a hood needs a hoodie: skip past it rather than collapsing the
+      // choice to "nothing" behind the user's back
+      if (target.key === "head" && next === "hood" && !hoodAllowed(appearance.top)) {
+        next = cycleOption(target, "hood", dir);
+        say(t("wardrobe.hoodNeedsHoodie"));
+      }
+      if (target.key === "hat" && appearance.head !== "cap" && appearance.head !== "beanie") {
+        say(t("wardrobe.nothingOnHead"));
+      }
+      playSfx("click");
+      updateWorld((w) => ({
+        ...w,
+        appearance: normalizeAppearance({ ...w.appearance, [target.key]: next }),
+      }));
+    },
+    [appearance, say, updateWorld],
+  );
+  const wearOutfit = useCallback(
+    (outfit: (typeof OUTFITS)[number]) => {
+      playSfx("chime");
+      setAll(applyOutfit(appearance, outfit));
+      say(t(`wardrobe.note.${outfit.id}`, { defaultValue: outfit.note }).toUpperCase());
+    },
+    [appearance, say, setAll],
+  );
+
   /* ------------------------------------------------------------ input --- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -167,23 +217,7 @@ export function WardrobePanel({
         code === "KeyA" ||
         code === "Enter"
       ) {
-        const dir: 1 | -1 = code === "ArrowLeft" || code === "KeyA" ? -1 : 1;
-        if (!slot) return;
-        let next = cycleOption(slot, appearance[slot.key], dir);
-        // a hood needs a hoodie: skip past it rather than collapsing the
-        // choice to "nothing" behind the user's back
-        if (slot.key === "head" && next === "hood" && appearance.top !== "hoodie") {
-          next = cycleOption(slot, "hood", dir);
-          say(t("wardrobe.hoodNeedsHoodie"));
-        }
-        if (slot.key === "hat" && appearance.head !== "cap" && appearance.head !== "beanie") {
-          say(t("wardrobe.nothingOnHead"));
-        }
-        playSfx("click");
-        updateWorld((w) => ({
-          ...w,
-          appearance: normalizeAppearance({ ...w.appearance, [slot.key]: next }),
-        }));
+        change(slot, code === "ArrowLeft" || code === "KeyA" ? -1 : 1);
       } else if (code === "Space") {
         e.preventDefault();
         playSfx("click");
@@ -193,21 +227,18 @@ export function WardrobePanel({
         setAll(rollAppearance());
         say(t("wardrobe.fellOut"));
       } else if (code === "Backspace") {
+        // the clothes he was drawn in; the man underneath is not a setting to reset
         playSfx("click");
-        setAll(normalizeAppearance(initialWorld.appearance));
+        setAll(applyOutfit(appearance, OUTFITS[0]));
         say(t("wardrobe.asDrawn"));
       } else if (/^Digit[1-9]$/.test(code) || /^Numpad[1-9]$/.test(code)) {
-        const n = Number(code.slice(-1)) - 1;
-        const outfit = OUTFITS[n];
-        if (!outfit) return;
-        playSfx("chime");
-        setAll(applyOutfit(appearance, outfit));
-        say(outfit.note.toUpperCase());
+        const outfit = OUTFITS[Number(code.slice(-1)) - 1];
+        if (outfit) wearOutfit(outfit);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [appearance, slot, slots.length, updateWorld, say, setAll]);
+  }, [appearance, slot, slots.length, say, setAll, change, wearOutfit]);
 
   /* ------------------------------------------------------------ mirror --- */
   const frame =
@@ -319,6 +350,28 @@ export function WardrobePanel({
         height={MIRROR[3]}
         fill={dth("n", "12")}
       />
+      {/* touch: the close plate on the door frame, and the glass cycles the pose */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Escape is the keyboard path */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: touch path */}
+      <g onClick={onClose} style={{ cursor: "pointer" }}>
+        <rect x={W - 26} y={2} width={22} height={9} fill={M.oak.deep} />
+        <PixelText
+          x={W - 26 + Math.floor((22 - textWidth("ESC")) / 2)}
+          y={4}
+          text="ESC"
+          fill={M.brass.base}
+        />
+      </g>
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Space is the keyboard path */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: touch path */}
+      <rect
+        x={MIRROR[0]}
+        y={MIRROR[1]}
+        width={MIRROR[2]}
+        height={MIRROR[3]}
+        fill="transparent"
+        onClick={() => setPose((p) => POSES[(POSES.indexOf(p) + 1) % POSES.length])}
+      />
       {/* the pose stamp, bottom of the glass */}
       <PixelText
         x={MIRROR[0] + Math.floor((MIRROR[2] - textWidth(t(`wardrobe.pose.${pose}`))) / 2)}
@@ -359,7 +412,17 @@ export function WardrobePanel({
         const x = RAIL_X + i * 40;
         const on = i === group;
         return (
-          <g key={g.id}>
+          // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard path is the W/S/Q/E handler above; this is the touch path
+          // biome-ignore lint/a11y/noStaticElementInteractions: same — touch path over an SVG group
+          <g
+            key={g.id}
+            onClick={() => {
+              playSfx("click");
+              setGroup(i);
+              setRow(0);
+            }}
+            style={{ cursor: "pointer" }}
+          >
             <rect x={x} y={TABS_Y} width={38} height={9} fill={on ? M.oak.hi : M.oak.lo} />
             <rect
               x={x}
@@ -389,7 +452,9 @@ export function WardrobePanel({
         const index = s.options.findIndex((o) => o.id === current.id);
         const muted = s.key === "hat" && appearance.head !== "cap" && appearance.head !== "beanie";
         return (
-          <g key={s.key} opacity={muted ? 0.45 : 1}>
+          // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard path is the key handler; this is touch
+          // biome-ignore lint/a11y/noStaticElementInteractions: touch path over an SVG group
+          <g key={s.key} opacity={muted ? 0.45 : 1} onClick={() => setRow(i)}>
             {/* the rail itself: a steel bar with a highlight */}
             <rect x={RAIL_X} y={y + RAIL_H - 3} width={RAIL_W} height={2} fill={M.steel.lo} />
             <rect
@@ -446,6 +511,31 @@ export function WardrobePanel({
                 <PixelText x={RAIL_X + RAIL_W - 22} y={y + 9} text="<" fill={CURSOR} />
                 <PixelText x={RAIL_X + RAIL_W - 6} y={y + 9} text=">" fill={CURSOR} />
                 <PixelText x={RAIL_X + RAIL_W - 16} y={y + 9} text={`${index + 1}`} fill={DIM} />
+                {/* touch: the two halves of the rail turn it either way */}
+                {/* biome-ignore lint/a11y/noStaticElementInteractions: touch hit zone; keys handle the rest */}
+                <rect
+                  x={RAIL_X}
+                  y={y}
+                  width={RAIL_W / 2}
+                  height={RAIL_H}
+                  fill="transparent"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    change(s, -1);
+                  }}
+                />
+                {/* biome-ignore lint/a11y/noStaticElementInteractions: touch hit zone; keys handle the rest */}
+                <rect
+                  x={RAIL_X + RAIL_W / 2}
+                  y={y}
+                  width={RAIL_W / 2}
+                  height={RAIL_H}
+                  fill="transparent"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    change(s, 1);
+                  }}
+                />
               </g>
             ) : null}
           </g>
@@ -454,12 +544,15 @@ export function WardrobePanel({
 
       {/* the note: what he thinks of it, briefly */}
       {note ? (
-        <PixelText
-          x={RAIL_X + Math.max(0, Math.floor((RAIL_W - textWidth(note)) / 2))}
-          y={RAIL_Y0 + 4 * RAIL_H + 8}
-          text={note.length > 30 ? `${note.slice(0, 29)}…` : note}
-          fill={CURSOR}
-        />
+        wrapNote(note, RAIL_W).map((line, i) => (
+          <PixelText
+            key={line}
+            x={RAIL_X + Math.max(0, Math.floor((RAIL_W - textWidth(line)) / 2))}
+            y={RAIL_Y0 + 4 * RAIL_H + 8 + i * 8}
+            text={line}
+            fill={CURSOR}
+          />
+        ))
       ) : (
         <PixelText
           x={RAIL_X}

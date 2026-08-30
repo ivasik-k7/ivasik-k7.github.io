@@ -1,7 +1,8 @@
 import { defineTree, playSfx } from "@/engine";
 import { learn, npcMemory } from "@/engine/systems/memory";
+import { metTimes } from "@/lib/body";
 import type { WorldState } from "@/lib/worldState";
-import { buyAndDrink, canAfford } from "./commerce";
+import { buyAndDrink, canAfford, eatBought } from "./commerce";
 import type { Ctx } from "./types";
 
 /** Ulica Elektryków: the people of the night shift. */
@@ -400,11 +401,21 @@ export function buildBarmankaTree(world: WorldState) {
         start: {
           lines: [
             { text: `You have ${world.money} zł on you.` },
-            {
-              speaker: "Barmanka",
-              text: "No? Grzaniec się kończy, mówię od razu.",
-              mood: "neutral",
-            },
+            // she knows a regular: the third visit changes the greeting, and
+            // a face that has been away a few days gets noticed
+            metTimes(world, "barmanka").times >= 3
+              ? metTimes(world, "barmanka").daysAgo >= 3
+                ? {
+                    speaker: "Barmanka",
+                    text: "O. Myślałam, że cię zwinęli. To co zawsze?",
+                    mood: "amused",
+                  }
+                : { speaker: "Barmanka", text: "Znowu ty. To co zawsze?", mood: "warm" }
+              : {
+                  speaker: "Barmanka",
+                  text: "No? Grzaniec się kończy, mówię od razu.",
+                  mood: "neutral",
+                },
           ],
           choices: buys,
         },
@@ -480,6 +491,7 @@ export function buildFrytkarzTree(world: WorldState) {
                 playSfx("register");
                 ctx.updateWorld((w) => ({ ...w, money: w.money - 14 }));
                 ctx.startAction("hotdog");
+                eatBought(ctx, "frytki");
               },
             },
             { label: "Majonez czy ketchup?", next: "sauce" },

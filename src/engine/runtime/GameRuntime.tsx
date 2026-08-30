@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { blinkFrame } from "../character/compile";
-import { type ActionRun, stepAction } from "../core/actionPlayer";
+import { blinkFrame, type Mood, moodFrame } from "../character/compile";
+import { type ActionRun, dueEvents, stepAction } from "../core/actionPlayer";
 import { type CamRig, newCamRig, stepCamRig } from "../core/cameraRig";
 import {
   DEFAULT_WALK_SPEED,
@@ -13,8 +13,17 @@ import {
   TRAVEL_SWITCH_AT_MS,
   WALK_SPEED_Y_RATIO,
 } from "../core/constants";
-import { newFaceState, resetFace, stepFace } from "../core/faceBrain";
-import { newGaitState, stepGait, walkSpan } from "../core/gait";
+import { currentMood, newFaceState, resetFace, setMood, stepFace } from "../core/faceBrain";
+import {
+  activeGait,
+  cycleIndex,
+  newGaitState,
+  resolveGait,
+  setGaitOverride,
+  stepGait,
+  WALK,
+  walkSpan,
+} from "../core/gait";
 import {
   clampY,
   clampYAt,
@@ -26,6 +35,13 @@ import {
   surfaceAt,
 } from "../core/ground";
 import { newIdleState, resetIdle, stepIdle } from "../core/idleBrain";
+import {
+  layeredFrame,
+  startLayer as layerStart,
+  stopLayer as layerStop,
+  layerUpper,
+  newLayerState,
+} from "../core/layerBrain";
 import { detectObjects, resolveActiveTarget, viewportScale } from "../core/math";
 import { dwellMs } from "../core/monologue";
 import { BandProvider } from "../core/runtime-cull";
@@ -158,6 +174,14 @@ function actorFrameNames<W extends AnyWorld>(actor: ActorDef<W>): string[] {
 }
 
 /** A number from an untrusted save slot, or the fallback. */
+/** How the other side's mood lands on his face while their line is up. */
+const MOOD_FOR_LINE: Record<string, Mood | undefined> = {
+  warm: "smile",
+  amused: "smile",
+  sad: "sad",
+  tense: "tense",
+};
+
 const finiteOr = (v: unknown, fallback: number): number =>
   typeof v === "number" && Number.isFinite(v) ? v : fallback;
 
@@ -231,11 +255,15 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   });
   const [promptPulse, setPromptPulse] = useState(0);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [fx, setFx] = useState<FxInstance[]>([]);
   const [actionUi, setActionUi] = useState<string | null>(null);
   const [movingUi, setMovingUi] = useState(false);
   const [view, setView] = useState({ w: 0, h: 0, scale: 3 });
-  const [phase, setPhase] = useState(() => config.dayPhase?.() ?? "day");
+  const [phase, setPhase] = useState(
+    () => config.dayPhase?.(restored?.world ?? config.initialWorld) ?? "day",
+  );
   // added, all low-frequency
   const [reduced, setReduced] = useState(() =>
     config.reducedMotion === "auto" || config.reducedMotion === undefined
@@ -249,7 +277,11 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const [mountedFrames, setMountedFrames] = useState<Set<string>>(() => {
     const all = Object.keys(player.frames);
     if (!opts.lazyFrames) return new Set(all);
-    const seed = new Set<string>(["stand", "idleB", "blink", ...(player.walkCycle ?? [])]);
+    const seed = new Set<string>(["stand", "idleB", ...(player.walkCycle ?? [])]);
+    for (const f of [...seed]) {
+      const twin = player.derived?.[f]?.blink;
+      if (twin) seed.add(twin);
+    }
     return new Set(all.filter((k) => seed.has(k)));
   });
 
@@ -270,7 +302,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     facing: (restored?.facing === -1 ? -1 : 1) as 1 | -1,
     walkDist: 0,
   });
-  const keys = useRef({ left: false, right: false, up: false, down: false });
+  const keys = useRef({ left: false, right: false, up: false, down: false, run: false });
   const padRef = useRef<PadState>(newPadState());
   const padPrev = useRef<PadState>(newPadState());
   const padPresentRef = useRef(false);
@@ -357,7 +389,16 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   const idleRef = useRef(newIdleState());
   const faceRef = useRef(newFaceState());
   const gaitRef = useRef(newGaitState());
+  const simRef = useRef({ acc: 0, thoughtAcc: 0 });
+  const stepRef = useRef(-1);
+  const configRef = useRef(config);
+  configRef.current = config;
+  const phaseRef = useRef("day");
   const talkRef = useRef(newTalkState());
+  const layerRef = useRef(newLayerState());
+  // read inside the rAF loop, so the loop does not close over config
+  const playerLayerRef = useRef(config.playerLayer);
+  playerLayerRef.current = config.playerLayer;
   const bufferedInteractRef = useRef(0);
   const autoWalkRef = useRef<{
     x: number;
@@ -554,7 +595,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     let cancelIdle: (() => void) | null = null;
     const id = timers.after(() => {
       cancelIdle = idle(() => {
-        if (saveDirtyRef.current) saveNow();
+        // a cinematic is not a place to come back to: leave the slot as it
+        // was until the sequence lets go, and it will be saved then
+        if (saveDirtyRef.current && !seqRef.current?.cinematic) saveNow();
       });
     }, opts.autosaveMs);
     return () => {
@@ -640,7 +683,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
   useEffect(() => {
     if (!config.dayPhase) return;
     const timers = timersRef.current;
-    const id = timers.every(() => setPhase(config.dayPhase?.() ?? "day"), 60_000);
+    const id = timers.every(() => setPhase(config.dayPhase?.(worldRef.current) ?? "day"), 60_000);
     return () => timers.clear(id);
   }, [config.dayPhase]);
 
@@ -954,8 +997,17 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       camRig.current.zoomTarget = 1;
     }
     forcedFrameRef.current = null;
+    // a cancelled sequence takes its side effects with it: the walk it
+    // started, the action it was playing, the lines it had queued — or the
+    // player skips the intro and watches him carry on walking to the window
+    cancelAutoWalkStatic(autoWalkRef);
+    if (actionRef.current) {
+      actionRef.current = null;
+      setActionUi(null);
+    }
+    cancelQueuedToasts();
     run.resolve(false);
-  }, []);
+  }, [cancelQueuedToasts]);
 
   const runSequence = useCallback(
     (steps: SeqStep<W>[], o?: { cinematic?: boolean; skippable?: boolean }) => {
@@ -981,7 +1033,16 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         world: worldRef.current,
         updateWorld,
         showToast,
+        after: (ms: number, fn: () => void) => clockRef.current.after(ms, fn),
+        cancelAfter: (id: number) => clockRef.current.cancel(id),
         startAction,
+        setGait: (id: string | null, ms?: number) =>
+          setGaitOverride(gaitRef.current, id, performance.now(), ms),
+        setMood: (mood: string | null, ms?: number) =>
+          setMood(faceRef.current, mood, performance.now(), ms),
+        startLayer: (id: string, ms?: number) =>
+          layerStart(layerRef.current, id, performance.now(), ms),
+        stopLayer: (id?: string) => layerStop(layerRef.current, id),
         travel,
         blackout,
         openOverlay: setOverlay,
@@ -1008,8 +1069,6 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         },
         runSequence,
         cancelSequence,
-        after: (ms: number, fn: () => void) => clockRef.current.after(ms, fn),
-        cancelAfter: (id: number) => clockRef.current.cancel(id),
         flag,
         setFlag,
         counter,
@@ -1260,6 +1319,9 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         return;
       }
       switch (action) {
+        case "run":
+          keys.current.run = true;
+          break;
         case "left":
           keys.current.left = true;
           event.preventDefault();
@@ -1317,6 +1379,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     };
     const onKeyUp = (event: KeyboardEvent) => {
       const action = inputBag.current.keymap.get(event.code);
+      if (action === "run") keys.current.run = false;
       if (action === "left") keys.current.left = false;
       if (action === "right") keys.current.right = false;
       if (action === "up") keys.current.up = false;
@@ -1324,6 +1387,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     };
     // alt-tabbing mid-stride used to leave the player walking forever
     const releaseAll = () => {
+      keys.current.run = false;
       keys.current.left = false;
       keys.current.right = false;
       keys.current.up = false;
@@ -1456,6 +1520,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
    */
   const liveRef = useRef<LiveState>({
     frame: "stand",
+    drawn: "stand",
     y: FLOOR_Y,
     surface: null,
     target: null,
@@ -1507,6 +1572,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     pushTargets,
     cancelQueuedToasts,
     showToast,
+    queueToast,
     updateWorld,
     travel,
     spawnFx,
@@ -1529,6 +1595,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
     pushTargets,
     cancelQueuedToasts,
     showToast,
+    queueToast,
     updateWorld,
     travel,
     spawnFx,
@@ -1595,6 +1662,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       };
     const seqHost: SeqHost<W> = {
       showToast: (text) => loopBag.current.showToast(text),
+      queueToast: (text, delayMs) => loopBag.current.queueToast(text, delayMs),
       startWalk: (x, y, deadline, speed) => {
         cancelAutoWalkStatic(autoWalkRef);
         const w = planWalkRef.current(x, y);
@@ -1606,6 +1674,10 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         pos.current.facing = facing;
       },
       holdFrame: (frame) => {
+        if (frame !== null && !loopBag.current.player.frames[frame]) {
+          if (import.meta.env.DEV) console.warn(`sequence: hold names unknown frame "${frame}"`);
+          return;
+        }
         forcedFrameRef.current = frame;
       },
       startAction: (id) => loopBag.current.startAction(id),
@@ -1703,6 +1775,8 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
 
       // --- action animation (core/actionPlayer owns the timing table) ----------
       let actionFrame: string | null = null;
+      // px the sprite is drawn higher while an action's loop plays (a hang)
+      let actionRise = 0;
       const act = actionRef.current;
       if (act) {
         const wantsMove =
@@ -1728,7 +1802,18 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           act.onInterrupt?.();
           bag.cancelQueuedToasts();
         }
+        // frame-timed side effects: on the game clock, gone with the action
+        const def = player.actions[act.id];
+        if (def && !step.done) {
+          for (const ev of dueEvents(act, def, step)) {
+            if (ev.sound) soundRef.current?.(ev.sound);
+            if (ev.fx)
+              bag.spawnFx(ev.fx.kind, ev.fx.x ?? pos.current.x, ev.fx.ttlMs ?? 900, ev.fx.data);
+            if (ev.toast) bag.showToast(ev.toast);
+          }
+        }
         actionFrame = step.frame;
+        if (step.phase === "loop") actionRise = player.actions[act.id]?.rise ?? 0;
         if (step.done) {
           actionRef.current = null;
           setActionUi(null);
@@ -1795,12 +1880,40 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         }
       }
 
+      // the sequencer may have (re)started an action this tick, after the
+      // action step above already ran — a repeating cigarette, a beat that
+      // begins with `action`. Give it its first frame now rather than showing
+      // one tick of standing between two cycles.
+      if (!actionFrame && actionRef.current) {
+        const fresh = actionRef.current;
+        actionFrame = stepAction(
+          fresh,
+          player.actions[fresh.id],
+          gameNow,
+          false,
+          inputLockRef.current,
+        ).frame;
+      }
+
       const blocked = paused || actionFrame !== null;
 
       // --- simulation: fixed steps, bounded backlog, band-aware ---------------
       const p = pos.current;
       const ground = groundOf(def);
       let moving = false;
+      // the run key only counts under the player's own hand — an auto-walk
+      // keeps its pace; an imposed gait (drunk) wins over both
+      let gaitId = activeGait(
+        gaitRef.current,
+        player,
+        now,
+        keys.current.run && !autoWalkRef.current,
+      );
+      // the world's own say — drunk, tired — when nothing explicit is on
+      if (gaitId === WALK) {
+        const ambientGait = configRef.current.playerGait?.(worldRef.current);
+        if (ambientGait && player.gaits?.[ambientGait]) gaitId = ambientGait;
+      }
       let arrived = false;
       let simSteps = 0;
       if (blocked) {
@@ -1877,8 +1990,10 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             if (dirX !== 0) p.facing = dirX as 1 | -1;
             // the ground underfoot has a say: mud wades, ice hurries
             const surf = ground.zones ? speedAt(ground, p.x, p.y) : 1;
-            // an auto-walk may ask for less than full pace (a slow morning)
-            const pace = surf * (autoWalkRef.current?.speed ?? 1);
+            // an auto-walk may ask for less than full pace (a slow morning);
+            // the gait (a run, a drunk walk) has its own multiplier
+            const pace =
+              surf * (autoWalkRef.current?.speed ?? 1) * (resolveGait(player, gaitId).speed ?? 1);
             const dx = dirX * bag.walkSpeed * pace * dt;
             const dy = dirY * bag.walkSpeedY * pace * dt;
             const next = stepOnGround(
@@ -1896,7 +2011,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
             // blocker keeps the walk cycle alive, as it always has at the
             // scene margins. Bounded, and aligned to the cycle so wrapping
             // never skips a frame.
-            p.walkDist = (p.walkDist + Math.abs(dx) + Math.abs(dy)) % walkSpan(player);
+            p.walkDist = (p.walkDist + Math.abs(dx) + Math.abs(dy)) % walkSpan(player, gaitId);
             moving = true;
           } else {
             // self-heal a stale save, a changed band, or a profile edge the
@@ -1909,6 +2024,20 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
           if (arrived) break;
         }
         if (simSteps >= cfg.maxSubsteps) acc = 0; // drop the backlog, don't chase it
+      }
+      // At refresh rates above simHz a rendered frame can run zero substeps.
+      // `moving` is decided inside the substeps, so those frames used to read
+      // as "stopped": the gait settled, then restarted, every other frame on
+      // a 144 Hz screen. If nothing was simulated, nothing changed — carry
+      // last frame's answer while the intent to move is still there.
+      if (simSteps === 0 && !blocked) {
+        const k = keys.current;
+        const pad = padRef.current;
+        const intent =
+          autoWalkRef.current !== null ||
+          (!inputLockRef.current &&
+            (k.left || k.right || k.up || k.down || pad.left || pad.right || pad.up || pad.down));
+        if (intent) moving = movingRef.current;
       }
       statAccum.current.simSteps = simSteps;
 
@@ -2097,7 +2226,7 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       const playerEl = playerElRef.current;
       if (playerEl) {
         const px = (p.x - player.width / 2) * scale;
-        const py = (p.y - player.height) * scale;
+        const py = (p.y - player.height - actionRise) * scale;
         const playerT = `translate3d(${px}px, ${py}px, 0) scaleX(${p.facing})`;
         if (playerT !== dom.player) {
           dom.player = playerT;
@@ -2131,9 +2260,22 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       // the abort frames and then settle once they are gone.
       let gaitFrame: string | null = null;
       if (!actionFrame) {
-        const gait = stepGait(gaitRef.current, player, p.walkDist, moving, p.facing, now);
+        const gait = stepGait(gaitRef.current, player, p.walkDist, moving, p.facing, now, gaitId);
         p.walkDist = gait.walkDist;
         gaitFrame = gait.frame;
+        // a footfall on every contact frame (the first of each half of the
+        // cycle), once per contact — the surface underfoot names the sound
+        if (moving) {
+          const idx = cycleIndex(player, p.walkDist, gaitId);
+          const half = Math.max(1, Math.floor(resolveGait(player, gaitId).cycle.length / 2));
+          const contact = idx % half === 0;
+          if (contact && idx !== stepRef.current) {
+            soundRef.current?.(`step:${liveRef.current.surface ?? "floor"}`, {
+              volume: gaitId === "run" ? 1 : 0.7,
+            });
+          }
+          stepRef.current = contact ? idx : -1;
+        }
       } else {
         gaitRef.current.moving = false;
         gaitRef.current.settleFrame = null;
@@ -2164,25 +2306,67 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
         idleFrame = stepIdle(
           idleRef.current,
           now,
-          paused || seqRef.current !== null,
+          paused || Boolean(seqRef.current?.cinematic),
           Boolean(def.idleLean || player.idleLean),
+          {
+            flourishes: player.idles,
+            // what fits the moment — tired, cold, waiting on a platform
+            extra: configRef.current.playerIdles?.(worldRef.current, sceneRef.current),
+          },
         );
       } else {
         resetIdle(idleRef.current);
       }
-      let frame = forcedFrameRef.current ?? actionFrame ?? gaitFrame ?? talkFrame ?? idleFrame;
+      let body = forcedFrameRef.current ?? actionFrame ?? gaitFrame ?? talkFrame ?? idleFrame;
+      // --- the layer: the thing in his hand, over the body's frame ---------------
+      // An explicit layer (handlers: a cigarette lit, a cup bought) wins; else
+      // the world may put one on him (a parcel in the pocket, a cold street).
+      // The face layer below then blinks on the combined frame like any other.
+      // Actions are not excluded: an action frame with a baked combination (a
+      // seat) takes the layer, one without (a lift, the shower) shows alone.
+      if (!forcedFrameRef.current) {
+        let upper = layerUpper(layerRef.current, player, now);
+        const ambientLayer = playerLayerRef.current;
+        if (!upper && ambientLayer) {
+          const ambient = ambientLayer(worldRef.current, sceneRef.current);
+          if (ambient) {
+            const def = player.layers?.[ambient];
+            if (def) upper = def.frames[Math.floor(now / def.frameMs) % def.frames.length];
+          }
+        }
+        if (upper) body = layeredFrame(player, body, upper);
+      }
       // the face layer: the lids have their own clock, and close on whatever
       // the body is showing — walking, talking, lifting — not only at rest.
+      // The mood: what happened to him last (a handler's setMood), or what is
+      // being said to him — the other side's line carries a mood, and his face
+      // answers it while the line is up — or a beer walking off.
+      const face = faceRef.current;
+      let mood = currentMood(face, now);
+      if (!mood) {
+        const dlgLine = dialogueRef.current
+          ? dialogueRef.current.state.lines[dialogueRef.current.state.lineIndex]
+          : undefined;
+        const lineMood = dlgLine?.speaker ? MOOD_FOR_LINE[dlgLine.mood ?? ""] : undefined;
+        if (lineMood) mood = lineMood;
+        else {
+          const ambient = configRef.current.playerMood?.(worldRef.current);
+          if (ambient) mood = ambient;
+        }
+      }
+      body = moodFrame(player, body, (mood as Mood | null) ?? null);
       // A held frame is for looking at, so it keeps its eyes open.
-      if (forcedFrameRef.current) resetFace(faceRef.current, now);
-      else if (stepFace(faceRef.current, now)) frame = blinkFrame(player.frames, frame);
+      let frame = body;
+      if (forcedFrameRef.current) resetFace(face, now);
+      else if (stepFace(face, now)) frame = blinkFrame(player, body);
 
       {
         const live = liveRef.current;
-        if (live.frame !== frame) {
+        if (live.frame !== body) {
           live.prevFrame = live.frame;
-          live.frame = frame;
+          live.frame = body;
         }
+        live.drawn = frame;
         const running = actionRef.current;
         const rdef = running ? player.actions[running.id] : null;
         live.action = running?.id ?? null;
@@ -2354,6 +2538,45 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       }
       clock.advance(paused ? 0 : frameMs);
 
+      // --- the body's clock: once a game second, on the game clock -------------
+      // config.simulate advances the world (energy, hunger, the hour); the day
+      // phase is re-read from the result so lighting follows the game's own
+      // day; and every couple of seconds the inner voice gets a chance.
+      if (!paused) {
+        const sim = simRef.current;
+        sim.acc += frameMs;
+        if (sim.acc >= 1000) {
+          const dtMs = sim.acc;
+          sim.acc = 0;
+          const bagNow = loopBag.current;
+          const simulate = configRef.current.simulate;
+          if (simulate) {
+            const before = worldRef.current;
+            const after = simulate(before, dtMs, {
+              scene: sceneRef.current,
+              moving,
+              running: gaitId === "run",
+            });
+            if (after !== before) bagNow.updateWorld(after);
+          }
+          const ph = configRef.current.dayPhase?.(worldRef.current);
+          if (ph && ph !== phaseRef.current) {
+            phaseRef.current = ph;
+            setPhase(ph);
+          }
+          sim.thoughtAcc += dtMs;
+          const thought = configRef.current.thought;
+          if (thought && sim.thoughtAcc >= 2000 && !toastRef.current && !dialogueRef.current) {
+            sim.thoughtAcc = 0;
+            const said = thought(worldRef.current, sceneRef.current);
+            if (said) {
+              bagNow.updateWorld(said.world);
+              bagNow.showToast(said.text);
+            }
+          }
+        }
+      }
+
       // --- park when there is nothing left to animate -------------------------
       if (
         cfg.pauseWhenHidden &&
@@ -2472,6 +2695,14 @@ export function GameRuntime<W extends AnyWorld>({ config }: { config: RuntimeCon
       startAction: (id: string) => {
         if (playerRef.current.actions[id]) apiBag.current.startAction(id);
       },
+      setGait: (id: string | null, ms?: number) =>
+        setGaitOverride(gaitRef.current, id, performance.now(), ms),
+      setMood: (mood: string | null, ms?: number) =>
+        setMood(faceRef.current, mood, performance.now(), ms),
+      startLayer: (id: string, ms?: number) => {
+        if (playerRef.current.layers?.[id]) layerStart(layerRef.current, id, performance.now(), ms);
+      },
+      stopLayer: (id?: string) => layerStop(layerRef.current, id),
       stopAction: () => {
         actionRef.current = null;
         setActionUi(null);

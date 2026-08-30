@@ -1,4 +1,5 @@
 import type { DialogueTree } from "@/engine";
+import { gameDay } from "@/lib/body";
 import type { WorldState } from "@/lib/worldState";
 import type { Ctx } from "./types";
 
@@ -83,17 +84,32 @@ const cache = new Map<string, TreeSource>();
 export function openDialogueFor(ctx: Ctx, id: string): void {
   const cached = cache.get(id);
   if (cached) {
-    open(ctx, cached);
+    open(ctx, cached, id);
     return;
   }
   const load = DIALOGUE[id] ?? DIALOGUE.marek;
   void load().then((source) => {
     cache.set(id, source);
-    open(ctx, source);
+    open(ctx, source, id);
   });
 }
 
-function open(ctx: Ctx, source: TreeSource): void {
-  const tree = typeof source === "function" ? source(ctx.world) : source;
+/**
+ * Every conversation is remembered: how many times he has spoken to this
+ * person and on which game day last. Trees read `world.met` to greet a
+ * regular differently from a stranger (see `metTimes`).
+ */
+function remember(ctx: Ctx, id: string): Ctx["world"] {
+  const day = gameDay(ctx.world);
+  const prev = ctx.world.met?.[id];
+  const met = { ...(ctx.world.met ?? {}), [id]: { times: (prev?.times ?? 0) + 1, lastDay: day } };
+  const next = { ...ctx.world, met };
+  ctx.updateWorld(next);
+  return next;
+}
+
+function open(ctx: Ctx, source: TreeSource, id: string): void {
+  const world = remember(ctx, id);
+  const tree = typeof source === "function" ? source(world) : source;
   ctx.startDialogue(tree as DialogueTree<never>);
 }

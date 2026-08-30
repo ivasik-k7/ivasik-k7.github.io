@@ -312,6 +312,8 @@ export type RasterAtlas = {
   index: Record<string, number>;
   cols: number;
   rows: number;
+  /** frames per atlas row — the sheet is a grid, not one strip */
+  perRow: number;
   frameCount: number;
   cells: number;
 };
@@ -365,15 +367,20 @@ export function rasterizeFrames(
   }
   if (cols === 0 || rows === 0) return null;
 
+  // A grid rather than a strip: with layered and mood twins a character runs
+  // to a thousand frames, and a 24 000 px wide canvas is past what several
+  // browsers will allocate. Roughly square instead.
+  const perRow = Math.max(1, Math.ceil(Math.sqrt(keys.length)));
   const canvas = document.createElement("canvas");
-  canvas.width = cols * keys.length;
-  canvas.height = rows;
+  canvas.width = cols * perRow;
+  canvas.height = rows * Math.ceil(keys.length / perRow);
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
   for (let f = 0; f < grids.length; f++) {
     const grid = grids[f];
-    const ox = f * cols;
+    const ox = (f % perRow) * cols;
+    const oy = Math.floor(f / perRow) * rows;
     for (let y = 0; y < grid.length; y++) {
       const row = grid[y];
       let x = 0;
@@ -388,7 +395,7 @@ export function rasterizeFrames(
         let run = 1;
         while (x + run < row.length && row[x + run] === key) run++;
         ctx.fillStyle = color;
-        ctx.fillRect(ox + x, y, run, 1);
+        ctx.fillRect(ox + x, oy + y, run, 1);
         x += run;
       }
     }
@@ -398,7 +405,15 @@ export function rasterizeFrames(
   keys.forEach((key, i) => {
     index[key] = i;
   });
-  return { canvas, index, cols, rows, frameCount: keys.length, cells: cols * rows * keys.length };
+  return {
+    canvas,
+    index,
+    cols,
+    rows,
+    perRow,
+    frameCount: keys.length,
+    cells: cols * rows * keys.length,
+  };
 }
 
 /** Blits one atlas frame into a display canvas, skipping unchanged draws. */
@@ -446,8 +461,8 @@ export class AtlasSprite {
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(
       this.atlas.canvas,
-      col * this.atlas.cols,
-      0,
+      (col % this.atlas.perRow) * this.atlas.cols,
+      Math.floor(col / this.atlas.perRow) * this.atlas.rows,
       this.atlas.cols,
       this.atlas.rows,
       0,
@@ -481,6 +496,7 @@ export class AtlasSprite {
  * gamepad shoulders and tap-to-pick always work.
  */
 export const DEFAULT_KEYMAP: Record<InputAction, string[]> = {
+  run: ["ShiftLeft", "ShiftRight"],
   left: ["ArrowLeft", "KeyA"],
   right: ["ArrowRight", "KeyD"],
   up: ["ArrowUp", "KeyW"],

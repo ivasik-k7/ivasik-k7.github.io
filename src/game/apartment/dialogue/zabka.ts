@@ -1,5 +1,6 @@
 import { defineTree, playSfx } from "@/engine";
 import { npcMemory } from "@/engine/systems/memory";
+import { metTimes } from "@/lib/body";
 import type { WorldState } from "@/lib/worldState";
 import { buy, canAfford } from "./commerce";
 import type { Ctx } from "./types";
@@ -45,7 +46,9 @@ export function buildCashierTree(world: WorldState) {
         first: {
           lines: [
             { text: `You have ${world.money} zł in your pocket.` },
-            { speaker: "Cashier", text: "Dzień dobry. What'll it be?" },
+            metTimes(world, "cashier").times >= 3
+              ? { speaker: "Cashier", text: "O, sąsiad. Dzień dobry. The usual?", mood: "warm" }
+              : { speaker: "Cashier", text: "Dzień dobry. What'll it be?" },
           ],
           choices: buys,
         },

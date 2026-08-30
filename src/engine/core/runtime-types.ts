@@ -34,6 +34,7 @@ export type InputAction =
   | "right"
   | "up"
   | "down"
+  | "run"
   | "interact"
   | "cancel"
   | "menu"
@@ -219,11 +220,21 @@ export type SeqStep<W extends AnyWorld> =
   | {
       action: string;
       /**
-       * Start the action again each time it ends, for as long as this returns
-       * true — a cigarette that lasts exactly as long as the speech over it.
+       * Start the action again each time it ends, for as long as this holds —
+       * a predicate, or `"narration"` for "while the queued lines are still
+       * being read" (see `narrate`). A cigarette that lasts exactly as long as
+       * the speech over it, on the game clock.
        */
-      repeat?: () => boolean;
+      repeat?: (() => boolean) | "narration";
     }
+  /**
+   * Say several lines one after another *without blocking*: each waits for the
+   * one before to have been read (the player's text speed), all on the game
+   * clock. Pair with a blocking beat (a walk, an action) and `awaitNarration`.
+   */
+  | { narrate: readonly string[]; gapMs?: number }
+  /** Block until the last `narrate` line has had its time on screen. */
+  | { awaitNarration: true }
   | { world: Partial<W> | ((w: W) => W) }
   | { fx: { kind: string; x?: number; ttlMs?: number; data?: unknown } }
   | { shake: number; ms?: number }
@@ -310,8 +321,10 @@ export type RuntimeStats = {
 
 /** The animation state of the player, as of the last simulated frame. */
 export type LiveState = {
-  /** the frame actually on screen */
+  /** the body frame the animator chose (never a derived twin) */
   frame: string;
+  /** the frame actually drawn — the body frame or its eyes-closed twin */
+  drawn: string;
   /** feet-y in the ground band (FLOOR_Y in single-line scenes) */
   y: number;
   /** the ground zone underfoot (null between zones / zone-less scenes) */
@@ -358,6 +371,13 @@ export type RuntimeApi<W extends AnyWorld> = {
    * the world that happens to trigger it.
    */
   startAction(id: string): void;
+  /** A look on his face — "smile" | "sad" | "tense" | "surprise" — for `ms`. */
+  setMood(mood: string | null, ms?: number): void;
+  /** A gait override — "drunk" — for `ms` (0 = until cleared with null). */
+  setGait(id: string | null, ms?: number): void;
+  /** A layer over the body — something in his hand — for `ms` (0 = until stopped). */
+  startLayer(id: string, ms?: number): void;
+  stopLayer(id?: string): void;
   /** Stop whatever action is running and hand control back to walk/idle. */
   stopAction(): void;
   /**

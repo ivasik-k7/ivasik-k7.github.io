@@ -16,6 +16,8 @@ function fakeHost() {
   };
   const host: SeqHost<W> = {
     showToast: (t) => calls.push(`toast:${t}`),
+    queueToast: (t, ms) => calls.push(`queue:${t}@${ms}`),
+    toastMs: (t) => 1000 + t.length * 10,
     startWalk: (x, y, deadline, speed) => {
       state.walking = true;
       calls.push(`walk:${x},${y ?? "-"},${deadline}${speed === undefined ? "" : `@${speed}`}`);
@@ -85,9 +87,9 @@ describe("sequencer", () => {
     expect(stepSequence(run, host, 1000)).toBe(false);
     expect(stepSequence(run, host, 1400)).toBe(false); // wait not over
     expect(stepSequence(run, host, 1500)).toBe(false); // wait over, say entered
-    // "hi" = 1200 + 2*28 = 1256ms on screen, plus a 150ms breath, from entry at 1500
-    expect(stepSequence(run, host, 2900)).toBe(false);
-    expect(stepSequence(run, host, 2906)).toBe(true);
+    // "hi" = the host's 1000 + 2*10 = 1020ms on screen, plus a 150ms breath, from entry at 1500
+    expect(stepSequence(run, host, 2660)).toBe(false);
+    expect(stepSequence(run, host, 2670)).toBe(true);
   });
 
   it("repeats an action while its condition holds", () => {
@@ -103,6 +105,30 @@ describe("sequencer", () => {
     state.action = false;
     expect(stepSequence(run, host, 1300)).toBe(true); // condition spent
     expect(calls.filter((c) => c === "action:smoke").length).toBe(3);
+  });
+
+  it("narrates on the game clock and lets an action repeat under it", () => {
+    const { host, calls, state } = fakeHost();
+    const run = newSeqRun<W>(
+      [
+        { narrate: ["ab", "cd"], gapMs: 100 },
+        { action: "smoke", repeat: "narration" },
+        { awaitNarration: true },
+      ],
+      false,
+      () => {},
+    );
+    // t=1000: both lines queued end to end — "ab" now, "cd" after 1020 + 100
+    expect(stepSequence(run, host, 1000)).toBe(false);
+    expect(calls.filter((c) => c.startsWith("queue"))).toEqual(["queue:ab@0", "queue:cd@1120"]);
+    expect(run.narrateUntil).toBe(1000 + 1120 + 1020 + 100);
+    // the cigarette ends while he is still talking: light another
+    state.action = false;
+    expect(stepSequence(run, host, 2000)).toBe(false);
+    expect(calls.filter((c) => c === "action:smoke").length).toBe(2);
+    // and ends again after the narration: the beat completes, awaitNarration passes at once
+    state.action = false;
+    expect(stepSequence(run, host, 3300)).toBe(true);
   });
 
   it("clamps a walk target and blocks until arrival", () => {

@@ -188,8 +188,6 @@ export const APPEARANCE_SLOTS: AppearanceSlot[] = [
       { id: "red", label: "Red", colors: { k: "#a33a30", K: "#7d2820" } },
       { id: "olive", label: "Olive", colors: { k: "#5f7053", K: "#48563e" } },
       { id: "grey", label: "Grey", colors: { k: "#6d7278", K: "#565a60" } },
-      // legacy: "none" was the way to take the cap off before `head` existed
-      { id: "none", label: "None", colors: {} },
     ],
   },
   {
@@ -207,10 +205,6 @@ export const APPEARANCE_SLOTS: AppearanceSlot[] = [
       { id: "brown", label: "Brown", colors: { t: "#6b4a30", T: "#4f3622" } },
       { id: "cream", label: "Cream", colors: { t: "#d9c9a3", T: "#b3a480" } },
       { id: "forest", label: "Forest", colors: { t: "#3b5540", T: "#2b3f30" } },
-      // legacy ids — kept so an old save resolves; they imply a cut (see LEGACY)
-      { id: "hoodie-grey", label: "Grey", colors: { t: "#6d7278", T: "#565a60" } },
-      { id: "hoodie-black", label: "Black", colors: { t: "#26262c", T: "#17171b" } },
-      { id: "sambo", label: "Red", colors: { t: "#a33a30", T: "#7d2820" } },
     ],
   },
   {
@@ -241,14 +235,35 @@ export const APPEARANCE_SLOTS: AppearanceSlot[] = [
   },
 ];
 
-/** Legacy colour ids that used to carry a shape. Only consulted when the shape key is missing. */
-const LEGACY_TOP: Record<string, TorsoKind> = {
-  "hoodie-grey": "hoodie",
-  "hoodie-black": "hoodie",
-  sambo: "kurtka",
+/**
+ * Saves written before the shape keys existed carried the shape in the colour
+ * id: "hoodie-grey" was the grey option *and* a hoodie. Each legacy id maps to
+ * the cut it implied and the modern colour it becomes, so an old save loads
+ * dressed as it always was and never carries the alias forward. Only
+ * consulted when the shape key is missing — a save that has `top` already
+ * said what it meant.
+ */
+const LEGACY_SHIRT: Record<string, { top: TorsoKind; shirt: string }> = {
+  "hoodie-grey": { top: "hoodie", shirt: "grey" },
+  "hoodie-black": { top: "hoodie", shirt: "black" },
+  sambo: { top: "kurtka", shirt: "red" },
 };
-const LEGACY_BOTTOM: Record<string, BottomKind> = { grey: "joggers", sambo: "shorts" };
-const LEGACY_FEET: Record<string, FootKind> = { black: "boots" };
+const LEGACY_TROUSERS: Record<string, { bottom: BottomKind }> = {
+  // the old "Grey joggers" option; the "Sambo shorts" option keeps its red
+  grey: { bottom: "joggers" },
+  sambo: { bottom: "shorts" },
+};
+const LEGACY_SHOES: Record<string, { feet: FootKind }> = {
+  // the old option was labelled "Black boots"
+  black: { feet: "boots" },
+};
+
+/** A colour id the slot actually offers, or the slot's first option. */
+function colourId(key: keyof Appearance, id: unknown): string {
+  const slot = APPEARANCE_SLOTS.find((s) => s.key === key);
+  if (!slot) return "default";
+  return typeof id === "string" && slot.options.some((o) => o.id === id) ? id : slot.options[0].id;
+}
 
 const pick = <T extends string>(v: unknown, all: readonly T[], fallback: T): T =>
   all.includes(v as T) ? (v as T) : fallback;
@@ -264,31 +279,43 @@ const HEADS: HeadKind[] = ["none", "cap", "beanie", "hood"];
  */
 export function normalizeAppearance(a: AppearanceInput | StoredAppearance | undefined): Appearance {
   const src = (a ?? {}) as AppearanceInput;
-  const shirt = typeof src.shirt === "string" ? src.shirt : "default";
-  const trousers = typeof src.trousers === "string" ? src.trousers : "default";
-  const shoes = typeof src.shoes === "string" ? src.shoes : "default";
-  const hat = typeof src.hat === "string" ? src.hat : "none";
-  const top = pick(src.top, TOPS, LEGACY_TOP[shirt] ?? "tee");
-  let head = pick(src.head, HEADS, hat === "none" ? "none" : "cap");
-  // a hood needs a hoodie under it
-  if (head === "hood" && !TORSO_GARMENTS[top].hood) head = "none";
+  const rawShirt = typeof src.shirt === "string" ? src.shirt : "default";
+  const rawTrousers = typeof src.trousers === "string" ? src.trousers : "default";
+  const rawShoes = typeof src.shoes === "string" ? src.shoes : "default";
+  const hatGiven = typeof src.hat === "string";
+  const rawHat = hatGiven ? (src.hat as string) : "navy";
+  // legacy aliases resolve to a cut and a modern colour, once, here
+  const legacyShirt = src.top === undefined ? LEGACY_SHIRT[rawShirt] : undefined;
+  const legacyTrousers = src.bottom === undefined ? LEGACY_TROUSERS[rawTrousers] : undefined;
+  const legacyShoes = src.feet === undefined ? LEGACY_SHOES[rawShoes] : undefined;
+  const top = pick(src.top, TOPS, legacyShirt?.top ?? "tee");
+  // "none" was how a save said "no cap" before `head` existed
+  // a save with only a hat colour was wearing that cap; one with no hat key,
+  // or the old "none", had nothing on
+  let head = pick(src.head, HEADS, hatGiven && rawHat !== "none" ? "cap" : "none");
+  if (!hoodAllowed(top) && head === "hood") head = "none";
   return {
-    skin: typeof src.skin === "string" ? src.skin : "default",
-    hair: typeof src.hair === "string" ? src.hair : "default",
-    beard: typeof src.beard === "string" ? src.beard : "default",
-    hat: hat === "none" ? "navy" : hat,
-    shirt,
-    trousers,
-    shoes,
+    skin: colourId("skin", src.skin),
+    hair: colourId("hair", src.hair),
+    beard: colourId("beard", src.beard),
+    hat: colourId("hat", rawHat),
+    shirt: colourId("shirt", legacyShirt?.shirt ?? rawShirt),
+    trousers: colourId("trousers", rawTrousers),
+    shoes: colourId("shoes", rawShoes),
     head,
     top,
-    bottom: pick(src.bottom, BOTTOMS, LEGACY_BOTTOM[trousers] ?? "trousers"),
-    feet: pick(src.feet, FEET, LEGACY_FEET[shoes] ?? "sneakers"),
+    bottom: pick(src.bottom, BOTTOMS, legacyTrousers?.bottom ?? "trousers"),
+    feet: pick(src.feet, FEET, legacyShoes?.feet ?? "sneakers"),
     build: pick(src.build, BUILDS, "athletic"),
     height: pick(src.height, HEIGHTS, "average"),
     neck: pick(src.neck, NECKS, "normal"),
     posture: pick(src.posture, POSTURES, "upright"),
   };
+}
+
+/** Whether a hood can be up over this top — one rule, used by the wardrobe and the normaliser. */
+export function hoodAllowed(top: TorsoKind): boolean {
+  return Boolean(TORSO_GARMENTS[top].hood);
 }
 
 function findOption(slot: AppearanceSlot, id: string): SlotOption {
@@ -310,6 +337,11 @@ const HOOD_LIFT = 1.18;
 
 const HEX_LENGTH = 7;
 
+/** how much lighter the front of a trouser leg is than its fill */
+const TROUSER_LIGHT = 1.22;
+/** how much lighter the lit shoulder of a shirt is than its fill */
+const SHIRT_LIGHT = 1.45;
+
 function scale(hex: string, factor: number): string {
   if (hex.length !== HEX_LENGTH || hex[0] !== "#") return hex;
   const n = Number.parseInt(hex.slice(1), 16);
@@ -328,6 +360,11 @@ export function paletteForAppearance(raw: StoredAppearance | AppearanceInput): S
       Object.assign(out, findOption(slot, a[slot.key]).colors);
     }
   }
+  // the texture tones follow whatever the cloth is: a step up from the fill
+  // (see engine/character/texture.ts), so black trousers get a charcoal
+  // highlight and a red tee a lighter red, never the default blue
+  out.r = scale(out.p, TROUSER_LIGHT);
+  out.d = scale(out.t, SHIRT_LIGHT);
   // the hood zone: a hood on a hoodie, plain shirt on anything else
   const top = TORSO_GARMENTS[a.top];
   if (top.hood) {
@@ -388,8 +425,9 @@ export function playerForAppearance(a: StoredAppearance | AppearanceInput): Play
 /** Cycle a slot's option id by delta, wrapping. */
 export function cycleOption(slot: AppearanceSlot, currentId: string, delta: 1 | -1): string {
   const index = slot.options.findIndex((o) => o.id === currentId);
-  const at = index === -1 ? 0 : index;
-  return slot.options[(at + delta + slot.options.length) % slot.options.length].id;
+  // an id the rail does not know starts the rail over rather than skipping a stop
+  if (index === -1) return slot.options[0].id;
+  return slot.options[(index + delta + slot.options.length) % slot.options.length].id;
 }
 
 /**

@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { bootsPass, extendRows, shiftSides, shortsPass, sleevePatch, widenRuns } from "./morph";
+import {
+  barefootPass,
+  beaniePass,
+  beltPass,
+  bootsPass,
+  collarPass,
+  cuffPass,
+  extendRows,
+  hoodUpPass,
+  openFrontPass,
+  ribbedPass,
+  sandalsPass,
+  shiftRows,
+  shiftSides,
+  shortsPass,
+  sleevePatch,
+  stripePass,
+  tankPass,
+  widenRuns,
+} from "./morph";
 
 const STAND = [
   "......qppppppppppq......",
@@ -110,5 +129,79 @@ describe("hems and boots", () => {
     expect(out[3]).toBe(".......Bbb....bbB.......");
     expect(out[4]).toBe(".......Bbb....bbB.......");
     expect(out[5]).toBe(STAND[5]);
+  });
+});
+
+describe("the passes nobody tested", () => {
+  const TORSO = [
+    "......TmmmtttttttT......",
+    "...TmmttttttttttttttT...",
+    "......TttttttttttT......",
+    "......qppppppppppq......",
+  ];
+  it("collar darkens the trapezius row only", () => {
+    const out = collarPass(TORSO);
+    expect(out[0]).toBe("......TmmmTTTTTTTT......");
+    expect(out[1]).toBe(TORSO[1]);
+  });
+  it("belt and ribbed hem repaint across hood cells", () => {
+    const hip = ["......TttttmmttttT......", "......qppppppppppq......"];
+    expect(beltPass(hip, 1)[0]).toBe("......TccccccccccT......");
+    expect(ribbedPass(hip, 1)[0]).toBe("......TTTTTTTTTTTT......");
+  });
+  it("open front puts a zip on the near side and lapels at the top", () => {
+    const out = openFrontPass(TORSO, 3);
+    // lapels on the top rows, the zip (c) below them, both three in from the near edge
+    expect(out[1]).toBe("...TmmttttttttttTTTtT...");
+    // the belt row (hipRow - 1) is left for the belt
+    expect(out[2]).toBe(TORSO[2]);
+    // with a deeper torso the top three rows carry lapels, the zip runs below them
+    expect(openFrontPass(TORSO, 4)[2]).toBe("......TttttttTTTtT......");
+  });
+  it("tank bares the shoulders", () => {
+    const out = tankPass(TORSO, [1]);
+    expect(out[1]).toBe("...SsmtttttttttttttsS...");
+  });
+  it("hood up and beanie recolour hair rows, keeping the face", () => {
+    const head = [
+      "..........kkkkkkK.......",
+      ".........KhhhhhhK.......",
+      ".........mHsysses.......",
+    ];
+    expect(hoodUpPass(head, [0, 1])[0]).toBe("..........TTTTTTT.......");
+    expect(hoodUpPass(head, [0, 1])[1]).toBe(".........TttttttT.......");
+    expect(hoodUpPass(head, [0, 1])[2]).toBe(head[2]);
+    expect(beaniePass(head, [1])[1]).toBe(".........KkkkkkkK.......");
+  });
+  it("stripe marks the outer seam, cuff darkens the last shin row, sandals open the upper, barefoot strips the shoe", () => {
+    const legs = [
+      ".......qppp..pppq.......",
+      ".......spp....pps.......",
+      ".......bbb....bbb.......",
+      "......BBBB....BBBB......",
+    ];
+    expect(stripePass(legs, 0, 0)[0]).toBe(".......appp..pppa.......");
+    expect(cuffPass(legs, 1)[0]).toBe(".......qqqq..qqqq.......");
+    expect(sandalsPass(legs, 1)[2]).toBe(".......sss....sss.......");
+    expect(barefootPass(legs)[3]).toBe("......SSSS....SSSS......");
+  });
+  it("shiftRows drops rows off the bottom, never the top's content", () => {
+    expect(shiftRows(["a", "b", "c"], 1)).toEqual([".", "a", "b"]);
+    expect(shiftRows(["a", "b", "c"], -1)).toEqual(["b", "c", "."]);
+  });
+  it("extendRows clamps a bad anchor instead of producing holes", () => {
+    expect(extendRows(["a", "b"], 5, 2)).toEqual(["a", "b", "b", "b"]);
+    expect(extendRows(["a", "b"], 0, -3)).toEqual(["a", "b"]);
+  });
+  it("shiftSides refuses to tear a patch that crosses the centre", () => {
+    const bar = { r: 1, c: 10, rows: ["ssss"] };
+    expect(shiftSides(bar, 1)).toBe(bar);
+  });
+  it("widenRuns works on a narrower grid", () => {
+    expect(widenRuns(["...qppq...."], 0, 0, 1)).toEqual(["..qppppq..."]);
+  });
+  it("bootsPass keeps drawn shoes and puts the edge on the outside", () => {
+    expect(bootsPass([".......spp....pps......."], 0, 0)).toEqual([".......Bbb....bbB......."]);
+    expect(bootsPass(["......BBBBppps.........."], 0, 0)).toEqual(["......BBBBbbbB.........."]);
   });
 });

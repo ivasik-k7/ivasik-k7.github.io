@@ -74,6 +74,8 @@ export const PLAYER_PALETTE: Palette = {
   w: "#c9863f", // guitar top — the same honeyed spruce as the one on the wall
   W: "#8a5a28", // guitar rim / side shade
   n: "#3a2614", // guitar neck, fretboard, soundhole
+  r: "#3f5074", // trousers highlight — the front of the near leg in the light
+  d: "#2a2a34", // shirt highlight — the near shoulder and pec
   a: "#e2ddd0", // accent — a tracksuit stripe, a trim
   A: "#bdb8a8", // accent shade
 };

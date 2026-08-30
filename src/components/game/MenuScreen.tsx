@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { CRISP, PixelFrame, PixelLabel, PixelMeter, PixelSprite, PixelText } from "@/engine";
-import { paletteForAppearance, playerForAppearance } from "@/game/apartment/appearance";
+import { paletteForAppearanceCached, playerForAppearance } from "@/game/apartment/appearance";
 import { experience, profile, projects, skills, stats } from "@/lib/resume";
 import { ITEM_LABEL, type WorldState } from "@/lib/worldState";
 
@@ -237,7 +237,7 @@ function MapPage({ visited, current }: { visited: readonly string[]; current: st
 // ---------------------------------------------------------------------------
 
 function ProfilePage({ world }: { world: WorldState }) {
-  const palette = paletteForAppearance(world.appearance);
+  const palette = paletteForAppearanceCached(world.appearance);
   const PLAYER = playerForAppearance(world.appearance);
   return (
     <div className="flex flex-col gap-4 sm:flex-row">

@@ -702,3 +702,132 @@ Landed from this plan, smaller than §2 and in the order the game needed it:
 Not done: pose interpolation (§5), garments as geometry (§4), the rig/IK
 (§2 `rig.ts`), and the runtime asking for layered frames on demand — the
 layered frames are baked by the recipe like everything else.
+
+---
+
+## 14. Evolution pass (2026-08-30)
+
+Six independent audits (engine package, player rig, animation runtime,
+wardrobe/appearance, NPC-vs-player systems, tooling/perf/docs) were run
+against the tree and their findings acted on. What changed, by debt killed:
+
+**Vocabulary and invariants**
+* `engine/character/zones.ts` — one table of palette letters → roles (skin,
+  cloth, trouser, shoe, hood, hat, accent, prop, effect). `morph.ts`,
+  `validate.ts` and the compiler read it instead of private letter sets.
+* Passes read the grid off their rows (no 24/12 constants baked into the
+  logic); `extendRows` clamps a bad anchor; `shiftSides` refuses to tear a
+  patch whose ink crosses the centre and never pushes an arm off the grid;
+  `bootsPass` keeps drawn shoes and puts its edge outside; belt/ribbed hem
+  repaint across hood cells; `stripePass` marks both seams on the pass frames
+  (the stripe used to vanish one frame in four).
+* `validate.ts` — rules have ids; `walkCycle`, `walkStart`, `walkVariants`
+  and action `events` are checked; the floor exemption is gone (frames that
+  are legitimately in pieces say so via `loose`); `validate.test.ts` proves
+  every rule fires on a bad fixture.
+* `spec.ts` — `specKey` is derived from typed field lists (a new field cannot
+  be forgotten); footwear carries an `open` flag instead of a kind-string
+  branch in the recipe; the dead `Headwear.cap` flag is gone.
+
+**Derived frames and the cache**
+* `PlayerConfig.derived[frame].blink` names the eyes-closed twin; nothing
+  parses a `~blink` suffix any more (runtime, studio, tests). The compiler
+  reuses a hand-drawn closed-eye frame instead of duplicating it.
+* `compileCharacter` caches per recipe (`WeakMap<Recipe, LRU>`), keyed on the
+  spec *and* the eye option, bounded at 24 looks. Two recipes can no longer
+  hand each other's sprite back.
+
+**Runtime**
+* `LiveState.frame` is the body frame; `LiveState.drawn` is what is painted.
+* `cancelSequence` stops the walk, the action and the queued lines it started
+  (skipping the intro no longer leaves him walking to the window).
+* A sequencer-restarted action gets its first frame on the same tick (no
+  one-frame stand between cigarette cycles).
+* `moving` is carried across zero-substep frames (no gait stall above 120 Hz).
+* Idle flourishes are suppressed only under a *cinematic* sequence.
+* `hold` validates the frame name; autosave waits while a cinematic runs.
+* Actions carry `events` (`{frame, loop?, sound?, fx?, toast?}`) fired by
+  `dueEvents` on the game clock; `stepAction` reports phase/index/loop.
+* Handlers' `window.setTimeout` sound tables moved to `ctx.after` (game
+  clock — held by the pause menu, cancelled with the action).
+* Sequencer: `narrate: string[]` queues lines end to end by reading time on
+  the game clock; `awaitNarration` blocks on them; `repeat: "narration"`
+  keeps an action going while they play. `cutscenes.ts` no longer touches
+  `performance.now()`.
+
+**Rig**
+* `raiseChin` keeps the neck row (the head was attached only through the cup).
+* `swingMid` drops the body two rows onto the bent legs (was torn).
+* The shower uses a bare back head — no hood or beanie under the water.
+* Seated height is constant across heights (the frame grows at the top).
+* `PATCH_TABLES` exported; a test flags any cloth-and-skin patch missing
+  from the sleeve list.
+* Golden allowlist entries carry a reason and an expected extent; the sweep
+  test compiles every body axis and every torso×head / bottom×feet pair.
+
+**Wardrobe / appearance**
+* Legacy ids resolve once to a cut and a modern colour (`hoodie-grey` →
+  hoodie + grey); no alias stops on the rails; unknown colour ids are
+  rejected instead of persisted; the dead hat `"none"` stop is gone; the
+  hood rule lives in one exported function.
+* The panel is tappable (tabs, rails, rail halves, mirror for pose, an ESC
+  plate) while staying keyboard-first; outfit notes are translated and
+  wrapped, not truncated; Backspace resets clothes, not the man.
+* `appearance.test.ts` covers normalisation, legacy mapping, palette
+  derivation, outfits, rolls, and i18n coverage of every option/outfit/note.
+
+**Still open (from the audits, deliberately not done here)**
+* NPC/player unification (two anatomies with different hip rows, six
+  colliding palette letters, NPC raised-arm hands drawn off-grid): needs a
+  contract reconciliation pass with NPC snapshots — see the NPC audit's
+  five-step plan.
+* Player head from the NPC face/hair model; a pose layer with IK arms;
+  frame events *used* by the action table (the infrastructure is in).
+* Verification: `verify-character.mjs` port/asserts; a pairwise CI matrix;
+  a perf budget test.
+
+## Status — 2026-08-30
+
+The second pass, on top of the first:
+
+* `Pose` grew slots — `far` / `near` / `props` / `over`, plus `lean`, `rise`
+  and per-pose `upper` — and `overlay(upper, lower)` replaces an arm slot the
+  upper pose fills instead of stacking a second arm. On a dropped body the
+  upper's arms go on as `over`.
+* **Layers** (`core/layerBrain.ts`, `PlayerConfig.layers` / `layered`): the
+  thing in his hand over whatever the body does. The recipe bakes `body+upper`
+  for every layer × body (`BODIES` are the drawn frames restated as poses —
+  they reproduce the drawn pixels, and a baked frame identical to an authored
+  one is de-duplicated to it). Runtime: `ctx.startLayer(id, ms)` /
+  `stopLayer`, and `GameConfig.playerLayer(world, scene)` for what the world
+  puts on him (the parcel, hands in pockets on a cold street). Layers:
+  cigarette, cup, bottle, phone, phoneLow, parcel, pockets.
+* **Gaits** (`PlayerConfig.gaits`, `core/gait.ts`): the walk is the default;
+  `run` on Shift (six frames — land, drive, flight — 12 px a frame, ×1.8),
+  `drunk` imposed by `ctx.setGait("drunk", ms)` after a beer.
+* **Gym**: `pull` hangs from the real bar (`ActionDef.rise` draws the sprite
+  16 px higher through the loop), `cycle` sits on the saddle (rise 28) with
+  the legs going round, `deadlift` has a barbell on the boards / knee / hip,
+  `run` uses the run cycle. `open` for doors, `pressButton` for lifts.
+* **Moods** (`compile.ts` `addMoodLayer`, `core/faceBrain.ts` `setMood`):
+  smile / sad / tense / surprise as twins of every frame with an eye, two or
+  three cells around it; each with its own blink twin. Driven by the other
+  side's line mood in a dialogue, by handlers (`ctx.setMood`), and by the
+  drunk gait.
+* The sprite atlas packs a grid instead of one strip (`runtime-perf.ts`),
+  because the sheet is now ~3.5k frames.
+
+Still not done: pose interpolation, garments as geometry, IK.
+
+## Texture pass — 2026-08-30
+
+`engine/character/texture.ts`: tones computed from the geometry, applied to
+every dressed part after the wardrobe passes — a highlight (`r`) down the
+front of the near leg, a crease (`Q`) at the back edge where a leg narrows
+from the row above, a heel counter (`B`) and toe catch-light (`c`) on every
+shoe, a shirt highlight (`d`) on the near shoulder and pec (both blades from
+behind). `r` and `d` are derived from the trousers/shirt fill in
+`appearance.ts`, so every wardrobe colour keeps its own lit tone; the far leg
+maps `r → q` in the pose compositor. The golden was re-baselined to
+`player-v2.json`; `player-v1.json` stays as the silhouette oracle (shape must
+not drift, tones may).

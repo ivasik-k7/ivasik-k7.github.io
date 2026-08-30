@@ -1,5 +1,5 @@
 import { t } from "i18next";
-import { dwellMs, type SeqStep } from "@/engine";
+import type { SeqStep } from "@/engine";
 import type { WorldState } from "@/lib/worldState";
 
 /**
@@ -31,37 +31,6 @@ const smokedAtWindow = (w: WorldState): WorldState => ({
 });
 
 /**
- * Lines spoken *over* a blocking beat (a walk, a cigarette). `say` blocks, so
- * these are queued ahead of the beat instead, each one starting when the last
- * has been on screen for as long as it needs at the player's text speed —
- * which is why the delays are computed when the beat runs, not written down.
- * The `until` that follows the blocking beat holds the scene until the last
- * line has been read, so a slow reader is never cut off by the next thing.
- */
-function spoken(lines: string[]): {
-  queue: SeqStep<WorldState>;
-  settle: SeqStep<WorldState>;
-  talking: () => boolean;
-} {
-  let endsAt = 0;
-  const talking = () => performance.now() < endsAt;
-  return {
-    queue: {
-      do: (c) => {
-        let t = 500;
-        for (const line of lines) {
-          c.queueToast(line, t);
-          t += dwellMs(line) + 250;
-        }
-        endsAt = performance.now() + t;
-      },
-    },
-    settle: { until: () => !talking(), timeoutMs: 180_000 },
-    talking,
-  };
-}
-
-/**
  * The opening. He is by Gross's bed. He says hello to the dog, walks — not
  * quickly — to the kitchen window, opens it, lights one, and talks to you
  * while he smokes: this is the flat, he does not know what today is either,
@@ -70,33 +39,28 @@ function spoken(lines: string[]): {
  * is not a different flat.
  */
 export function openingCutscene(): SeqStep<WorldState>[] {
-  const onTheWay = spoken([t("cut.walk1"), t("cut.walk2")]);
-  const overTheCigarette = spoken([
-    t("cut.walk3"),
-    t("cut.smoke1"),
-    t("cut.smoke2"),
-    t("cut.smoke3"),
-  ]);
   return [
     { wait: 900 },
     { face: 1 },
     { say: t("cut.gross1") },
     { action: "pet" },
     { say: t("cut.gross2") },
-    onTheWay.queue,
+    // the walk blocks, so what he says on the way is narrated over it — on
+    // the game clock, each line held for as long as it takes to read
+    { narrate: [t("cut.walk1"), t("cut.walk2")] },
     { walkTo: WINDOW_STAND_X, speed: MORNING_PACE, timeoutMs: 20000 },
     // he has arrived; he finishes the thought looking at the window
     { face: -1 },
-    onTheWay.settle,
+    { awaitNarration: true },
     { hold: "reachHalf", forMs: 320 },
     { hold: "reach", forMs: 520 },
     { sound: "creak" },
     { world: openWindow },
     { say: t("cut.window") },
     { sound: "match" },
-    overTheCigarette.queue,
+    { narrate: [t("cut.walk3"), t("cut.smoke1"), t("cut.smoke2"), t("cut.smoke3")] },
     // the cigarette lasts as long as he has something to say over it
-    { action: "smoke", repeat: overTheCigarette.talking },
+    { action: "smoke", repeat: "narration" },
     { world: smokedAtWindow },
     { say: t("cut.end") },
     { wait: 300 },

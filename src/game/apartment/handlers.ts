@@ -1,9 +1,23 @@
 import type { DialogueTree, InteractionHandler } from "@/engine";
 import { playSfx } from "@/engine";
 import i18n from "@/i18n";
-import { dayPhase, studioState, TV_CYCLE, type TvChannel, type WorldState } from "@/lib/worldState";
+import { applyEvent, gamePhase } from "@/lib/body";
+import { morningAfter } from "@/lib/routine";
+import { studioState, TV_CYCLE, type TvChannel, type WorldState } from "@/lib/worldState";
 import { openDialogueFor } from "./dialogue";
 import { addToInventory, countOf } from "./dialogue/commerce";
+
+/** the gym's rigs and the flat's weights — a session, for the body's ledger */
+const GYM_ACTIONS = new Set([
+  "run",
+  "stretch",
+  "cycle",
+  "pull",
+  "squat",
+  "press",
+  "deadlift",
+  "swing",
+]);
 
 /**
  * Interaction handlers — the apartment's verbs, ported 1:1 from the
@@ -71,7 +85,7 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     }
   },
 
-  window: ({ obj, world, updateWorld, showToast, startAction }) => {
+  window: ({ obj, world, updateWorld, showToast, startAction, startLayer }) => {
     const id = obj.id as keyof WorldState["windows"];
     const win = world.windows[id];
     if (!win.open) {
@@ -84,6 +98,9 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
       showToast(t("toast.windowOpen"));
     } else if (!win.smoked) {
       startAction("smoke");
+      // the cigarette outlasts the ritual: lit for a while after, wherever he goes
+      startLayer("cigarette", 45000);
+      updateWorld((w) => applyEvent(w, { kind: "smoke" }));
       playSfx("match");
       updateWorld((w) => ({
         ...w,
@@ -103,28 +120,31 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
 
   // both play out in back projection — he faces the porcelain, not the camera.
   // Sounds ride the animation clock; interrupting cancels what hasn't played.
-  toilet: ({ startAction, queueToast }) => {
+  // Sounds ride the game clock (`after`), so the pause menu holds them with
+  // the animation, and an interrupt cancels what has not played yet.
+  toilet: ({ startAction, queueToast, after, cancelAfter }) => {
     const timers: number[] = [];
     startAction("pee", {
       onInterrupt: () => {
-        for (const timer of timers) window.clearTimeout(timer);
+        for (const timer of timers) cancelAfter(timer);
       },
     });
-    timers.push(window.setTimeout(() => playSfx("trickle"), 900));
-    timers.push(window.setTimeout(() => playSfx("trickle"), 2700));
-    timers.push(window.setTimeout(() => playSfx("flush"), 4200));
+    timers.push(after(900, () => playSfx("trickle")));
+    timers.push(after(2700, () => playSfx("trickle")));
+    timers.push(after(4200, () => playSfx("flush")));
     queueToast(t("toast.pee"), 6100);
   },
-  bath: ({ startAction, queueToast }) => {
+  bath: ({ startAction, queueToast, after, cancelAfter, updateWorld }) => {
+    updateWorld((w) => applyEvent(w, { kind: "shower" }));
     const timers: number[] = [];
     startAction("shower", {
       onInterrupt: () => {
-        for (const timer of timers) window.clearTimeout(timer);
+        for (const timer of timers) cancelAfter(timer);
       },
     });
     // tap turns at the end of frame 4 (380ms each); spray carries to frame 16
     for (const at of [1900, 3700, 5500]) {
-      timers.push(window.setTimeout(() => playSfx("water"), at));
+      timers.push(after(at, () => playSfx("water")));
     }
     queueToast(t("toast.shower"), 8200);
   },
@@ -151,11 +171,36 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     showToast(t(`toast.${obj.id}${nextOpen ? "Open" : "Close"}`));
   },
 
-  sport: ({ obj, world, showToast, startAction, queueToast, shakeCamera }) => {
+  sport: ({
+    obj,
+    world,
+    updateWorld,
+    showToast,
+    startAction,
+    startLayer,
+    setMood,
+    queueToast,
+    shakeCamera,
+  }) => {
     if (!obj.action) return;
     // a bench, with a beer in the pocket, is a bench with a beer
     const withBeer = obj.action === "sit" && world.inventory.some((i) => i.itemId === "beer");
     startAction(withBeer ? "sitBeer" : obj.action);
+    // what stays in the hand afterwards (core/layerBrain): the cigarette keeps
+    // burning, the cup comes along
+    if (obj.action === "smoke") startLayer("cigarette", 45000);
+    if (obj.action === "coffee") startLayer("cup", 60000);
+    if (obj.action === "coffee" || obj.action === "hotdog") setMood("smile", 9000);
+    // and what it does to him (lib/body.ts)
+    if (obj.action === "smoke") updateWorld((w) => applyEvent(w, { kind: "smoke" }));
+    if (obj.action === "coffee") updateWorld((w) => applyEvent(w, { kind: "coffee" }));
+    if (obj.action === "hotdog") updateWorld((w) => applyEvent(w, { kind: "eat", what: "hotdog" }));
+    if (GYM_ACTIONS.has(obj.action)) {
+      const hard = obj.action === "deadlift" || obj.action === "squat" || obj.action === "swing";
+      updateWorld((w) => applyEvent(w, { kind: "train", hard }));
+      // and it shows for a while after
+      startLayer("sweat", hard ? 50000 : 30000);
+    }
     if (obj.action === "smoke") playSfx("match");
     if (obj.action.startsWith("sit")) playSfx("doorshut");
     if (obj.action === "press" || obj.action === "swing") shakeCamera(2, 300);
@@ -166,11 +211,13 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     }
     if (obj.action === "pray") {
       queueToast(t("toast.pray2"), 2400);
+      updateWorld((w) => applyEvent(w, { kind: "pray" }));
     }
   },
 
-  dog: ({ obj, world, updateWorld, showToast, startAction, spawnFx }) => {
+  dog: ({ obj, world, updateWorld, showToast, startAction, spawnFx, setMood }) => {
     startAction("pet");
+    setMood("smile", 12000);
     playSfx("chime");
     const pets = world.dogPets + 1;
     updateWorld({ dogPets: pets });
@@ -182,7 +229,7 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
 
   // The studio chores. Each one is done once and stays done — the art keeps
   // falling back to what the clock says until the flag is actually set.
-  dishes: ({ world, updateWorld, showToast, startAction }) => {
+  dishes: ({ world, updateWorld, showToast, startAction, after, cancelAfter }) => {
     if (studioState(world).dishesDone) {
       showToast(t("flavor.sink-kitchen"));
       return;
@@ -190,12 +237,14 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     const timers: number[] = [];
     startAction("use", {
       onInterrupt: () => {
-        for (const timer of timers) window.clearTimeout(timer);
+        for (const timer of timers) cancelAfter(timer);
       },
     });
     playSfx("water");
-    timers.push(window.setTimeout(() => playSfx("water"), 1500));
-    updateWorld((w) => ({ ...w, studio: { ...studioState(w), dishesDone: true } }));
+    timers.push(after(1500, () => playSfx("water")));
+    updateWorld((w) =>
+      applyEvent({ ...w, studio: { ...studioState(w), dishesDone: true } }, { kind: "dishes" }),
+    );
     showToast(t("toast.dishes"));
   },
 
@@ -250,20 +299,42 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
 
   // the sleep panel rides the animation: it opens once he is lying down, and
   // walking away before that cancels it along with the lie
-  bed: ({ obj, startAction, showToast, openOverlay, shakeCamera }) => {
+  // The bed is sleep now, not a panel: he lies down, the room goes dark, and
+  // it is seven in the morning — energy back, the day's counters cleared,
+  // whatever he drank turned into a head (lib/body.ts sleepUntilMorning). In
+  // daylight a lie-down is a nap. Walking away before the dark cancels it.
+  bed: ({
+    world,
+    startAction,
+    showToast,
+    shakeCamera,
+    after,
+    cancelAfter,
+    blackout,
+    updateWorld,
+  }) => {
     const timers: number[] = [];
     startAction("lay", {
       onInterrupt: () => {
-        for (const timer of timers) window.clearTimeout(timer);
+        for (const timer of timers) cancelAfter(timer);
       },
     });
     playSfx("doorshut");
-    timers.push(window.setTimeout(() => shakeCamera(1.5, 200), 1200));
-    showToast(t("toast.bedLie"));
+    timers.push(after(1200, () => shakeCamera(1.5, 200)));
+    const ph = gamePhase(world);
+    const nap = ph === "morning" || ph === "day";
+    showToast(t(nap ? "toast.bedNap" : "toast.bedLie"));
     timers.push(
-      window.setTimeout(() => {
-        if (obj.data) openOverlay({ type: "panel", id: obj.data });
-      }, 5400),
+      after(5400, () => {
+        if (nap) {
+          blackout(1400, t("body.napped"));
+          updateWorld((w) => applyEvent(w, { kind: "nap" }));
+        } else {
+          blackout(2600, t("body.slept"));
+          // the night (lib/body.ts), then the morning (lib/routine.ts)
+          updateWorld((w) => morningAfter(applyEvent(w, { kind: "sleep" })));
+        }
+      }),
     );
   },
 
@@ -278,6 +349,8 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     if (!ctx.obj.to || ctx.world.doorOpening) return;
     const { to, id } = ctx.obj;
     playSfx("creak");
+    // the hand to the handle, for exactly as long as the door takes to open
+    ctx.startAction("open");
     ctx.updateWorld({ doorOpening: id });
     window.setTimeout(() => {
       ctx.travel(to.scene, to.spawnX);
@@ -379,10 +452,12 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     travel(obj.to.scene, obj.to.spawnX);
   },
 
-  liftbutton: ({ obj, travel }) => {
+  liftbutton: ({ obj, travel, startAction }) => {
     if (!obj.to) return;
+    const { to } = obj;
     playSfx("click");
-    travel(obj.to.scene, obj.to.spawnX);
+    startAction("pressButton");
+    window.setTimeout(() => travel(to.scene, to.spawnX), 420);
   },
 
   cashier: (ctx) => openDialogueFor(ctx, "cashier"),
@@ -393,6 +468,7 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
 
   liftpanel: (ctx) => {
     playSfx("click");
+    ctx.startAction("pressButton");
     openDialogueFor(ctx, "lift-panel");
   },
 
@@ -486,11 +562,11 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
     showToast(t(open ? "toast.freezerOpen" : "toast.freezerClose"));
   },
 
-  coffee: ({ showToast, startAction, queueToast }) => {
+  coffee: ({ showToast, startAction, queueToast, after }) => {
     startAction("use");
     playSfx("kettle");
     showToast(t("toast.coffeeBrewing"));
-    window.setTimeout(() => playSfx("pour"), 900);
+    after(900, () => playSfx("pour"));
     queueToast(t("toast.coffeeDone"), 2600);
   },
 
@@ -550,8 +626,8 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
    * back politely; from dusk's end it swallows you with a half-second of the
    * player actually stepping in, the way boarding a train already works.
    */
-  clubdoor: ({ startAction, travel, showToast, queueToast }) => {
-    const ph = dayPhase(new Date().getHours());
+  clubdoor: ({ world, startAction, travel, showToast, queueToast }) => {
+    const ph = gamePhase(world);
     if (ph === "morning" || ph === "day") {
       playSfx("denied");
       showToast(t("toast.clubClosed"));
@@ -570,7 +646,7 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
 
   /** The container bar's hatch: a person, so it talks. */
   barman: (ctx) => {
-    const ph = dayPhase(new Date().getHours());
+    const ph = gamePhase(ctx.world);
     if (ph === "morning" || ph === "day") {
       ctx.showToast(t("toast.barShut"));
       return;
@@ -580,7 +656,7 @@ export const APARTMENT_HANDLERS: Record<string, InteractionHandler<WorldState>> 
 
   /** The frytki trailer. The economy of small joys, fried. */
   frytki: (ctx) => {
-    const ph = dayPhase(new Date().getHours());
+    const ph = gamePhase(ctx.world);
     if (ph === "morning" || ph === "day") {
       ctx.showToast(t("toast.frytkiShut"));
       return;

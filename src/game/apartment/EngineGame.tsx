@@ -13,14 +13,53 @@ import {
   loadGame,
   lofiPlayer,
   Monologue,
+  playSfx,
   type RuntimeApi,
   type RuntimeConfig,
   type RuntimeSceneDef,
+  type SpritePalette,
 } from "@/engine";
+import {
+  applyEvent,
+  bodyGait,
+  bodyIdles,
+  bodyLayer,
+  bodyMood,
+  bodyPosture,
+  GAME_MIN_PER_SEC,
+  // gameDay,
+  // gameHour,
+  // gameMinute,
+  gamePhase,
+  isWet,
+  simulateBody,
+} from "@/lib/body";
+import { nextThought } from "@/lib/thoughts";
+
+/** Hair a tone down and flattened: the shower's, for the forty minutes after. */
+const wetCache = new Map<string, SpritePalette>();
+function wetPalette(base: SpritePalette): SpritePalette {
+  const key = `${base.h}|${base.H}`;
+  const hit = wetCache.get(key);
+  if (hit) return hit;
+  const out = {
+    ...base,
+    h: darken(base.h ?? "#3a2a1e", 0.62),
+    H: darken(base.H ?? "#2b1e15", 0.6),
+  };
+  wetCache.set(key, out);
+  return out;
+}
+function darken(hex: string, f: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  if (Number.isNaN(n)) return hex;
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v * f)));
+  return `#${[c(n >> 16), c((n >> 8) & 255), c(n & 255)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 import {
   bestTier,
   type DayPhase,
-  dayPhase,
   ITEM_LABEL,
   initialWorld,
   recordTier,
@@ -102,6 +141,17 @@ const SCENES = Object.fromEntries(
 
 /** What pressing E actually does, by object kind — shown on the interact chip. */
 /** Verb keys by object kind, resolved through `t("verb.*")` at render. */
+/** Scenes under the sky, where a night is cold. */
+const OUTDOORS = new Set([
+  "outside",
+  "district",
+  "elektrykow",
+  "forum",
+  "parking",
+  "station",
+  "balcony",
+]);
+
 const VERB: Record<string, string> = {
   npc: "talk",
   cashier: "talk",
@@ -309,7 +359,11 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
     initialWorld: devWorld,
     player: PLAYER,
     promptSwitchLabel: () => t("prompt.switch"),
-    playerFor: (w) => playerForAppearance(w.appearance),
+    // the body has a say in the posture: spent, or the morning after, he slouches
+    playerFor: (w) => {
+      const posture = bodyPosture(w);
+      return playerForAppearance(posture ? { ...w.appearance, posture } : w.appearance);
+    },
     handlers: APARTMENT_HANDLERS,
     objectLabel: (obj) => t(`obj.${obj.id}`),
     /* "sport" covers both the gym rigs (TRAIN) and street/platform benches — the
@@ -318,12 +372,52 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
       t(
         `verb.${obj.kind === "sport" && obj.action?.startsWith("sit") ? "sit" : (VERB[obj.kind] ?? "use")}`,
       ),
-    dayPhase: () => dayPhase(new Date().getHours()),
+    // the runtime's own sounds: footfalls on the contact frames of the walk
+    onSound: (name) => {
+      if (name.startsWith("step")) playSfx("step");
+    },
+    // the day is the game's own (lib/body.ts), not the player's PC clock
+    dayPhase: (w) => gamePhase(w),
+    /**
+     * The body's clock: one game minute per real second while the game runs.
+     * Energy, hunger, warmth, buzz and the hour move here; everything below
+     * reads the result.
+     */
+    simulate: (w, dtMs, env) =>
+      simulateBody(w, (dtMs / 1000) * GAME_MIN_PER_SEC, {
+        outdoors: OUTDOORS.has(env.scene),
+        moving: env.moving,
+        running: env.running,
+      }),
+    /**
+     * What the world itself puts in his hands: the parcel under the arm while
+     * it is in the pocket; hands in the pockets when he is cold outdoors. An
+     * explicit layer (a cigarette, a cup) takes precedence.
+     */
+    playerLayer: (world, scene) => {
+      if (world.inventory.some((i) => i.itemId === "parcel")) return "parcel";
+      return bodyLayer(world, OUTDOORS.has(scene));
+    },
+    // how he moves and looks because of how he is
+    playerGait: (w) => bodyGait(w),
+    playerMood: (w) => bodyMood(w),
+    playerIdles: (w, scene) => {
+      const out = bodyIdles(w, OUTDOORS.has(scene));
+      // where a man waits, he looks at the time
+      if (scene === "station" || scene === "forum" || scene === "corridor") out.push("watch");
+      return out;
+    },
+    // the inner voice, given what it knows (lib/thoughts.ts)
+    thought: (w, scene) => {
+      const next = nextThought(w, scene);
+      return next ? { text: t(`body.${next.key}`), world: next.world } : null;
+    },
     renderHud: (scene, world, phase, openOverlay) => (
       <HUD
         /* the generic platform names itself by which station it currently is */
         room={scene === "station" ? `station-${stationIdOf(world)}` : scene}
         phase={phase as DayPhase}
+        // clock={{ hour: gameHour(world), minute: gameMinute(world), day: gameDay(world) }}
         visited={visited}
         onOpenMenu={() => openOverlay({ type: "menu" })}
         pocket={{
@@ -337,7 +431,11 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
         }}
       />
     ),
-    playerAppearance: (w) => paletteForAppearanceCached(w.appearance),
+    // wet hair after the shower: the hair tones a step down for a while
+    playerAppearance: (w) => {
+      const base = paletteForAppearanceCached(w.appearance);
+      return isWet(w) ? wetPalette(base) : base;
+    },
     renderMonologue: (toast, scale) => (
       <Monologue kind="thought" scale={scale} text={toast?.text ?? null} contentKey={toast?.id} />
     ),
@@ -360,11 +458,16 @@ export function EngineGame({ onQuit }: { onQuit?: () => void } = {}) {
               best={bestTier(world, "bowls")}
               onClose={close}
               onVerdict={(tier) =>
-                updateWorld((w) => ({
-                  ...recordTier(w, "bowls", tier),
-                  /* however it went, he has been fed: the chore is done */
-                  studio: { ...studioState(w), bowlsFilled: true },
-                }))
+                updateWorld((w) =>
+                  applyEvent(
+                    {
+                      ...recordTier(w, "bowls", tier),
+                      /* however it went, he has been fed: the chore is done */
+                      studio: { ...studioState(w), bowlsFilled: true },
+                    },
+                    { kind: "bowls" },
+                  ),
+                )
               }
             />
           </Suspense>

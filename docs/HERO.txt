@@ -1,0 +1,67 @@
+# THE HERO — what he carries between sessions
+
+Added 2026-08-30. Before this the man had no inside: the day came off the
+player's PC clock, a beer was a two-minute timer, nothing he did left a mark.
+This is the layer that gives him one. Everything is data in `WorldState`
+(optional slices, so old saves load) and pure functions over it.
+
+## lib/body.ts — the body
+
+* `body`: energy, hunger, warmth, buzz, hangover (0..100), `wokeAt`,
+  `wetUntil`. `simulateBody(world, dtMin, env)` drifts them with game time
+  (the runtime calls it once a game second, on the game clock, so a paused
+  game is a paused body); `applyEvent` jumps them: eat, coffee, grzaniec,
+  beer, water, smoke, train, shower, pray, dishes, bowls, nap, sleep.
+* `habits`: what he does, all-time and today (smoked, trained, beers,
+  coffees, meals, showers, prayers, nights, dishesDay, bowlsDay, walkedM).
+* `time`: the game's own clock in minutes since day 0. A new game starts at
+  the real hour; a game minute per real second (a day is 24 real minutes);
+  `sleepUntilMorning` jumps to 07:00. `gamePhase(w)` is what every scene,
+  handler and the HUD read now — `dayPhase(new Date())` is gone.
+* `voice`: what the inner voice has said and when.
+* `met`: how many times he has spoken to each person, and on which day last.
+
+What the numbers do to the sprite (`body*` readers, plugged into the rig via
+`GameConfig`): `bodyPosture` (slouched when spent / the morning after),
+`bodyGait` ("drunk", "tired"), `bodyMood` (smile tipsy, tense hungover or
+freezing, sad spent-and-hungry), `bodyLayer` (pockets when cold outdoors, with
+the breath showing), `bodyIdles` (yawn, rubEyes, shiver, belly, temples,
+cough). `isWet` darkens the hair after the shower (`playerAppearance`).
+
+## lib/thoughts.ts — the inner voice
+
+Rules (key, condition, cooldown in game minutes, weight, scenes). The runtime
+polls `nextThought` every two seconds while nothing else is on screen; the
+heaviest applicable rule off cooldown fires, with a global gap of 45 game
+minutes so he does not narrate himself. Lines live under `body.*` in
+en/uk/pl. Hunger past a Żabka, the third cigarette, the morning after, the
+cold platform, the dishes' second storey, the dog unfed.
+
+## lib/routine.ts — the morning
+
+`morningAfter` after `sleepUntilMorning`: the chores come back (dishes, bin,
+bowls), and the training count earns a `build` step (8/20/40/70 sessions →
+lean/athletic/heavy/powerlifter) that the parametric rig turns into
+shoulders. Never below where he started.
+
+## The runtime hooks (GameConfig)
+
+`simulate`, `dayPhase(world)`, `playerGait`, `playerMood`, `playerLayer`,
+`playerIdles`, `thought`, `onSound` (footfalls on the contact frames of the
+walk, by surface). `core/idleBrain.ts` takes a registry of flourishes
+(`PlayerConfig.idles`) and the moment's extras; a long stand brings the phone
+out once.
+
+## Relationships
+
+`met` is bumped on every dialogue open (`dialogue/index.ts`); the barmanka and
+the Żabka cashier greet a regular (three visits) and notice an absence. Gross
+lies awake after fifteen pettings and lifts his head when you move after
+forty (`studioScene`).
+
+## Verifying
+
+`__game.getWorld()` / `__game.updateWorld` from a dev harness; set `body`
+fields and read `getLive().frame` (gait/layer/mood are in the frame name),
+`document.querySelector("[aria-live]")` for the last thought. Spawn away from
+objects before pressing Enter, or the press interacts.

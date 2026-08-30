@@ -28,17 +28,27 @@ import { mirrorRows, type Patch, patchMap, stackMaps } from "../sprite/character
  */
 
 export interface Pose {
+  /** the parts above the legs, when not the rig's default (a back view) */
+  upper?: readonly string[];
   /** the legs part */
   legs: string;
-  /** patches on the standing body, before it moves (arms, held things) */
-  arms?: readonly string[];
+  /** the arm on the far side of the body — painted first */
+  far?: readonly string[];
+  /** the arm nearer the camera — painted over the far one and the torso */
+  near?: readonly string[];
+  /** things that are not an arm but move with the body: steam, a bottle at the hip */
+  props?: readonly string[];
+  /** columns the head+torso (and their arms) shift toward the facing — a runner's lean, a drunk's sway */
+  lean?: number;
   /** rows the head+torso sink into the legs (a seat, a bent knee) */
   drop?: number;
   /** the body rides one row up over a straight leg (the walk's pass) */
   lift?: boolean;
+  /** rows the whole figure moves up inside the box (negative: down) — a hang, a pull-up */
+  rise?: number;
   /** what the head does, after the body has moved */
   head?: { bow?: number; chin?: boolean; turn?: boolean };
-  /** patches applied after the head has moved (things at the mouth) */
+  /** patches applied after the head has moved and shifted by the drop (things at the mouth, arms on a seat) */
   over?: readonly string[];
   /** the posture pass (slouch) applies — standing and walking frames */
   posture?: boolean;
@@ -74,11 +84,16 @@ export function bowHead(map: SpriteMap, depth = 1, top = 0, headRows = HEAD_ROWS
   ];
 }
 
-/** Tip the head back one row inside its window — a sip, a look up. */
+/**
+ * Tip the head back one row inside its window — a sip, a look up. The head
+ * rises; the neck row stays put and is repeated, so the throat stretches
+ * instead of a blank row appearing between chin and collar — which left the
+ * head attached only through whatever he was drinking.
+ */
 export function raiseChin(map: SpriteMap, top = 0, headRows = HEAD_ROWS): string[] {
-  const empty = blank(map);
   const head = map.slice(top, top + headRows);
-  return [...map.slice(0, top), ...head.slice(1), empty, ...map.slice(top + headRows)];
+  const neck = head[headRows - 1];
+  return [...map.slice(0, top), ...head.slice(1), neck, ...map.slice(top + headRows)];
 }
 
 /**
@@ -110,11 +125,22 @@ export function liftBody(map: SpriteMap, headRows = HEAD_ROWS): string[] {
   return bowHead(map, 1, 0, headRows).slice(1);
 }
 
+/** Shift the rows above the legs `n` columns (positive = toward the facing). */
+export function leanBody(map: SpriteMap, n: number, legsRow = LEGS_ROW): string[] {
+  if (n === 0) return [...map];
+  return map.map((row, y) => {
+    if (y >= legsRow) return row;
+    const w = row.length;
+    if (n > 0) return ".".repeat(n) + row.slice(0, w - n);
+    return row.slice(-n) + ".".repeat(-n);
+  });
+}
+
 /** Pixels for a pose. */
 export function buildPose(rig: PoseRig, pose: Pose): string[] {
   const headRows = rig.headRows ?? HEAD_ROWS;
   const legsRow = rig.legsRow ?? LEGS_ROW;
-  const partNames = [...(rig.upper ?? ["head", "torso"]), pose.legs];
+  const partNames = [...(pose.upper ?? rig.upper ?? ["head", "torso"]), pose.legs];
   const maps = partNames.map((n) => {
     const m = rig.parts[n];
     if (!m) throw new Error(`pose: unknown part "${n}"`);
@@ -126,10 +152,20 @@ export function buildPose(rig: PoseRig, pose: Pose): string[] {
     if (!p) throw new Error(`pose: unknown patch "${name}"`);
     m = patchMap(m, dr ? { ...p, r: p.r + dr } : p);
   };
-  for (const a of pose.arms ?? []) patch(a);
+  for (const a of pose.far ?? []) patch(a);
+  for (const a of pose.near ?? []) patch(a);
+  for (const a of pose.props ?? []) patch(a);
+  if (pose.lean) m = leanBody(m, pose.lean, legsRow);
   const drop = pose.drop ?? 0;
   if (drop) m = dropBody(m, drop, legsRow);
   if (pose.lift) m = liftBody(m, headRows);
+  if (pose.rise) {
+    const n = pose.rise;
+    m =
+      n > 0
+        ? [...m.slice(n), ...Array.from({ length: n }, () => blank(m))]
+        : [...Array.from({ length: -n }, () => blank(m)), ...m.slice(0, m.length + n)];
+  }
   const top = drop;
   if (pose.head?.bow) m = bowHead(m, pose.head.bow, top, headRows);
   if (pose.head?.chin) m = raiseChin(m, top, headRows);
@@ -145,17 +181,36 @@ export function buildPose(rig: PoseRig, pose: Pose): string[] {
 
 /**
  * The upper half of one pose on the lower half of another: `upper`'s arms,
- * head and over-patches on `lower`'s legs, drop and lift. The result is what
- * the two would have been drawn as together.
+ * head and over-patches on `lower`'s legs, drop and lift. An arm slot the
+ * upper pose fills replaces the lower's (a hand holding a cup is not also
+ * swinging); a slot it leaves empty keeps the lower's arm. Props and over
+ * patches accumulate.
+ *
+ * When the lower body is dropped (a seat, a crouch), the upper's arms are
+ * moved to `over` — laid on after the drop — because an arm drawn in standing
+ * coordinates and then dropped loses every row that lands on the legs, and a
+ * hand at the hip is exactly where the thigh now is.
  */
 export function overlay(upper: Pose, lower: Pose): Pose {
+  const dropped = (lower.drop ?? 0) > 0;
+  const far = upper.far ?? lower.far;
+  const near = upper.near ?? lower.near;
   return {
+    upper: lower.upper,
     legs: lower.legs,
     drop: lower.drop,
     lift: lower.lift,
-    arms: [...(lower.arms ?? []), ...(upper.arms ?? [])],
+    lean: lower.lean,
+    rise: lower.rise,
+    far: dropped && upper.far ? lower.far : far,
+    near: dropped && upper.near ? lower.near : near,
+    props: [...(lower.props ?? []), ...(upper.props ?? [])],
     head: upper.head ?? lower.head,
-    over: [...(lower.over ?? []), ...(upper.over ?? [])],
+    over: [
+      ...(lower.over ?? []),
+      ...(dropped ? [...(upper.far ?? []), ...(upper.near ?? [])] : []),
+      ...(upper.over ?? []),
+    ],
     posture: lower.posture,
   };
 }

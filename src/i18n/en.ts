@@ -222,6 +222,14 @@ export const en = {
     nothingOnHead: "NOTHING ON THE HEAD TO COLOUR",
     fellOut: "WHATEVER FELL OUT",
     asDrawn: "AS DRAWN",
+    note: {
+      everyday: "Whatever was already on the chair.",
+      kiosk: "Down for cigarettes, back in four minutes.",
+      training: "Red kurtka, mat burn on both knees.",
+      nightshift: "Nobody looks twice at this after eleven.",
+      sunday: "Clean shirt, no plans, one coffee.",
+      yard: "Warm enough for the bench by the bins.",
+    },
     outfit: {
       everyday: "EVERYDAY",
       kiosk: "KIOSK RUN",
@@ -1137,6 +1145,7 @@ export const en = {
       "The wall fan above the bar, doing its sincere best against two hundred dancing people. A teaspoon against the tide.",
   },
   toast: {
+    bedNap: "You lie down for a bit. Not sleep, not yet.",
     boarding: "You step up into the carriage.",
     "train-seat-1":
       "You sit by the window. The glass is cold against your shoulder and Gdańsk starts going past.",
@@ -1295,7 +1304,42 @@ export const en = {
     power: "POWER",
     hint: "↑/↓ — switch file · ESC — power off",
   },
+  /** the inner voice, given what it knows about the body — lib/thoughts.ts */
+  body: {
+    hungry: "Your stomach has an opinion. It is not a subtle one.",
+    starving: "You have stopped being hungry and started being empty. That is worse.",
+    hungryZabka: "The hot dog roller turns. It has been turning for you since 2009.",
+    hungryStreet:
+      "Every window on this street is a kitchen. Yours is the only one with nothing in it.",
+    tired: "The eyes want to close. Just for a second. Just the eyes.",
+    exhausted: "Walking is now a thing you have to decide to do, one leg at a time.",
+    tiredHome: "The bed is over there. It knows. You know. Nobody has to say it.",
+    longDay: "Sixteen hours on your feet. A tram driver would have gone home twice.",
+    cold: "The cold has got into the jacket. It is looking for the sleeves.",
+    freezing: "You can't feel your fingers. That is your body's way of not talking to you.",
+    warmAgain: "Warm. The kind of warm that makes your ears hurt for a minute first.",
+    tipsy: "The pavement is where it always was. You are the one who has moved.",
+    drunk: "Everything is fine. Everything is very, very fine. Mind the kerb.",
+    hungover: "Somebody is playing a drum inside your head, and the drum is your head.",
+    hungoverLater: "The head has settled into a quiet, personal grievance.",
+    thirdCigarette: "Third one before the day has properly started. You notice. You light it.",
+    packDay: "Six. The packet is lighter than your conscience and that is saying something.",
+    secondCoffee: "The second coffee doesn't wake you up. It just makes the tiredness faster.",
+    trainedToday: "Every step is a receipt for the session. Good. Keep the receipt.",
+    trainedStreak:
+      "Five sessions. The bar hasn't got lighter — you have got heavier in the right places.",
+    noMealToday: "You have not eaten today. You had coffee. Coffee is a mood, not a meal.",
+    dishesWaiting: "The sink has a second storey now. It is not a good look for a sink.",
+    dogUnfed:
+      "Gross has looked at the bowl three times without looking at you. That is a sentence.",
+    earlyMorning: "The blocks are grey and quiet. Even the crows haven't started.",
+    lateNightOut: "The night trams have stopped. Whatever this is, you are walking it home.",
+    homeLate: "The flat is dark and smells like your own day. Shoes off. Then the rest.",
+    slept: "You sleep. The block sleeps around you.",
+    napped: "Twenty minutes with your eyes shut. The world is still here.",
+  },
   hud: {
+    day: "DAY",
     studio: "THE FLAT",
     hallway: "HALLWAY",
     kitchen: "KITCHEN",

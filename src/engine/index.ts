@@ -29,6 +29,7 @@ export * from "./character";
 export * from "./core/constants";
 export * from "./core/gait";
 export * from "./core/ground";
+export * from "./core/layerBrain";
 export * from "./core/math";
 export {
   acquireVoice,
@@ -78,9 +79,12 @@ export type {
   ActionDef,
   AnyWorld,
   FxInstance,
+  GaitDef,
   GameConfig,
+  IdleFlourish,
   InteractionCtx,
   InteractionHandler,
+  LayerDef,
   PlayerConfig,
   SceneDef,
   SceneObject,

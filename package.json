@@ -1,7 +1,7 @@
 {
   "name": "ivasik-k7.github.io",
   "private": true,
-  "version": "0.3.93",
+  "version": "0.3.121",
   "type": "module",
   "scripts": {
     "dev": "NODE_OPTIONS=--max-old-space-size=1024 vite",

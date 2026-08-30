@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  isDerivedFrame,
   type LiveState,
   PixelFrame,
   PixelLabel,
@@ -11,8 +12,14 @@ import {
   validateCharacter,
 } from "@/engine";
 import { initialWorld, type WorldState } from "@/lib/worldState";
-import { APPEARANCE_SLOTS, paletteForAppearanceCached, playerForAppearance } from "./appearance";
+import {
+  APPEARANCE_SLOTS,
+  normalizeAppearance,
+  paletteForAppearanceCached,
+  playerForAppearance,
+} from "./appearance";
 import { OUTSIDE_SCENES } from "./outsideScenes";
+import { PLAYER_VALIDATION } from "./player";
 import { APARTMENT_SCENES } from "./scenes";
 
 /**
@@ -176,14 +183,12 @@ export function PlayerStudio({ onClose }: { onClose: () => void }) {
   const acts = useMemo(() => actionRows(player), [player]);
   const rig = useMemo(() => {
     const names = Object.keys(player.frames);
-    const twins = names.filter((n) => n.endsWith("~blink")).length;
+    const twins = names.filter((n) => isDerivedFrame(player, n)).length;
     return {
       frames: names.length,
       authored: names.length - twins,
       twins,
-      issues: validateCharacter(player, {
-        airborne: new Set(["bedLie", "bedLieB", "bedSide", "bedSitUp"]),
-      }).filter((i) => !i.frame?.endsWith("~blink")),
+      issues: validateCharacter(player, PLAYER_VALIDATION),
     };
   }, [player]);
   const places = useMemo(
@@ -193,7 +198,7 @@ export function PlayerStudio({ onClose }: { onClose: () => void }) {
   const frames = useMemo(
     () =>
       Object.keys(player.frames)
-        .filter((f) => !f.endsWith("~blink"))
+        .filter((f) => !isDerivedFrame(player, f))
         .sort(),
     [player],
   );
@@ -218,7 +223,10 @@ export function PlayerStudio({ onClose }: { onClose: () => void }) {
   }, [acts, from, to]);
 
   const setSlot = useCallback((key: keyof WorldState["appearance"], id: string) => {
-    api()?.updateWorld((w) => ({ ...w, appearance: { ...w.appearance, [key]: id } }));
+    api()?.updateWorld((w) => ({
+      ...w,
+      appearance: normalizeAppearance({ ...w.appearance, [key]: id }),
+    }));
   }, []);
 
   const slow = stats !== null && stats.frameMs > SLOW_FRAME_MS;

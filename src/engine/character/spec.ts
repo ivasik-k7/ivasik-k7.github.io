@@ -156,20 +156,25 @@ export interface Footwear {
   shaft?: number;
   /** no shoe at all — the foot is skin */
   bare?: boolean;
+  /** an open upper: the top of the shoe is foot, the sole stays */
+  open?: boolean;
 }
 
 export const FOOTWEAR: Record<FootKind, Footwear> = {
   sneakers: {},
   boots: { shaft: 2 },
-  sandals: {},
+  sandals: { open: true },
   barefoot: { bare: true },
 };
 
 export type HeadKind = "none" | "cap" | "beanie" | "hood";
 
+/**
+ * Headwear. A cap is not a shape: the drawn head already carries the cap
+ * zone, and whether it shows is the palette's decision (the game deletes the
+ * zone for a bare head). Only the hood and the beanie change pixels.
+ */
 export interface Headwear {
-  /** the cap zone is worn */
-  cap?: boolean;
   /** the hood is up over the hair */
   hood?: boolean;
   /** a beanie: the cap zone plus the hair rows down to the brow */
@@ -178,7 +183,7 @@ export interface Headwear {
 
 export const HEADWEAR: Record<HeadKind, Headwear> = {
   none: {},
-  cap: { cap: true },
+  cap: {},
   beanie: { beanie: true },
   hood: { hood: true },
 };
@@ -204,9 +209,33 @@ export interface CharacterSpec {
   garments: GarmentSpec;
 }
 
-/** A stable key for caches — the spec, nothing else. */
+/**
+ * A stable key for caches — every field of the spec, in a fixed order. The
+ * lists are typed against the spec so a new field cannot be forgotten here
+ * without the compiler saying so.
+ */
+const BODY_FIELDS = [
+  "build",
+  "height",
+  "neck",
+  "posture",
+] as const satisfies readonly (keyof BodySpec)[];
+const GARMENT_FIELDS = [
+  "torso",
+  "bottom",
+  "feet",
+  "head",
+] as const satisfies readonly (keyof GarmentSpec)[];
+type Covers<T, K extends readonly PropertyKey[]> =
+  Exclude<keyof T, K[number]> extends never ? true : never;
+const _bodyCovered: Covers<BodySpec, typeof BODY_FIELDS> = true;
+const _garmentCovered: Covers<GarmentSpec, typeof GARMENT_FIELDS> = true;
+void _bodyCovered;
+void _garmentCovered;
+
 export function specKey(spec: CharacterSpec): string {
-  const b = spec.body;
-  const g = spec.garments;
-  return `${b.build}|${b.height}|${b.neck}|${b.posture}|${g.torso}|${g.bottom}|${g.feet}|${g.head}`;
+  return [
+    ...BODY_FIELDS.map((k) => spec.body[k]),
+    ...GARMENT_FIELDS.map((k) => spec.garments[k]),
+  ].join("|");
 }

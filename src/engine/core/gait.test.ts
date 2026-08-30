@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { cycleIndex, newGaitState, SETTLE_MS, stepGait, walkFrame, walkSpan } from "./gait";
+import {
+  activeGait,
+  cycleIndex,
+  newGaitState,
+  resolveGait,
+  SETTLE_MS,
+  setGaitOverride,
+  stepGait,
+  walkFrame,
+  walkSpan,
+} from "./gait";
 import type { PlayerConfig } from "./types";
 
 const CYCLE = ["cA", "rA", "pA", "lA", "cB", "rB", "pB", "lB"];
@@ -85,5 +95,51 @@ describe("gait", () => {
     expect(hits).toBeGreaterThan(60);
     expect(hits).toBeLessThan(140);
     expect(walkFrame(c, 7 * 64)).toBe(walkFrame(c, 7 * 64));
+  });
+
+  describe("gaits", () => {
+    const withRun = () =>
+      cfg({
+        frames: Object.fromEntries(
+          [...CYCLE, "rA", "rB", "rC", "rD", "rE", "rF", "stand"].map((f) => [f, ["."]]),
+        ),
+        gaits: {
+          run: { cycle: ["rA", "rB", "rC", "rD", "rE", "rF"], stride: 12, start: 1, speed: 1.8 },
+          drunk: { cycle: CYCLE, stride: 6 },
+        },
+      });
+
+    it("resolves the walk from the walk fields and others from the table", () => {
+      const c = withRun();
+      expect(resolveGait(c).stride).toBe(8);
+      expect(resolveGait(c, "run").speed).toBe(1.8);
+      expect(resolveGait(c, "nope").cycle).toEqual(CYCLE);
+    });
+
+    it("the run key selects the run when the config has one; an override wins over it", () => {
+      const g = newGaitState();
+      const c = withRun();
+      expect(activeGait(g, c, 0, true)).toBe("run");
+      expect(activeGait(g, cfg(), 0, true)).toBe("walk");
+      setGaitOverride(g, "drunk", 0, 1000);
+      expect(activeGait(g, c, 500, true)).toBe("drunk");
+      expect(activeGait(g, c, 1000, false)).toBe("walk");
+      expect(g.override).toBeNull();
+      setGaitOverride(g, "drunk", 0);
+      expect(activeGait(g, c, 1e9, false)).toBe("drunk");
+      setGaitOverride(g, null, 0);
+      expect(activeGait(g, c, 0, false)).toBe("walk");
+    });
+
+    it("a change of gait mid-stride restarts on the new gait's push-off", () => {
+      const g = newGaitState();
+      const c = withRun();
+      stepGait(g, c, 0, true, 1, 0);
+      const run = stepGait(g, c, 100, true, 1, 16, "run");
+      expect(run.walkDist).toBe(12);
+      expect(run.frame).toBe("rB");
+      expect(cycleIndex(c, run.walkDist + 12, "run")).toBe(2);
+      expect(walkSpan(c, "run") % (12 * 6)).toBe(0);
+    });
   });
 });

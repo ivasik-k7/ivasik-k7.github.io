@@ -20,7 +20,7 @@ const rig: PoseRig = {
 
 describe("pose", () => {
   it("stacks, patches arms in body coordinates, then moves the body", () => {
-    const m = buildPose(rig, { legs: "sit", arms: ["arm"], drop: 1 });
+    const m = buildPose(rig, { legs: "sit", near: ["arm"], drop: 1 });
     // dropped one row: the body comes down, the torso's last row goes into the
     // legs' blank top row, and the arm (patched before the drop) rides with it
     expect(m).toEqual(["....", ".hh.", ".ss.", "sttt", "sttt", "pppp", "b..b"]);
@@ -28,31 +28,59 @@ describe("pose", () => {
 
   it("puts `over` patches on after the head has moved", () => {
     const chin = buildPose(rig, { legs: "legs", head: { chin: true }, over: ["cup"] });
-    // head rows 0-1 → ".ss." then blank; the cup lands at its row regardless
+    // head rows 0-1 → ".ss." then the neck row again (a raised chin keeps its
+    // neck); the cup lands at its row regardless
     expect(chin[0]).toBe(".ss.");
-    expect(chin[1]).toBe("...c");
-    const before = buildPose(rig, { legs: "legs", head: { chin: true }, arms: ["cup"] });
+    expect(chin[1]).toBe(".ssc");
+    const before = buildPose(rig, { legs: "legs", head: { chin: true }, props: ["cup"] });
     // patched before the chin came up, the cup went with the face
     expect(before[0]).toBe(".ssc");
   });
 
-  it("overlay: another pose's arms and head on this pose's legs", () => {
-    const drinking = { legs: "legs", head: { bow: 1 }, arms: ["arm"], over: ["cup"] };
-    const seated = { legs: "sit", drop: 1 };
-    const combined = overlay(drinking, seated);
-    expect(combined).toEqual({
-      legs: "sit",
-      drop: 1,
+  it("overlay: the upper's arm slots replace the lower's, props and over accumulate", () => {
+    const drinking = { legs: "legs", head: { bow: 1 }, near: ["arm"], over: ["cup"] };
+    const walking = { legs: "legs", far: ["arm"], near: ["cup"], props: ["cup"], posture: true };
+    expect(overlay(drinking, walking)).toEqual({
+      upper: undefined,
+      legs: "legs",
+      drop: undefined,
       lift: undefined,
-      arms: ["arm"],
+      lean: undefined,
+      rise: undefined,
+      far: ["arm"],
+      near: ["arm"],
+      props: ["cup"],
       head: { bow: 1 },
       over: ["cup"],
-      posture: undefined,
+      posture: true,
     });
+  });
+
+  it("overlay onto a dropped body moves the upper's arms after the drop", () => {
+    const drinking = { legs: "legs", near: ["arm"], over: ["cup"] };
+    const seated = { legs: "sit", drop: 1, near: ["arm"] };
+    const combined = overlay(drinking, seated);
+    expect(combined.near).toEqual(["arm"]); // the seat keeps its own arm underneath
+    expect(combined.over).toEqual(["arm", "cup"]);
     const m = buildPose(rig, combined);
     expect(m.length).toBe(7);
-    // the cup is shifted by the drop: row 1 + 1
-    expect(m[2]).toContain("c");
+    // the over-arm is shifted by the drop: patch row 2 → frame row 3
+    expect(m[3][0]).toBe("s");
+  });
+
+  it("empty slots keep the lower's arms", () => {
+    const upper = { legs: "legs", props: ["cup"] };
+    const lower = { legs: "legs", far: ["arm"], near: ["arm"] };
+    expect(overlay(upper, lower).far).toEqual(["arm"]);
+    expect(overlay(upper, lower).near).toEqual(["arm"]);
+  });
+
+  it("lean shifts the body above the legs, not the legs", () => {
+    const m = buildPose(rig, { legs: "legs", lean: 1 });
+    expect(m[0]).toBe("..hh");
+    expect(m[4]).toBe("p..p");
+    const back = buildPose(rig, { legs: "legs", lean: -1 });
+    expect(back[0]).toBe("hh..");
   });
 
   it("posture runs last and only when asked", () => {
@@ -70,6 +98,6 @@ describe("pose", () => {
 
   it("names the missing part or patch", () => {
     expect(() => buildPose(rig, { legs: "nope" })).toThrow(/unknown part "nope"/);
-    expect(() => buildPose(rig, { legs: "legs", arms: ["x"] })).toThrow(/unknown patch "x"/);
+    expect(() => buildPose(rig, { legs: "legs", near: ["x"] })).toThrow(/unknown patch "x"/);
   });
 });

@@ -28,7 +28,8 @@ import {
   Vignette,
   vignettePaths,
 } from "@/engine";
-import { dayPhase, type WorldState } from "@/lib/worldState";
+import { gamePhase } from "@/lib/body";
+import type { WorldState } from "@/lib/worldState";
 import { CRATES_PALETTE, cratesMap, DRUM_PALETTE, drumMap, propActor } from "./bandProps";
 import { elektrykowState } from "./elektrykowScene";
 import { NPCS } from "./npcs";
@@ -195,7 +196,6 @@ function clubMode(world: WorldState, ph: Ph): ClubMode {
 const isLive = (mode: ClubMode) => mode === "on" || mode === "peak";
 
 /** The wall-clock phase, for `when` gates that get the world but not the phase. */
-const phNow = () => toPhase(dayPhase(new Date().getHours()));
 
 /* ================================================================== *
  * helpers
@@ -2245,7 +2245,7 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
       x: 358,
       range: 18,
       when: (w) => {
-        const s = elektrykowState(w as WorldState, phNow());
+        const s = elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState)));
         return s.club === "open" || s.club === "peak";
       },
     },
@@ -2265,7 +2265,7 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
       range: 30,
       markerY: 50,
       when: (w) => {
-        const s = elektrykowState(w as WorldState, phNow());
+        const s = elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState)));
         return s.club === "open" || s.club === "peak";
       },
     },
@@ -2276,7 +2276,7 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
       x: Z.chill + 98,
       range: 16,
       when: (w) => {
-        const s = elektrykowState(w as WorldState, phNow());
+        const s = elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState)));
         return s.club === "open" || s.club === "peak";
       },
     },
@@ -2304,7 +2304,8 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
       priority: 2,
       x: Z.dj,
       range: 30,
-      when: (w) => elektrykowState(w as WorldState, phNow()).club !== "closed",
+      when: (w) =>
+        elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState))).club !== "closed",
     },
     { id: "club-norequests", kind: "flavor", x: Z.dj, range: 20, markerY: BOOTH[1] + 4 },
     { id: "club-ledwall", kind: "flavor", x: Z.dj, range: 44, markerY: 40 },
@@ -2324,7 +2325,7 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
       x: Z.corridor - 14,
       range: 14,
       when: (w) => {
-        const s = elektrykowState(w as WorldState, phNow());
+        const s = elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState)));
         return s.club === "open" || s.club === "peak";
       },
     },
@@ -2335,7 +2336,7 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
       x: Z.door + 42,
       range: 14,
       when: (w) => {
-        const s = elektrykowState(w as WorldState, phNow());
+        const s = elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState)));
         return s.club === "open" || s.club === "peak";
       },
     },
@@ -2346,7 +2347,7 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
       x: Z.dj - 110,
       range: 16,
       when: (w) => {
-        const s = elektrykowState(w as WorldState, phNow());
+        const s = elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState)));
         return s.club === "closed" || s.club === "prep";
       },
     },
@@ -2356,7 +2357,7 @@ export const RAVE_CLUB_SCENE: RuntimeSceneDef<WorldState> = {
       x: Z.corridor - 33,
       range: 14,
       when: (w) => {
-        const s = elektrykowState(w as WorldState, phNow());
+        const s = elektrykowState(w as WorldState, toPhase(gamePhase(w as WorldState)));
         return s.club === "closed" || s.club === "prep";
       },
     },

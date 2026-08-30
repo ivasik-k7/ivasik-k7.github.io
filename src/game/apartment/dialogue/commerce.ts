@@ -1,4 +1,5 @@
 import { playSfx } from "@/engine";
+import { applyEvent, type BodyEvent } from "@/lib/body";
 import type { WorldState } from "@/lib/worldState";
 import type { Ctx } from "./types";
 
@@ -16,9 +17,16 @@ export function countOf(world: WorldState, itemId: string): number {
 }
 
 /** Pay for a thing and pocket it; refuses politely when short. */
+/** Food bought and eaten on the spot: the body's ledger first. */
+export function eatBought(ctx: Ctx, what: "hotdog" | "frytki" | "meal" | "snack"): void {
+  ctx.setMood("smile", 8000);
+  ctx.updateWorld((w) => applyEvent(w, { kind: "eat", what }));
+}
+
 export function buy(ctx: Ctx, itemId: string, price: number): boolean {
   if (ctx.world.money < price) {
     playSfx("denied");
+    ctx.setMood("sad", 4000);
     return false;
   }
   playSfx("register");
@@ -37,8 +45,26 @@ export function buy(ctx: Ctx, itemId: string, price: number): boolean {
  */
 export function buyAndDrink(ctx: Ctx, itemId: string, price: number, action: string): boolean {
   const ok = buy(ctx, itemId, price);
-  if (ok) ctx.startAction(action);
-  return ok;
+  if (!ok) return false;
+  ctx.startAction(action);
+  ctx.setMood("smile", 8000);
+  // and what is left of it comes along in the hand for a while
+  const layer = action === "beer" ? "bottle" : action === "coffee" ? "cup" : null;
+  if (layer) ctx.startLayer(layer, 60000);
+  // and what it does to him — the walk, the face and the morning after come
+  // from the body now (lib/body.ts), not from a timer
+  const ev: BodyEvent | null =
+    itemId === "beer"
+      ? { kind: "beer" }
+      : itemId === "grzaniec"
+        ? { kind: "grzaniec" }
+        : itemId === "water" || itemId === "izotonik"
+          ? { kind: "water" }
+          : action === "coffee"
+            ? { kind: "coffee" }
+            : null;
+  if (ev) ctx.updateWorld((w) => applyEvent(w, ev));
+  return true;
 }
 
 /** Branch helper: to the sold-<price> node, or to "short". */

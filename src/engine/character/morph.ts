@@ -1,5 +1,6 @@
 import type { SpriteMap } from "../core/types";
 import type { Patch } from "../sprite/characterBuilder";
+import { DEFAULT_ZONES, isBlank, lettersOf } from "./zones";
 
 /**
  * morph.ts — proportion and garment passes over drawn parts.
@@ -18,11 +19,12 @@ import type { Patch } from "../sprite/characterBuilder";
  *   - a run is a horizontal stretch of cells all in the same zone set.
  */
 
+/** The rig these passes were written against; every pass reads the real width off its rows. */
 export const GRID_W = 24;
 export const CENTRE = 12;
 
-const T = new Set(["."]);
-const isBlank = (ch: string) => T.has(ch) || ch === " ";
+/** The centre line of a row: cells at `< centre` are the far side, `>= centre` the near. */
+const centreOf = (width: number) => Math.floor(width / 2);
 
 type Run = { start: number; end: number };
 
@@ -41,25 +43,15 @@ function runs(row: string, zones: ReadonlySet<string>): Run[] {
   return out;
 }
 
-const LEG_ZONES = new Set(["p", "q", "Q", "m", "s", "S", "b", "B"]);
-const CLOTH_LEG = new Set(["p", "q", "Q", "m"]);
+const Z = DEFAULT_ZONES;
+const LEG_ZONES = lettersOf(Z, "trouser", "hood", "skin", "shoe");
+const CLOTH_LEG = new Set([...lettersOf(Z, "trouser"), "m"]);
 /** what a boot shaft covers: trouser, stripe, sock */
-const BOOT_ZONES = new Set(["p", "q", "Q", "m", "a", "s", "S", "b", "B"]);
+const BOOT_ZONES = lettersOf(Z, "trouser", "hood", "accent", "skin", "shoe");
 /** Everything a torso is made of, hood and hips included. */
 export const TORSO_ZONES: ReadonlySet<string> = new Set([
-  "t",
-  "T",
-  "l",
-  "m",
-  "M",
-  "p",
-  "q",
+  ...lettersOf(Z, "cloth", "hood", "trouser", "accent", "skin"),
   "c",
-  "a",
-  "A",
-  "s",
-  "S",
-  "y",
 ]);
 
 /** Narrowing never touches a run thinner than this — a shin stays a shin. */
@@ -82,11 +74,12 @@ export function widenRuns(
   return map.map((row, y) => {
     if (y < from || y > to) return row;
     const cells = [...row];
+    const centre = centreOf(row.length);
     for (const r of runs(row, zones)) {
       const width = r.end - r.start + 1;
-      const straddles = r.start < CENTRE && r.end >= CENTRE;
-      const left = straddles || r.end < CENTRE;
-      const right = straddles || r.start >= CENTRE;
+      const straddles = r.start < centre && r.end >= centre;
+      const left = straddles || r.end < centre;
+      const right = straddles || r.start >= centre;
       const edgeL = cells[r.start];
       const edgeR = cells[r.end];
       const fillL = width > 1 ? cells[r.start + 1] : edgeL;
@@ -97,7 +90,7 @@ export function widenRuns(
           for (let i = 1; i < by; i++) cells[r.start - i] = fillL;
           cells[r.start - by] = edgeL;
         }
-        if (right && r.end + by < GRID_W) {
+        if (right && r.end + by < row.length) {
           cells[r.end] = fillR;
           for (let i = 1; i < by; i++) cells[r.end + i] = fillR;
           cells[r.end + by] = edgeR;
@@ -126,15 +119,19 @@ export function widenRuns(
  * that reads the same repeated, which is what a shin is.
  */
 export function extendRows(map: SpriteMap, at: number, n: number): string[] {
-  if (n === 0) return [...map];
+  if (n === 0 || map.length === 0) return [...map];
   const out = [...map];
+  const row = Math.max(0, Math.min(map.length - 1, at));
   if (n > 0) {
-    const row = out[at];
-    out.splice(at, 0, ...Array.from({ length: n }, () => row));
+    const src = out[row];
+    out.splice(row, 0, ...Array.from({ length: n }, () => src));
     return out;
   }
-  const remove = Math.min(-n, at);
-  out.splice(at - remove + 1, remove);
+  // never remove the anchor's neighbours above the part's first row, and never
+  // remove more rows than exist above the anchor — a shorter shin is still a shin
+  const remove = Math.min(-n, row);
+  if (remove <= 0) return out;
+  out.splice(row - remove + 1, remove);
   return out;
 }
 
@@ -188,15 +185,31 @@ function cellsToPatch(cells: readonly Cell[], fallback: Patch): Patch {
  * A hanging arm follows its shoulder; a pair of raised arms opens with the
  * chest. Cells pushed off the grid are dropped.
  */
-export function shiftSides(p: Patch, d: number): Patch {
+export function shiftSides(p: Patch, d: number, width = GRID_W): Patch {
   if (d === 0) return p;
-  const cells = patchCells(p)
-    .map((c) => ({ ...c, x: c.x < CENTRE ? c.x - d : c.x + d }))
-    .filter((c) => c.x >= 0 && c.x < GRID_W);
-  return cellsToPatch(cells, p);
+  const centre = centreOf(width);
+  const cells = patchCells(p);
+  // a patch whose ink runs *across* the centre line is one thing (a bar, a
+  // bell, a guitar) and cannot be pulled apart: leave it where the artist put
+  // it. Two arms with a gap between them are two things and open with the chest.
+  const ink = new Set(cells.map((c) => `${c.x},${c.y}`));
+  const joined = cells.some((c) => c.x === centre - 1 && ink.has(`${centre},${c.y}`));
+  if (joined) return p;
+  // never push an arm off the grid: a patch drawn at the edge (a hand held
+  // out, a phone) shifts as far as there is room and no further
+  let room = Math.abs(d);
+  for (const c of cells) {
+    room = Math.min(room, c.x < centre ? c.x : width - 1 - c.x);
+  }
+  const shift = Math.sign(d) * room;
+  if (shift === 0) return p;
+  return cellsToPatch(
+    cells.map((c) => ({ ...c, x: c.x < centre ? c.x - shift : c.x + shift })),
+    p,
+  );
 }
 
-const SKIN = new Set(["s", "S", "y"]);
+const SKIN = lettersOf(Z, "skin");
 const CLOTH = new Set(["t", "T"]);
 
 export type Anchor = readonly [x: number, y: number];
@@ -232,7 +245,8 @@ export function sleevePatch(
     );
   }
   const skin = cells.filter((c) => SKIN.has(c.z));
-  const cloth = cells.filter((c) => CLOTH.has(c.z));
+  const clothAt = new Set<string>();
+  for (const c of cells) if (CLOTH.has(c.z)) clothAt.add(`${c.x},${c.y}`);
   const at = new Map<string, Cell>();
   for (const c of skin) at.set(`${c.x},${c.y}`, c);
   const neighbours = (c: Cell): Cell[] => {
@@ -250,7 +264,15 @@ export function sleevePatch(
   const dist = new Map<Cell, number>();
   const queue: Cell[] = [];
   for (const c of skin) {
-    const touchesCloth = cloth.some((k) => Math.abs(k.x - c.x) <= 1 && Math.abs(k.y - c.y) <= 1);
+    let touchesCloth = false;
+    for (let dx = -1; dx <= 1 && !touchesCloth; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (clothAt.has(`${c.x + dx},${c.y + dy}`)) {
+          touchesCloth = true;
+          break;
+        }
+      }
+    }
     if (touchesCloth) {
       dist.set(c, 0);
       queue.push(c);
@@ -360,10 +382,11 @@ export function stripePass(legs: SpriteMap, from: number, to: number): string[] 
   return legs.map((row, y) => {
     if (y < from || y > to) return row;
     const cells = [...row];
+    const centre = centreOf(row.length);
     for (const r of runs(row, CLOTH_LEG)) {
-      const straddles = r.start < CENTRE && r.end >= CENTRE;
+      const straddles = r.start < centre && r.end >= centre;
       if (straddles) continue;
-      const outer = r.end < CENTRE ? r.start : r.end;
+      const outer = r.end < centre ? r.start : r.end;
       cells[outer] = "a";
     }
     return cells.join("");
@@ -378,23 +401,16 @@ export function bootsPass(legs: SpriteMap, ankle: number, shaft: number): string
   return legs.map((row, y) => {
     if (y < ankle - shaft || y > ankle) return row;
     const cells = [...row];
+    const centre = centreOf(row.length);
     for (const r of runs(row, BOOT_ZONES)) {
-      let outer = -1;
       for (let x = r.start; x <= r.end; x++) {
-        if (cells[x] === "b" || cells[x] === "B") continue;
-        cells[x] = "b";
-        outer = x;
-        if (r.end < CENTRE && outer === -1) outer = x;
+        if (cells[x] !== "b" && cells[x] !== "B") cells[x] = "b";
       }
-      // the shaft's outer edge, on the side away from the centre
-      if (r.end < CENTRE) {
-        for (let x = r.start; x <= r.end; x++) {
-          if (cells[x] === "b" && row[x] !== "b") {
-            cells[x] = "B";
-            break;
-          }
-        }
-      } else if (outer >= 0) cells[outer] = "B";
+      // the shaft's outer edge, on the side away from the centre; a run that
+      // straddles the centre (a sitting figure's joined legs) gets both
+      const straddles = r.start < centre && r.end >= centre;
+      if (straddles || r.end < centre) cells[r.start] = "B";
+      if (straddles || r.start >= centre) cells[r.end] = "B";
     }
     return cells.join("");
   });
@@ -416,7 +432,7 @@ export function sandalsPass(legs: SpriteMap, ankle: number): string[] {
 // head & torso
 // ---------------------------------------------------------------------------
 
-const HAIR_OR_CAP = new Set(["h", "H", "k", "K", "i"]);
+const HAIR_OR_CAP = lettersOf(Z, "hair", "hat");
 
 /**
  * The hood up: hair and cap rows become hood, the face stays. The hood is the
@@ -452,12 +468,20 @@ export function beaniePass(head: SpriteMap, rows: readonly number[]): string[] {
   });
 }
 
-/** Repaint one row's cloth run, keeping the edge letters. */
-function repaintRow(row: string, fill: string, zones: ReadonlySet<string> = CLOTH): string {
+const TORSO_CLOTH = new Set([...lettersOf(Z, "cloth", "hood"), "c"]);
+
+/**
+ * Repaint the torso's cloth on one row — hood and highlight cells included,
+ * so a belt runs across a kangaroo pocket rather than around it — keeping
+ * the outermost edge letters of the whole run.
+ */
+function repaintRow(row: string, fill: string, zones: ReadonlySet<string> = TORSO_CLOTH): string {
   const cells = [...row];
-  for (const r of runs(row, zones)) {
-    for (let x = r.start + 1; x < r.end; x++) cells[x] = fill;
-  }
+  const rs = runs(row, zones);
+  if (rs.length === 0) return row;
+  const start = rs[0].start;
+  const end = rs[rs.length - 1].end;
+  for (let x = start + 1; x < end; x++) if (zones.has(cells[x])) cells[x] = fill;
   return cells.join("");
 }
 

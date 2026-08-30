@@ -1,4 +1,4 @@
-import type { ActionDef } from "./types";
+import type { ActionDef, ActionEvent } from "./types";
 
 /**
  * actionPlayer.ts — the action animation state machine, out of the loop.
@@ -21,7 +21,11 @@ export type ActionRun = {
   /** the frames being played on the way out, once the action is leaving */
   leaving?: readonly string[];
   leftAt?: number;
+  /** frame-timed events already fired, as `${event index}@${loop}` */
+  fired?: Set<string>;
 };
+
+export type ActionPhase = "enter" | "loop" | "exit" | null;
 
 export type ActionStep = {
   /** Frame to show this tick; null when the action produced none. */
@@ -34,9 +38,23 @@ export type ActionStep = {
   interrupted: boolean;
   /** The id names no ActionDef — drop it (and warn, in dev). */
   unknown: boolean;
+  /** Which part of the action the frame came from (the way out counts as exit). */
+  phase: ActionPhase;
+  /** In the loop: which of `frames` this is, and which pass of the loop. */
+  frameIndex?: number;
+  loop?: number;
 };
 
 const EMPTY: readonly string[] = [];
+
+const step = (
+  frame: string | null,
+  done: boolean,
+  natural: boolean,
+  interrupted: boolean,
+  unknown: boolean,
+  phase: ActionPhase,
+): ActionStep => ({ frame, done, natural, interrupted, unknown, phase });
 
 export function stepAction(
   run: ActionRun,
@@ -49,7 +67,7 @@ export function stepAction(
     // An unknown action id used to throw inside the frame loop — again on the
     // next frame and every frame after, and the game was gone. A typo in
     // content must not be a hard lock: drop it and carry on.
-    return { frame: null, done: true, natural: false, interrupted: false, unknown: true };
+    return step(null, true, false, false, true, null);
   }
   const elapsed = now - run.start;
   const enter = def.enter ?? EMPTY;
@@ -79,28 +97,56 @@ export function stepAction(
     const out = run.leaving;
     const t = now - (run.leftAt ?? now);
     if (t >= out.length * def.frameMs) {
-      return { frame: null, done: true, natural: false, interrupted, unknown: false };
+      return step(null, true, false, interrupted, false, null);
     }
-    return {
-      frame: out[Math.floor(t / def.frameMs)] ?? null,
-      done: false,
-      natural: false,
-      interrupted,
-      unknown: false,
-    };
+    return step(out[Math.floor(t / def.frameMs)] ?? null, false, false, interrupted, false, "exit");
   }
   if (elapsed >= enterMs + loopMs + exitMs) {
-    return { frame: null, done: true, natural: true, interrupted: false, unknown: false };
+    return step(null, true, true, false, false, null);
   }
-  let frame: string | null;
   if (elapsed < enterMs) {
-    frame = enter[Math.floor(elapsed / def.frameMs)] ?? null;
-  } else if (elapsed < enterMs + loopMs) {
-    const t = elapsed - enterMs;
-    frame = def.frames[Math.floor(t / def.frameMs) % def.frames.length];
-  } else {
-    const t = elapsed - enterMs - loopMs;
-    frame = exit[Math.floor(t / def.frameMs)] ?? null;
+    return step(
+      enter[Math.floor(elapsed / def.frameMs)] ?? null,
+      false,
+      false,
+      false,
+      false,
+      "enter",
+    );
   }
-  return { frame, done: false, natural: false, interrupted: false, unknown: false };
+  if (elapsed < enterMs + loopMs) {
+    const t = elapsed - enterMs;
+    const i = Math.floor(t / def.frameMs);
+    const frameIndex = i % def.frames.length;
+    return {
+      ...step(def.frames[frameIndex], false, false, false, false, "loop"),
+      frameIndex,
+      loop: Math.floor(i / def.frames.length),
+    };
+  }
+  const t = elapsed - enterMs - loopMs;
+  return step(exit[Math.floor(t / def.frameMs)] ?? null, false, false, false, false, "exit");
+}
+
+/**
+ * The frame-timed events that come due on this tick's step, each once: an
+ * event fires on the first tick that shows its frame in its loop (every loop
+ * when it names none). Timed to the animation rather than a wall-clock timer,
+ * so it pauses with the game and is cancelled with the action.
+ */
+export function dueEvents(run: ActionRun, def: ActionDef, s: ActionStep): ActionEvent[] {
+  if (!def.events || s.phase !== "loop" || s.frameIndex === undefined) return [];
+  const loop = s.loop ?? 0;
+  if (!run.fired) run.fired = new Set();
+  const fired = run.fired;
+  const out: ActionEvent[] = [];
+  def.events.forEach((ev, i) => {
+    if (ev.frame !== s.frameIndex) return;
+    if (ev.loop !== undefined && ev.loop !== loop) return;
+    const key = `${i}@${loop}`;
+    if (fired.has(key)) return;
+    fired.add(key);
+    out.push(ev);
+  });
+  return out;
 }

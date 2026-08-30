@@ -2793,8 +2793,40 @@ export function createAnimal(spec: AnimalSpec): AnimalConfig {
       frameMs: 400,
       loops: 1,
     };
+    // as long as the player's `pet`: the nose up to the hand, the tail going
+    // through the strokes, eyes shut for the scratch, a sigh, the tail again for
+    // the pats, one more look up, and down
     actions.pet = {
-      frames: ["lie", "upAt", "thumpUp", "thumpDown", "thumpUp", "sighOut", "lieShut", "lie"],
+      frames: [
+        "lie",
+        "upAt",
+        "upAt",
+        "upAt",
+        "thumpUp",
+        "thumpDown",
+        "thumpUp",
+        "thumpDown",
+        "thumpUp",
+        "thumpDown",
+        "upAt",
+        "thumpUp",
+        "thumpDown",
+        "thumpUp",
+        "thumpDown",
+        "lieShut",
+        "lieShut",
+        "sighOut",
+        "lieShut",
+        "lieShut",
+        "thumpUp",
+        "thumpDown",
+        "thumpUp",
+        "thumpDown",
+        "upAt",
+        "sighOut",
+        "lie",
+        "lie",
+      ],
       frameMs: 300,
       loops: 1,
     };

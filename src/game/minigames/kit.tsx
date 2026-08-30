@@ -201,7 +201,11 @@ export function MinigameShell({
           {/* iris frames on top of the stage, under the vignette */}
           {iris !== "open"
             ? steps.map((f, i) => (
-                <g key={f} opacity={iris === "opening" ? Math.max(0, 1 - (i + 1) * 0.22) : 1}>
+                <g
+                  key={f}
+                  style={{ pointerEvents: "none" }}
+                  opacity={iris === "opening" ? Math.max(0, 1 - (i + 1) * 0.22) : 1}
+                >
                   <rect x={0} y={0} width={w} height={(h / 2) * f} fill="#000" />
                   <rect x={0} y={h - (h / 2) * f} width={w} height={(h / 2) * f} fill="#000" />
                   <rect x={0} y={0} width={(w / 2) * f} height={h} fill="#000" />
@@ -209,7 +213,10 @@ export function MinigameShell({
                 </g>
               ))
             : null}
-          <Vignette set={vignette} />
+          {/* the vignette is light, not surface: taps go through it to the stage */}
+          <g style={{ pointerEvents: "none" }}>
+            <Vignette set={vignette} />
+          </g>
         </svg>
         {/* the verdict beat: a plate, not a caption */}
         {verdict ? (

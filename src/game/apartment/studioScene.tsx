@@ -2853,6 +2853,7 @@ function StudioEffects({
   fx,
   scale,
   actionUi,
+  moving,
 }: {
   world: WorldState;
   phase: string;
@@ -2868,6 +2869,10 @@ function StudioEffects({
   const cast = CAST[ph];
   const shaft = SHAFT[ph];
   const chores = studioState(world);
+  // The dog and the man: fifteen pettings in and he does not sleep through
+  // you any more — he lies awake and watches; forty and he lifts his head
+  // when you so much as move. Before that he is, as the notes say, asleep.
+  const bond = world.dogPets >= 40 ? "close" : world.dogPets >= 15 ? "warm" : "new";
   const gross =
     actionUi === "pet"
       ? ANIMALS.gross.reactions?.onPet
@@ -2875,7 +2880,11 @@ function StudioEffects({
         ? ANIMALS.gross.reactions?.onNotice
         : ph === "dusk" && !chores.bowlsFilled
           ? ANIMALS.gross.reactions?.onCall
-          : undefined;
+          : bond === "close" && moving
+            ? "lookUp"
+            : bond !== "new"
+              ? "lie"
+              : undefined;
   return (
     <>
       {/* steam is real DOM, so it can blur without breaking the pixel grid */}
@@ -3226,7 +3235,9 @@ export const STUDIO_SCENE: RuntimeSceneDef<WorldState> = {
     },
     { id: "dogbowls", kind: "bowls", x: 594, range: 10, approachY: 158 },
     { id: "dogbed", kind: "flavor", x: 630, range: 8, approachY: 158 },
-    { id: "dog", kind: "dog", x: 648, range: 18, priority: 2, approachY: 158 },
+    // he kneels a little to the dog's left, so the petting arm is the one the
+    // camera sees leave the silhouette (the pet action is drawn from behind)
+    { id: "dog", kind: "dog", x: 648, range: 18, priority: 2, approachX: 636, approachY: 158 },
     { id: "artbrut", kind: "flavor", x: 696, range: 10 },
     { id: "bookshelf", kind: "panel", x: 700, range: 5, data: "skills" },
     { id: "tv", kind: "tv", x: 726, range: 10 },

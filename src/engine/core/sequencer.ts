@@ -21,6 +21,8 @@ export type SeqRun<W extends AnyWorld> = {
   cinematic: boolean;
   /** Escape ends a cinematic run early (an intro the player has seen before). */
   skippable: boolean;
+  /** when the last queued `narrate` line will have been read, on the game clock */
+  narrateUntil: number;
   resolve: (ok: boolean) => void;
 };
 
@@ -37,6 +39,7 @@ export const newSeqRun = <W extends AnyWorld>(
   deadline: 0,
   cinematic,
   skippable,
+  narrateUntil: 0,
   resolve,
 });
 
@@ -46,6 +49,8 @@ export const newSeqRun = <W extends AnyWorld>(
  */
 export type SeqHost<W extends AnyWorld> = {
   showToast(text: string): void;
+  /** show a line after `delayMs` of *game* time; cancelled with the sequence */
+  queueToast(text: string, delayMs: number): void;
   /** how long a shown line stays; falls back to a length curve when absent */
   toastMs?(text: string): number;
   /** Cancel any current auto-walk and arm one toward x (and optional feet-y). */
@@ -163,8 +168,21 @@ function enterStep<W extends AnyWorld>(
     (step.do as (ctx: unknown) => void)(host.makeCtx());
   } else if ("until" in step) {
     run.deadline = at + Number(step.timeoutMs ?? 10000);
+  } else if ("narrate" in step) {
+    // queue the lines end to end from now, each held for its reading time;
+    // remember when the last one is done so a later beat can wait for it
+    const lines = step.narrate as readonly string[];
+    const gap = Number(step.gapMs ?? 250);
+    let t = Math.max(0, run.narrateUntil - at);
+    for (const line of lines) {
+      host.queueToast(line, t);
+      t += (host.toastMs?.(line) ?? Math.min(3200, 1200 + line.length * 28)) + gap;
+    }
+    run.narrateUntil = at + t;
   }
 }
+
+const narrating = <W extends AnyWorld>(run: SeqRun<W>, at: number) => at < run.narrateUntil;
 
 function stepDone<W extends AnyWorld>(
   run: SeqRun<W>,
@@ -175,13 +193,15 @@ function stepDone<W extends AnyWorld>(
   if ("walkTo" in step) return !host.walking();
   if ("action" in step) {
     if (host.actionRunning()) return false;
-    const repeat = (step as { repeat?: () => boolean }).repeat;
-    if (repeat?.()) {
+    const repeat = (step as { repeat?: (() => boolean) | "narration" }).repeat;
+    const again = repeat === "narration" ? narrating(run, at) : repeat?.();
+    if (again) {
       host.startAction(String(step.action));
       return false;
     }
     return true;
   }
+  if ("awaitNarration" in step) return !narrating(run, at);
   if ("dialogue" in step) return !host.dialogueOpen();
   if ("travel" in step) return !host.fading();
   if ("until" in step) {
